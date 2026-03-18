@@ -1,0 +1,384 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+// ==================== AUTH ====================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token                  String? @db.Text
+  session_state             String?
+  refresh_token_expires_in  Int?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  projects      Project[]
+  libraryEntries LibraryEntry[]
+  libraryTags    LibraryTag[]
+  zoteroConnection ZoteroConnection?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==================== PROJECT ====================
+
+enum ProjectStatus {
+  onboarding
+  roadmap
+  sources
+  writing
+  completed
+}
+
+enum CitationFormat {
+  ISNAD
+  APA
+  CHICAGO
+  MLA
+}
+
+model Project {
+  id               String         @id @default(cuid())
+  userId           String
+  title            String
+  description      String?        @db.Text
+  topic            String?        @db.Text
+  purpose          String?        @db.Text
+  audience         String?
+  language         String         @default("tr")
+  citationFormat   CitationFormat @default(ISNAD)
+  styleProfile     Json?
+  writingGuidelines Json?
+  status           ProjectStatus  @default(onboarding)
+
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapters     Chapter[]
+  sources      Source[]
+  bibliography Bibliography[]
+  outputs      Output[]
+  chatMessages RoadmapChatMessage[]
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+}
+
+// ==================== ROADMAP CHAT ====================
+
+model RoadmapChatMessage {
+  id              String   @id @default(cuid())
+  projectId       String
+  sessionId       String
+  role            String   // "user" | "assistant"
+  content         String   @db.Text
+  commands        Json?
+  commandsApplied Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sessionId, createdAt])
+}
+
+// ==================== BOOK STRUCTURE ====================
+
+model Chapter {
+  id             String    @id @default(cuid())
+  projectId      String
+  number         Int
+  title          String
+  purpose        String?   @db.Text
+  estimatedPages Int?
+  sortOrder      Int
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sections Section[]
+
+  @@unique([projectId, number])
+}
+
+model Section {
+  id          String   @id @default(cuid())
+  chapterId   String
+  sectionId   String   // "1.1" format
+  title       String
+  keyConcepts String[]
+  sortOrder   Int
+
+  chapter     Chapter      @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  subsections Subsection[]
+
+  @@unique([chapterId, sectionId])
+}
+
+enum SubsectionStatus {
+  pending
+  in_progress
+  draft
+  review
+  completed
+}
+
+model Subsection {
+  id              String           @id @default(cuid())
+  sectionId       String
+  subsectionId    String           // "1.1.1" format
+  title           String
+  description     String?          @db.Text
+  whatToWrite      String?          @db.Text
+  keyPoints       String[]
+  writingStrategy String?          @db.Text
+  estimatedPages  Int?
+  status          SubsectionStatus @default(pending)
+  content         String?          @db.Text
+  wordCount       Int              @default(0)
+  sortOrder       Int
+
+  section         Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sourceMappings  SourceMapping[]
+  writingSessions WritingSession[]
+  outputs         Output[]
+
+  @@unique([sectionId, subsectionId])
+}
+
+// ==================== SOURCES ====================
+
+model Source {
+  id         String  @id @default(cuid())
+  projectId  String
+  filename   String
+  filePath   String
+  fileType   String
+  totalPages Int?
+  processed  Boolean @default(false)
+
+  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  bibliography Bibliography[]
+  chunks       SourceChunk[]
+  createdAt    DateTime       @default(now())
+}
+
+enum EntryType {
+  kitap
+  makale
+  nesir
+  ceviri
+  tez
+  ansiklopedi
+  web
+}
+
+model Bibliography {
+  id             String    @id @default(cuid())
+  projectId      String
+  sourceId       String?
+  entryType      EntryType @default(kitap)
+  authorSurname  String
+  authorName     String?
+  title          String
+  shortTitle     String?
+  editor         String?
+  translator     String?
+  publisher      String?
+  publishPlace   String?
+  year           String?
+  volume         String?
+  edition        String?
+  journalName    String?
+  journalVolume  String?
+  journalIssue   String?
+  pageRange      String?
+  doi            String?
+  url            String?
+  metadata       Json?
+
+  libraryEntryId String?
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source         Source?         @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  libraryEntry   LibraryEntry?   @relation(fields: [libraryEntryId], references: [id], onDelete: SetNull)
+  sourceMappings SourceMapping[]
+  chunks         SourceChunk[]
+  createdAt      DateTime        @default(now())
+}
+
+model SourceMapping {
+  id              String  @id @default(cuid())
+  subsectionId    String
+  bibliographyId  String
+  relevance       String? @db.Text
+  priority        String  @default("supporting") // primary | supporting
+  howToUse        String? @db.Text
+  whereToFind     String?
+  extractionGuide String? @db.Text
+  sourceType      String  @default("modern") // "classical" | "modern"
+
+  subsection   Subsection   @relation(fields: [subsectionId], references: [id], onDelete: Cascade)
+  bibliography Bibliography @relation(fields: [bibliographyId], references: [id], onDelete: Cascade)
+
+  @@unique([subsectionId, bibliographyId])
+}
+
+model SourceChunk {
+  id              String  @id @default(cuid())
+  sourceId        String
+  bibliographyId  String?
+  pageNumber      Int?
+  chunkIndex      Int
+  content         String  @db.Text
+  embedding       Unsupported("vector(768)")?
+  metadata        Json?
+
+  source       Source        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  bibliography Bibliography? @relation(fields: [bibliographyId], references: [id], onDelete: SetNull)
+}
+
+// ==================== WRITING ====================
+
+model WritingSession {
+  id               String  @id @default(cuid())
+  subsectionId     String
+  context          Json?
+  sourcesUsed      Json?
+  promptSent       String? @db.Text
+  responseReceived String? @db.Text
+  status           String  @default("pending")
+
+  subsection Subsection @relation(fields: [subsectionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime   @default(now())
+}
+
+// ==================== OUTPUTS ====================
+
+model Output {
+  id           String  @id @default(cuid())
+  projectId    String
+  subsectionId String?
+  fileType     String  @default("docx")
+  filePath     String
+  scope        String  @default("subsection") // subsection | chapter | full
+  driveFileId  String?
+  driveWebLink String?
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  subsection Subsection? @relation(fields: [subsectionId], references: [id], onDelete: SetNull)
+  createdAt  DateTime    @default(now())
+}
+
+// ==================== USER LIBRARY ====================
+
+model LibraryEntry {
+  id             String    @id @default(cuid())
+  userId         String
+  entryType      EntryType @default(kitap)
+  authorSurname  String
+  authorName     String?
+  title          String
+  shortTitle     String?
+  editor         String?
+  translator     String?
+  publisher      String?
+  publishPlace   String?
+  year           String?
+  volume         String?
+  edition        String?
+  journalName    String?
+  journalVolume  String?
+  journalIssue   String?
+  pageRange      String?
+  doi            String?
+  url            String?
+  metadata       Json?
+  importSource   String?   // "manual" | "bibtex" | "zotero"
+  bibtexKey      String?
+  zoteroKey      String?
+  filePath       String?   // Local path to downloaded PDF/file
+  fileType       String?   // "pdf" | "doc" | etc.
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bibliographies Bibliography[]
+  tags           LibraryEntryTag[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([userId, authorSurname, title])
+  @@index([userId])
+}
+
+model LibraryTag {
+  id      String @id @default(cuid())
+  userId  String
+  name    String
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries LibraryEntryTag[]
+
+  @@unique([userId, name])
+}
+
+model LibraryEntryTag {
+  id             String @id @default(cuid())
+  libraryEntryId String
+  tagId          String
+
+  entry LibraryEntry @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
+  tag   LibraryTag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([libraryEntryId, tagId])
+}
+
+// ==================== ZOTERO ====================
+
+model ZoteroConnection {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  apiKey          String
+  zoteroUserId    String
+  lastSyncAt      DateTime?
+  syncCollections String[]
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
