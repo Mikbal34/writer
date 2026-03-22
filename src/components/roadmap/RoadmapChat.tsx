@@ -42,8 +42,18 @@ function parseCommands(text: string): Array<Record<string, unknown>> {
 }
 
 function stripCommandsFromDisplay(text: string): string {
+ // Remove completed command blocks
  let result = text.replace(/<roadmap_commands>[\s\S]*?<\/roadmap_commands>/g, "");
- result = result.replace(/<roadmap_commands>[\s\S]*$/g, "");
+ // Remove any partially streamed command block (from opening tag to end)
+ const openTagIndex = result.indexOf("<roadmap_commands>");
+ if (openTagIndex !== -1) {
+  result = result.slice(0, openTagIndex);
+ }
+ // Catch partial opening tags being streamed char by char (e.g. "<roadmap_c")
+ const partialMatch = result.match(/<roadmap_c[^>]*$/);
+ if (partialMatch && partialMatch.index !== undefined) {
+  result = result.slice(0, partialMatch.index);
+ }
  return result.trim();
 }
 
