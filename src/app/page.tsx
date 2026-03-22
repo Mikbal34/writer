@@ -560,11 +560,11 @@ const PRICING_PLANS = [
   {
     name: "Pro",
     tagline: "For serious authors",
-    price: 29,
-    credits: 25000,
+    price: 20,
+    credits: 18000,
     popular: true,
     features: [
-      "~550 pages of AI writing",
+      "~400 pages of AI writing",
       "Everything in Starter",
       "Multiple book projects",
       "Advanced RAG retrieval",
