@@ -124,6 +124,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
       'bibliography_enrich',
       aiResult.inputTokens,
       aiResult.outputTokens,
+      'haiku',
       { bibliographyId: id }
     )
 

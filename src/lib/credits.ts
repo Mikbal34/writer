@@ -1,19 +1,33 @@
 import { prisma } from '@/lib/db'
 
-// Output tokens are 5x more expensive than input tokens ($15/M vs $3/M)
-export function tokensToCredits(inputTokens: number, outputTokens: number): number {
-  return Math.ceil((inputTokens + outputTokens * 5) / 1000)
+// Model cost multipliers relative to Haiku input ($0.25/M = 1x base)
+export const MODEL_MULTIPLIERS = {
+  sonnet: { input: 12, output: 60 },  // $3/M input, $15/M output
+  haiku:  { input: 1,  output: 5 },   // $0.25/M input, $1.25/M output
+} as const
+
+export type ModelType = keyof typeof MODEL_MULTIPLIERS
+
+// 1 credit = 1000 weighted tokens (at Haiku input rate)
+export function tokensToCredits(
+  inputTokens: number,
+  outputTokens: number,
+  model: ModelType = 'sonnet'
+): number {
+  const m = MODEL_MULTIPLIERS[model]
+  return Math.ceil((inputTokens * m.input + outputTokens * m.output) / 1000)
 }
 
+// Estimated costs for pre-checks (based on real API test results)
 export const ESTIMATED_COSTS: Record<string, number> = {
-  write_subsection: 12,
-  write_subsection_alt: 12,
-  roadmap_generate: 15,
-  roadmap_chat: 6,
-  style_analyze: 2,
-  style_interview: 2,
-  bibliography_enrich: 2,
-  source_upload_extract: 2,
+  write_subsection: 300,
+  write_subsection_alt: 300,
+  roadmap_generate: 400,
+  roadmap_chat: 300,
+  style_analyze: 5,
+  style_interview: 5,
+  bibliography_enrich: 3,
+  source_upload_extract: 5,
 }
 
 export class InsufficientCreditsError extends Error {
@@ -38,7 +52,7 @@ export async function checkCredits(
   })
 
   const balance = user?.creditBalance ?? 0
-  const estimatedCost = ESTIMATED_COSTS[operation] ?? 5
+  const estimatedCost = ESTIMATED_COSTS[operation] ?? 50
 
   return {
     allowed: balance >= estimatedCost,
@@ -52,9 +66,10 @@ export async function deductCredits(
   operation: string,
   inputTokens: number,
   outputTokens: number,
+  model?: ModelType,
   metadata?: Record<string, unknown>
 ): Promise<{ newBalance: number; creditsUsed: number }> {
-  const creditsUsed = tokensToCredits(inputTokens, outputTokens)
+  const creditsUsed = tokensToCredits(inputTokens, outputTokens, model)
 
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({
@@ -80,6 +95,7 @@ export async function deductCredits(
         inputTokens,
         outputTokens,
         creditsUsed,
+        model: model ?? null,
         metadata: metadata as object ?? undefined,
       },
     })

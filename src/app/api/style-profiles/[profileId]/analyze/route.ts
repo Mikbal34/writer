@@ -68,6 +68,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       'style_analyze',
       result.inputTokens,
       result.outputTokens,
+      'haiku',
       { styleProfileId: profileId }
     )
 

@@ -46,7 +46,8 @@ export async function POST(req: NextRequest) {
       session.user.id,
       "style_interview",
       result.inputTokens,
-      result.outputTokens
+      result.outputTokens,
+      'haiku'
     );
 
     return NextResponse.json({

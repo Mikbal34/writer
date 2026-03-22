@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
       session.user.id,
       "style_analyze",
       result.inputTokens,
-      result.outputTokens
+      result.outputTokens,
+      'haiku'
     );
 
     return NextResponse.json({ styleProfile: result.data });

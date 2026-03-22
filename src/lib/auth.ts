@@ -80,8 +80,8 @@ export const authOptions: NextAuthOptions = {
         await prisma.creditTransaction.create({
           data: {
             userId: user.id,
-            amount: 50,
-            balance: 50,
+            amount: 500,
+            balance: 500,
             type: 'initial_grant',
             metadata: { reason: 'signup_bonus' },
           },

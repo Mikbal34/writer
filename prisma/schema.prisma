@@ -50,7 +50,7 @@ model User {
   libraryEntries LibraryEntry[]
   libraryTags    LibraryTag[]
   zoteroConnection ZoteroConnection?
-  creditBalance       Int                 @default(50)
+  creditBalance       Int                 @default(500)
   creditTransactions  CreditTransaction[]
   styleProfiles       UserStyleProfile[]
   createdAt     DateTime  @default(now())
@@ -441,6 +441,7 @@ model CreditTransaction {
   inputTokens   Int?
   outputTokens  Int?
   creditsUsed   Int?
+  model         String?
   metadata      Json?
   createdAt     DateTime                @default(now())
 

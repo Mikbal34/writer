@@ -28,7 +28,7 @@ export default function CreditBalance() {
 
   if (balance === null) return null;
 
-  const isLow = balance > 0 && balance < 10;
+  const isLow = balance > 0 && balance < 100;
   const isEmpty = balance === 0;
 
   return (

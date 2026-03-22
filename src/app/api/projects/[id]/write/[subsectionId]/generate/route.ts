@@ -195,6 +195,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
             'write_subsection_alt',
             result.inputTokens,
             result.outputTokens,
+            'sonnet',
             { projectId, subsectionId }
           )
 

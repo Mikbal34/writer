@@ -12,6 +12,8 @@ import {
   Sparkles,
   Zap,
   Shield,
+  Check,
+  Crown,
 } from "lucide-react";
 import NewProjectDialog from "@/components/NewProjectDialog";
 import { authOptions } from "@/lib/auth";
@@ -528,6 +530,61 @@ const LANDING_TESTIMONIALS = [
   },
 ];
 
+const PRICING_PLANS = [
+  {
+    name: "Free",
+    tagline: "Try it out",
+    price: 0,
+    credits: 500,
+    popular: false,
+    features: [
+      "~10 pages of AI writing",
+      "Full roadmap planning",
+      "Source library access",
+      "DOCX & PDF export",
+    ],
+  },
+  {
+    name: "Starter",
+    tagline: "For a single book",
+    price: 10,
+    credits: 7000,
+    popular: false,
+    features: [
+      "~150 pages of AI writing",
+      "Everything in Free",
+      "Style profile analysis",
+      "Priority generation",
+    ],
+  },
+  {
+    name: "Pro",
+    tagline: "For serious authors",
+    price: 29,
+    credits: 25000,
+    popular: true,
+    features: [
+      "~550 pages of AI writing",
+      "Everything in Starter",
+      "Multiple book projects",
+      "Advanced RAG retrieval",
+    ],
+  },
+  {
+    name: "Academic",
+    tagline: "For prolific writers",
+    price: 59,
+    credits: 60000,
+    popular: false,
+    features: [
+      "~1,300 pages of AI writing",
+      "Everything in Pro",
+      "Bulk chapter generation",
+      "Volume discount pricing",
+    ],
+  },
+];
+
 function LandingPage() {
   return (
     <div
@@ -718,6 +775,116 @@ function LandingPage() {
               </ScrollFadeUp>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section className="py-20 px-6 bg-[#2D1F0E]/5">
+        <div className="max-w-5xl mx-auto">
+          <ScrollFadeIn className="text-center mb-14">
+            <svg viewBox="0 0 120 20" className="w-24 mx-auto text-[#C9A84C] mb-6 opacity-60" fill="currentColor">
+              <path d="M0 10 Q30 2 60 10 Q90 18 120 10" stroke="currentColor" strokeWidth="1" fill="none" />
+              <circle cx="60" cy="10" r="3" />
+              <circle cx="20" cy="8" r="1.5" />
+              <circle cx="100" cy="12" r="1.5" />
+            </svg>
+            <h2 className="font-display text-4xl font-bold text-ink mb-4">
+              Simple Pricing
+            </h2>
+            <p className="font-body text-lg text-ink-light max-w-xl mx-auto leading-relaxed">
+              Pay for what you use. Every plan includes all features.
+            </p>
+          </ScrollFadeIn>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {PRICING_PLANS.map((plan, i) => (
+              <ScrollFadeUp
+                key={plan.name}
+                delay={i * 0.1}
+                className={`relative rounded-sm p-6 flex flex-col ${
+                  plan.popular
+                    ? "bg-[#2D1F0E] border-2 border-[#C9A84C]/60 shadow-lg"
+                    : "bg-[#FAF7F0]/70 border border-[#d4c9b5]/60"
+                }`}
+              >
+                {plan.popular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1 bg-[#C9A84C] rounded-sm">
+                    <Crown className="w-3 h-3 text-[#1a0f05]" />
+                    <span className="font-ui text-[10px] font-bold text-[#1a0f05] uppercase tracking-wider">
+                      Popular
+                    </span>
+                  </div>
+                )}
+
+                <div className="mb-5">
+                  <h3 className={`font-display text-lg font-bold mb-1 ${
+                    plan.popular ? "text-[#FAF7F0]" : "text-ink"
+                  }`}>
+                    {plan.name}
+                  </h3>
+                  <p className={`font-body text-xs ${
+                    plan.popular ? "text-[#e8dfd0]/60" : "text-ink-light"
+                  }`}>
+                    {plan.tagline}
+                  </p>
+                </div>
+
+                <div className="mb-5">
+                  <div className="flex items-baseline gap-1">
+                    <span className={`font-display text-3xl font-bold ${
+                      plan.popular ? "text-[#C9A84C]" : "text-ink"
+                    }`}>
+                      {plan.price === 0 ? "Free" : `$${plan.price}`}
+                    </span>
+                    {plan.price > 0 && (
+                      <span className={`font-ui text-xs ${
+                        plan.popular ? "text-[#e8dfd0]/50" : "text-ink-light"
+                      }`}>
+                        one-time
+                      </span>
+                    )}
+                  </div>
+                  <p className={`font-ui text-xs mt-1 ${
+                    plan.popular ? "text-[#C9A84C]/80" : "text-[#C9A84C]"
+                  }`}>
+                    {plan.credits.toLocaleString()} credits
+                  </p>
+                </div>
+
+                <ul className="space-y-2.5 mb-6 flex-1">
+                  {plan.features.map((feature) => (
+                    <li key={feature} className="flex items-start gap-2">
+                      <Check className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${
+                        plan.popular ? "text-[#C9A84C]" : "text-forest"
+                      }`} />
+                      <span className={`font-ui text-xs leading-relaxed ${
+                        plan.popular ? "text-[#e8dfd0]/80" : "text-ink-light"
+                      }`}>
+                        {feature}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                <Link
+                  href="/api/auth/signin"
+                  className={`flex items-center justify-center gap-2 font-ui text-sm font-semibold px-4 py-2.5 rounded-sm transition-all duration-200 ${
+                    plan.popular
+                      ? "bg-[#C9A84C] text-[#1a0f05] hover:bg-[#d4b85a]"
+                      : "border border-[#d4c9b5]/60 text-ink hover:border-[#C9A84C]/60 hover:bg-[#C9A84C]/5"
+                  }`}
+                >
+                  {plan.price === 0 ? "Start Free" : "Get Started"}
+                </Link>
+              </ScrollFadeUp>
+            ))}
+          </div>
+
+          <ScrollFadeIn className="text-center mt-8">
+            <p className="font-body text-sm text-ink-light">
+              All plans include every feature. Credits never expire.
+            </p>
+          </ScrollFadeIn>
         </div>
       </section>
 

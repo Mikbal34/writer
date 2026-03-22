@@ -240,6 +240,7 @@ Rules:
               'source_upload_extract',
               aiResult.inputTokens,
               aiResult.outputTokens,
+              'haiku',
               { sourceId, projectId }
             )
           } catch (creditErr) {

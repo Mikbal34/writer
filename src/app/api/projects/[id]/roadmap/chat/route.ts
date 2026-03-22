@@ -668,6 +668,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             'roadmap_chat',
             result.inputTokens,
             result.outputTokens,
+            'sonnet',
             { projectId }
           )
 
