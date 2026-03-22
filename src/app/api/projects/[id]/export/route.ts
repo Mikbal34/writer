@@ -269,18 +269,30 @@ interface PdfFontFamily {
 function resolvePdfFontFamily(): PdfFontFamily {
   const fs = require('fs')
 
-  // Priority 1: Bundled DejaVu Serif (always available, full Unicode/Turkish support)
-  const bundledDir = path.join(process.cwd(), 'public', 'fonts')
-  const bundled: PdfFontFamily = {
-    regular: path.join(bundledDir, 'DejaVuSerif.ttf'),
-    bold: path.join(bundledDir, 'DejaVuSerif-Bold.ttf'),
-    italic: path.join(bundledDir, 'DejaVuSerif-Italic.ttf'),
-    boldItalic: path.join(bundledDir, 'DejaVuSerif-BoldItalic.ttf'),
+  // Priority 1: Bundled DejaVu Serif — try multiple possible root directories
+  // (process.cwd() can differ between dev, build, and Railway runtime)
+  const possibleRoots = [
+    process.cwd(),
+    path.join(process.cwd(), '.next', 'standalone'),
+    path.resolve('.'),
+    '/app', // Railway default working directory
+  ]
+
+  for (const root of possibleRoots) {
+    const bundledDir = path.join(root, 'public', 'fonts')
+    const bundled: PdfFontFamily = {
+      regular: path.join(bundledDir, 'DejaVuSerif.ttf'),
+      bold: path.join(bundledDir, 'DejaVuSerif-Bold.ttf'),
+      italic: path.join(bundledDir, 'DejaVuSerif-Italic.ttf'),
+      boldItalic: path.join(bundledDir, 'DejaVuSerif-BoldItalic.ttf'),
+    }
+    try {
+      fs.accessSync(bundled.regular)
+      console.log(`[export] Found bundled fonts at: ${bundledDir}`)
+      return bundled
+    } catch { /* try next root */ }
   }
-  try {
-    fs.accessSync(bundled.regular)
-    return bundled
-  } catch { /* bundled fonts not found, try system fonts */ }
+  console.warn('[export] Bundled fonts not found in any root directory, trying system fonts')
 
   // Priority 2: Allow override via env var
   if (process.env.PDF_FONT_PATH) {
@@ -395,18 +407,25 @@ function buildPdf(
       info: { Title: projectTitle },
     })
 
-    // Register font variants
+    // Register font variants with error handling
+    let fontsRegistered = hasCustomFont
     if (hasCustomFont) {
-      doc.registerFont('main', fontFamily.regular)
-      doc.registerFont('main-bold', fontFamily.bold)
-      doc.registerFont('main-italic', fontFamily.italic)
-      doc.registerFont('main-bolditalic', fontFamily.boldItalic)
+      try {
+        doc.registerFont('main', fontFamily.regular)
+        doc.registerFont('main-bold', fontFamily.bold || fontFamily.regular)
+        doc.registerFont('main-italic', fontFamily.italic || fontFamily.regular)
+        doc.registerFont('main-bolditalic', fontFamily.boldItalic || fontFamily.regular)
+        console.log('[export] Custom fonts registered successfully')
+      } catch (fontErr) {
+        console.error('[export] Font registration failed, falling back to Helvetica:', fontErr)
+        fontsRegistered = false
+      }
     }
     const fonts = {
-      regular: hasCustomFont ? 'main' : 'Helvetica',
-      bold: hasCustomFont ? 'main-bold' : 'Helvetica-Bold',
-      italic: hasCustomFont ? 'main-italic' : 'Helvetica-Oblique',
-      boldItalic: hasCustomFont ? 'main-bolditalic' : 'Helvetica-BoldOblique',
+      regular: fontsRegistered ? 'main' : 'Helvetica',
+      bold: fontsRegistered ? 'main-bold' : 'Helvetica-Bold',
+      italic: fontsRegistered ? 'main-italic' : 'Helvetica-Oblique',
+      boldItalic: fontsRegistered ? 'main-bolditalic' : 'Helvetica-BoldOblique',
     }
 
     const bufferChunks: Buffer[] = []
