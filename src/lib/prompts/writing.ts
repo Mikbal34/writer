@@ -95,7 +95,8 @@ export function getSessionContextPrompt(
     parts.push(`**Writing Strategy:** ${subsection.writingStrategy}`)
   }
   if (subsection.estimatedPages) {
-    parts.push(`**Target Length:** approximately ${subsection.estimatedPages} pages`)
+    const targetWords = subsection.estimatedPages * 275
+    parts.push(`**Target Length:** approximately ${targetWords}–${targetWords + 75} words (${subsection.estimatedPages} pages, ~275 words/page)`)
   }
   parts.push('')
 
@@ -188,7 +189,7 @@ export function getSessionContextPrompt(
     `Write the full academic text for subsection ${subsection.subsectionId}: "${subsection.title}".`
   )
   parts.push(
-    `Aim for approximately ${subsection.estimatedPages ?? 3}–${(subsection.estimatedPages ?? 3) + 1} pages of academic prose.`
+    `Write approximately ${((subsection.estimatedPages ?? 3) * 275)}–${((subsection.estimatedPages ?? 3) * 275) + 75} words (${subsection.estimatedPages ?? 3} academic pages, ~275 words per page). This word count is important — do not write significantly more or less.`
   )
   parts.push(
     `Do not include the subsection heading — just the body text with footnote markers indicated as [fn: citation text].`

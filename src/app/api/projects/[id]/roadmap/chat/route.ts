@@ -312,14 +312,22 @@ FORMAT RULES:
 
 Your tasks:
 1. If topic, purpose, or target audience are not specified, ask the user questions about the book.
-2. After gathering enough information about the book's content and structure, BEFORE creating the roadmap, ask the user about sources:
+2. Ask the user about desired book length (total pages). This is important for distributing content proportionally.
+3. After gathering enough information about the book's content and structure, BEFORE creating the roadmap, ask the user about sources:
    - Do they have specific sources (books, articles, authors) they plan to use?
    - What are their source preferences? (classical vs modern, primary vs secondary)
    - How many sources per subsection do they want? (e.g., 2-3 sources)
    - Do they prefer a specific academic tradition or school of thought?
-3. After gathering source information (or if the user says "you decide"), use get_library_entries to check available sources, then create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section).
-4. When creating the roadmap, add sources to EVERY subsection (using add_source commands). Use sources from the library first; suggest your own for any gaps.
-5. Use update_project command to update project information.
+4. After gathering source information (or if the user says "you decide"), use get_library_entries to check available sources, then create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section).
+5. When creating the roadmap, add sources to EVERY subsection (using add_source commands). Use sources from the library first; suggest your own for any gaps.
+6. Use update_project command to update project information.
+
+PAGE ESTIMATION RULES:
+- 1 academic page = approximately 275 words.
+- Distribute the user's target page count proportionally across chapters and subsections.
+- Each subsection should typically be 2-5 pages.
+- The total of all subsection estimatedPages should roughly equal the user's target page count.
+- If the user wants 300 pages and you create 60 subsections, each subsection should average ~5 pages.
 
 ${commonRules}`
   } else {
