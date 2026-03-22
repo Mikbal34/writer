@@ -19,6 +19,7 @@ import type {
 } from '@/types/project'
 import type { CitationFormat } from '@prisma/client'
 import type { SystemPromptPart } from '@/lib/claude'
+import { getFormatSettings } from '@/lib/constants'
 
 // ==================== MAIN EXPORTED FUNCTIONS ====================
 
@@ -95,8 +96,9 @@ export function getSessionContextPrompt(
     parts.push(`**Writing Strategy:** ${subsection.writingStrategy}`)
   }
   if (subsection.estimatedPages) {
-    const targetWords = subsection.estimatedPages * 275
-    parts.push(`**Target Length:** approximately ${targetWords}–${targetWords + 75} words (${subsection.estimatedPages} pages, ~275 words/page)`)
+    const { wordsPerPage } = getFormatSettings(citationFormat)
+    const targetWords = subsection.estimatedPages * wordsPerPage
+    parts.push(`**Target Length:** approximately ${targetWords}–${targetWords + Math.round(wordsPerPage * 0.2)} words (${subsection.estimatedPages} pages, ~${wordsPerPage} words/page)`)
   }
   parts.push('')
 
@@ -189,7 +191,13 @@ export function getSessionContextPrompt(
     `Write the full academic text for subsection ${subsection.subsectionId}: "${subsection.title}".`
   )
   parts.push(
-    `Write approximately ${((subsection.estimatedPages ?? 3) * 275)}–${((subsection.estimatedPages ?? 3) * 275) + 75} words (${subsection.estimatedPages ?? 3} academic pages, ~275 words per page). This word count is important — do not write significantly more or less.`
+    (() => {
+      const { wordsPerPage } = getFormatSettings(citationFormat)
+      const pages = subsection.estimatedPages ?? 3
+      const target = pages * wordsPerPage
+      const tolerance = Math.round(wordsPerPage * 0.2)
+      return `Write approximately ${target}–${target + tolerance} words (${pages} academic pages, ~${wordsPerPage} words/page for ${citationFormat} format). This word count is important — do not write significantly more or less.`
+    })()
   )
   parts.push(
     `Do not include the subsection heading — just the body text with footnote markers indicated as [fn: citation text].`

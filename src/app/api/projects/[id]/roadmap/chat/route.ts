@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { streamChatWithTools, type ChatMessage, type SystemPromptPart, type ToolDefinition } from '@/lib/claude'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
+import { getFormatSettings } from '@/lib/constants'
 import { findOrCreateBibliography } from '@/lib/bibliography'
 import type { Prisma } from '@prisma/client'
 
@@ -252,7 +253,7 @@ async function handleToolCallFn(
 // ---------------------------------------------------------------------------
 function buildSystemPrompt(
   roadmapIndex: ReturnType<typeof buildRoadmapIndex> | null,
-  project: { title: string; topic: string | null; purpose: string | null; audience: string | null; language: string | null },
+  project: { title: string; topic: string | null; purpose: string | null; audience: string | null; language: string | null; citationFormat: string | null },
   conversationSummary?: string | null
 ): SystemPromptPart[] {
   const isCreationMode = !roadmapIndex || roadmapIndex.length === 0
@@ -323,7 +324,7 @@ Your tasks:
 6. Use update_project command to update project information.
 
 PAGE ESTIMATION RULES:
-- 1 academic page = approximately 275 words.
+- 1 academic page = approximately ${getFormatSettings(project.citationFormat).wordsPerPage} words (based on ${project.citationFormat ?? 'ISNAD'} format settings).
 - Distribute the user's target page count proportionally across chapters and subsections.
 - Each subsection should typically be 2-5 pages.
 - The total of all subsection estimatedPages should roughly equal the user's target page count.
@@ -741,7 +742,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
-      select: { id: true, title: true, topic: true, purpose: true, audience: true, language: true },
+      select: { id: true, title: true, topic: true, purpose: true, audience: true, language: true, citationFormat: true },
     })
 
     if (!project) {
