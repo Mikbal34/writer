@@ -268,14 +268,26 @@ interface PdfFontFamily {
 
 function resolvePdfFontFamily(): PdfFontFamily {
   const fs = require('fs')
-  const empty: PdfFontFamily = { regular: '', bold: '', italic: '', boldItalic: '' }
 
-  // Allow override via env var (regular font path; derive variants)
+  // Priority 1: Bundled Noto Serif (always available, Unicode/Turkish support)
+  const bundledDir = path.join(process.cwd(), 'public', 'fonts')
+  const bundled: PdfFontFamily = {
+    regular: path.join(bundledDir, 'NotoSerif-Regular.ttf'),
+    bold: path.join(bundledDir, 'NotoSerif-Bold.ttf'),
+    italic: path.join(bundledDir, 'NotoSerif-Italic.ttf'),
+    boldItalic: path.join(bundledDir, 'NotoSerif-BoldItalic.ttf'),
+  }
+  try {
+    fs.accessSync(bundled.regular)
+    return bundled
+  } catch { /* bundled fonts not found, try system fonts */ }
+
+  // Priority 2: Allow override via env var
   if (process.env.PDF_FONT_PATH) {
-    return { regular: process.env.PDF_FONT_PATH, bold: '', italic: '', boldItalic: '' }
+    return { regular: process.env.PDF_FONT_PATH, bold: process.env.PDF_FONT_PATH, italic: process.env.PDF_FONT_PATH, boldItalic: process.env.PDF_FONT_PATH }
   }
 
-  // Times New Roman — best match with DOCX output
+  // Priority 3: System Times New Roman
   const tnrFamilies = [
     {
       regular: '/System/Library/Fonts/Supplemental/Times New Roman.ttf',
@@ -289,19 +301,11 @@ function resolvePdfFontFamily(): PdfFontFamily {
       italic: '/Library/Fonts/Times New Roman Italic.ttf',
       boldItalic: '/Library/Fonts/Times New Roman Bold Italic.ttf',
     },
-    {
-      // Windows
-      regular: 'C:\\Windows\\Fonts\\times.ttf',
-      bold: 'C:\\Windows\\Fonts\\timesbd.ttf',
-      italic: 'C:\\Windows\\Fonts\\timesi.ttf',
-      boldItalic: 'C:\\Windows\\Fonts\\timesbi.ttf',
-    },
   ]
 
   for (const family of tnrFamilies) {
     try {
       fs.accessSync(family.regular)
-      // Regular must exist; variants are optional (fallback to regular)
       const result: PdfFontFamily = { regular: family.regular, bold: family.regular, italic: family.regular, boldItalic: family.regular }
       try { fs.accessSync(family.bold); result.bold = family.bold } catch { /* use regular */ }
       try { fs.accessSync(family.italic); result.italic = family.italic } catch { /* use regular */ }
@@ -310,20 +314,17 @@ function resolvePdfFontFamily(): PdfFontFamily {
     } catch { /* try next family */ }
   }
 
-  // Fallback: any single Unicode-capable font
+  // Priority 4: Any system Unicode font
   const singleFonts = [
-    '/Library/Fonts/Arial Unicode.ttf',
-    '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf',
     '/usr/share/fonts/dejavu-serif-fonts/DejaVuSerif.ttf',
     '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',
-    'C:\\Windows\\Fonts\\arial.ttf',
   ]
   for (const p of singleFonts) {
     try { fs.accessSync(p); return { regular: p, bold: p, italic: p, boldItalic: p } } catch { /* skip */ }
   }
 
-  return empty // fallback: use pdfkit built-in (ASCII only)
+  return { regular: '', bold: '', italic: '', boldItalic: '' }
 }
 
 // ---------------------------------------------------------------------------
