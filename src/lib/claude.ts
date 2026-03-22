@@ -44,7 +44,7 @@ export async function* streamChat(
 
   const stream = await client.messages.stream({
     model: options?.model ?? SONNET,
-    max_tokens: 16384,
+    max_tokens: 32768,
     system: buildSystemParam(systemPrompt),
     messages: messages.map((m) => ({
       role: m.role,
@@ -78,7 +78,7 @@ export async function streamChatWithUsage(
 
   const response = await client.messages.create({
     model: options?.model ?? SONNET,
-    max_tokens: 16384,
+    max_tokens: 32768,
     system: buildSystemParam(systemPrompt),
     messages: messages.map((m) => ({
       role: m.role,
@@ -108,6 +108,145 @@ export async function streamChatWithUsage(
   }
 
   return { fullText, inputTokens, outputTokens }
+}
+
+export type ToolDefinition = Anthropic.Messages.Tool
+
+export interface ToolCallResult {
+  toolName: string
+  toolInput: Record<string, unknown>
+  result: string
+}
+
+/**
+ * Stream chat with tool use support. Handles the tool use loop automatically:
+ * 1. Send messages + tools to Claude
+ * 2. If Claude calls a tool → execute handler → add result → loop back
+ * 3. If Claude produces text → stream it to onChunk
+ * 4. Accumulate total tokens across all iterations
+ */
+export async function streamChatWithTools(
+  messages: ChatMessage[],
+  systemPrompt: string | SystemPromptPart[],
+  tools: ToolDefinition[],
+  handleToolCall: (toolName: string, toolInput: Record<string, unknown>) => Promise<string>,
+  onChunk?: (text: string) => void,
+  onToolCall?: (toolName: string) => void,
+  options?: { model?: string; maxIterations?: number }
+): Promise<StreamResult> {
+  const client = createClaudeClient()
+  const model = options?.model ?? SONNET
+  const maxIterations = options?.maxIterations ?? 5
+
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  let fullText = ''
+
+  // Build the messages array in Anthropic's native format for tool use
+  const apiMessages: Anthropic.Messages.MessageParam[] = messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }))
+
+  for (let i = 0; i < maxIterations; i++) {
+    const response = await client.messages.create({
+      model,
+      max_tokens: 32768,
+      system: buildSystemParam(systemPrompt),
+      messages: apiMessages,
+      tools,
+      stream: true,
+    })
+
+    let iterationText = ''
+    let iterationInputTokens = 0
+    let iterationOutputTokens = 0
+    const toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = []
+    let currentToolId = ''
+    let currentToolName = ''
+    let currentToolInput = ''
+    let stopReason: string | null = null
+
+    for await (const event of response) {
+      if (event.type === 'message_start' && event.message?.usage) {
+        iterationInputTokens = event.message.usage.input_tokens
+      }
+      if (event.type === 'content_block_start') {
+        if (event.content_block.type === 'tool_use') {
+          currentToolId = event.content_block.id
+          currentToolName = event.content_block.name
+          currentToolInput = ''
+        }
+      }
+      if (event.type === 'content_block_delta') {
+        if (event.delta.type === 'text_delta') {
+          iterationText += event.delta.text
+          onChunk?.(event.delta.text)
+        }
+        if (event.delta.type === 'input_json_delta') {
+          currentToolInput += event.delta.partial_json
+        }
+      }
+      if (event.type === 'content_block_stop' && currentToolId) {
+        try {
+          const parsed = currentToolInput ? JSON.parse(currentToolInput) : {}
+          toolCalls.push({ id: currentToolId, name: currentToolName, input: parsed })
+        } catch {
+          toolCalls.push({ id: currentToolId, name: currentToolName, input: {} })
+        }
+        currentToolId = ''
+        currentToolName = ''
+        currentToolInput = ''
+      }
+      if (event.type === 'message_delta') {
+        if (event.usage) {
+          iterationOutputTokens = event.usage.output_tokens
+        }
+        if (event.delta?.stop_reason) {
+          stopReason = event.delta.stop_reason
+        }
+      }
+    }
+
+    totalInputTokens += iterationInputTokens
+    totalOutputTokens += iterationOutputTokens
+    fullText += iterationText
+
+    // If no tool calls, we're done
+    if (stopReason !== 'tool_use' || toolCalls.length === 0) {
+      break
+    }
+
+    // Build assistant message with both text and tool_use blocks
+    const assistantContent: Anthropic.Messages.ContentBlockParam[] = []
+    if (iterationText) {
+      assistantContent.push({ type: 'text', text: iterationText })
+    }
+    for (const tc of toolCalls) {
+      assistantContent.push({
+        type: 'tool_use',
+        id: tc.id,
+        name: tc.name,
+        input: tc.input,
+      })
+    }
+    apiMessages.push({ role: 'assistant', content: assistantContent })
+
+    // Execute tool calls and add results
+    const toolResults: Anthropic.Messages.ToolResultBlockParam[] = []
+    for (const tc of toolCalls) {
+      onToolCall?.(tc.name)
+      const result = await handleToolCall(tc.name, tc.input)
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: tc.id,
+        content: result,
+      })
+    }
+    apiMessages.push({ role: 'user', content: toolResults })
+  }
+
+  return { fullText, inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
 }
 
 export interface JSONResult<T> {

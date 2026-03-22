@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { streamChatWithUsage, type ChatMessage, type SystemPromptPart } from '@/lib/claude'
+import { streamChatWithTools, type ChatMessage, type SystemPromptPart, type ToolDefinition } from '@/lib/claude'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 import { findOrCreateBibliography } from '@/lib/bibliography'
@@ -73,23 +73,189 @@ function buildCompactRoadmap(chapters: ChapterInput[]) {
 }
 
 // ---------------------------------------------------------------------------
-// System prompt — creation mode vs modification mode
+// Build a lightweight roadmap index (titles + IDs + counts only)
 // ---------------------------------------------------------------------------
-type LibraryEntryCompact = {
-  authorSurname: string
-  authorName: string | null
-  title: string
-  year: string | null
-  entryType: string
+function buildRoadmapIndex(chapters: ChapterInput[]) {
+  return chapters.map((ch) => {
+    const sectionCount = ch.sections.length
+    const subsectionCount = ch.sections.reduce((a, s) => a + s.subsections.length, 0)
+    const sourceCount = ch.sections.reduce((a, s) =>
+      a + s.subsections.reduce((b, sub) => b + (sub.sourceMappings?.length ?? 0), 0), 0)
+    return {
+      dbId: ch.id,
+      number: ch.number,
+      title: ch.title,
+      sections: sectionCount,
+      subsections: subsectionCount,
+      sources: sourceCount,
+    }
+  })
 }
 
+// ---------------------------------------------------------------------------
+// Tool definitions
+// ---------------------------------------------------------------------------
+function buildTools(isCreationMode: boolean): ToolDefinition[] {
+  const tools: ToolDefinition[] = [
+    {
+      name: 'get_library_entries',
+      description: 'Search the user\'s source library. Use this to find existing sources before suggesting new ones. Call without query to list recent entries.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          query: { type: 'string', description: 'Search term (author name or title keyword). Omit to list recent entries.' },
+          limit: { type: 'number', description: 'Max results to return (default 20, max 50)' },
+        },
+        required: [],
+      },
+    },
+  ]
+
+  if (!isCreationMode) {
+    tools.push({
+      name: 'get_chapter_detail',
+      description: 'Get full details of a specific chapter including all sections, subsections, and their source mappings. Use the chapter dbId from the roadmap index.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          chapterDbId: { type: 'string', description: 'Database ID of the chapter to retrieve' },
+        },
+        required: ['chapterDbId'],
+      },
+    })
+  }
+
+  return tools
+}
+
+// ---------------------------------------------------------------------------
+// Tool call handlers
+// ---------------------------------------------------------------------------
+async function handleToolCallFn(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  projectId: string,
+  userId: string
+): Promise<string> {
+  if (toolName === 'get_chapter_detail') {
+    const chapterDbId = toolInput.chapterDbId as string
+    if (!chapterDbId) return JSON.stringify({ error: 'chapterDbId is required' })
+
+    const chapter = await prisma.chapter.findFirst({
+      where: { id: chapterDbId, projectId },
+      include: {
+        sections: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            subsections: {
+              orderBy: { sortOrder: 'asc' },
+              select: {
+                id: true,
+                subsectionId: true,
+                title: true,
+                description: true,
+                keyPoints: true,
+                writingStrategy: true,
+                estimatedPages: true,
+                sourceMappings: {
+                  select: {
+                    id: true,
+                    sourceType: true,
+                    priority: true,
+                    relevance: true,
+                    howToUse: true,
+                    whereToFind: true,
+                    extractionGuide: true,
+                    bibliography: {
+                      select: { authorSurname: true, authorName: true, title: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!chapter) return JSON.stringify({ error: 'Chapter not found' })
+
+    // Return compact representation
+    const result = {
+      dbId: chapter.id,
+      number: chapter.number,
+      title: chapter.title,
+      purpose: chapter.purpose,
+      sections: chapter.sections.map((sec) => ({
+        dbId: sec.id,
+        displayId: sec.sectionId,
+        title: sec.title,
+        subsections: sec.subsections.map((sub) => ({
+          dbId: sub.id,
+          displayId: sub.subsectionId,
+          title: sub.title,
+          description: sub.description,
+          keyPoints: sub.keyPoints,
+          writingStrategy: sub.writingStrategy,
+          estimatedPages: sub.estimatedPages,
+          sources: sub.sourceMappings.map((sm) => ({
+            mappingDbId: sm.id,
+            author: sm.bibliography.authorName
+              ? `${sm.bibliography.authorSurname}, ${sm.bibliography.authorName}`
+              : sm.bibliography.authorSurname,
+            work: sm.bibliography.title,
+            sourceType: sm.sourceType,
+            priority: sm.priority,
+            relevance: sm.relevance,
+            howToUse: sm.howToUse,
+          })),
+        })),
+      })),
+    }
+    return JSON.stringify(result)
+  }
+
+  if (toolName === 'get_library_entries') {
+    const query = toolInput.query as string | undefined
+    const limit = Math.min((toolInput.limit as number) || 20, 50)
+
+    const where: Record<string, unknown> = { userId }
+    if (query) {
+      where.OR = [
+        { authorSurname: { contains: query, mode: 'insensitive' } },
+        { authorName: { contains: query, mode: 'insensitive' } },
+        { title: { contains: query, mode: 'insensitive' } },
+      ]
+    }
+
+    const entries = await prisma.libraryEntry.findMany({
+      where,
+      select: {
+        authorSurname: true,
+        authorName: true,
+        title: true,
+        year: true,
+        entryType: true,
+      },
+      take: limit,
+      orderBy: { updatedAt: 'desc' },
+    })
+
+    return JSON.stringify(entries)
+  }
+
+  return JSON.stringify({ error: `Unknown tool: ${toolName}` })
+}
+
+// ---------------------------------------------------------------------------
+// System prompt — creation mode vs modification mode
+// ---------------------------------------------------------------------------
 function buildSystemPrompt(
-  compactRoadmap: ReturnType<typeof buildCompactRoadmap>,
+  roadmapIndex: ReturnType<typeof buildRoadmapIndex> | null,
   project: { title: string; topic: string | null; purpose: string | null; audience: string | null; language: string | null },
-  libraryEntries?: LibraryEntryCompact[],
   conversationSummary?: string | null
 ): SystemPromptPart[] {
-  const isCreationMode = compactRoadmap.length === 0
+  const isCreationMode = !roadmapIndex || roadmapIndex.length === 0
 
   // --- STATIC PART (cacheable — same across all requests) ---
   const commandDocs = `
@@ -111,7 +277,7 @@ Available commands:
 
 SOURCE RULES:
 - In add_source commands, ALL of the following fields MUST be filled, none can be left empty: relevance, howToUse, whereToFind, extractionGuide. If information is missing, write your best estimate.
-- When adding sources, PREFER sources from the user's library first. If a suitable source exists in the library, use it; only suggest your own if none fit.`
+- When adding sources, PREFER sources from the user's library first. Use get_library_entries tool to search the library before suggesting your own sources.`
 
   const commonRules = `RULES:
 1. First, briefly and clearly explain what you will do (in the project's language).
@@ -132,6 +298,9 @@ IMPORTANT:
 - If multiple changes are requested, combine them all in a single commands array.
 - When adding sources, use author format "Surname, Name".
 
+TOOLS:
+- Use get_library_entries to search the user's source library before adding sources. Always check the library first.
+${isCreationMode ? '' : '- Use get_chapter_detail to retrieve full details of a specific chapter when you need to modify it. Only fetch chapters you need.\n'}
 FORMAT RULES:
 - NEVER use emoji. Never. Not in headings, text, or lists.
 - Use markdown formatting for lists, tables, and structural information (tables, headings, bullet points).
@@ -148,27 +317,24 @@ Your tasks:
    - What are their source preferences? (classical vs modern, primary vs secondary)
    - How many sources per subsection do they want? (e.g., 2-3 sources)
    - Do they prefer a specific academic tradition or school of thought?
-3. After gathering source information (or if the user says "you decide"), create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section).
-4. When creating the roadmap, add sources to EVERY subsection (using add_source commands). Use sources the user provided; suggest your own for any gaps.
+3. After gathering source information (or if the user says "you decide"), use get_library_entries to check available sources, then create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section).
+4. When creating the roadmap, add sources to EVERY subsection (using add_source commands). Use sources from the library first; suggest your own for any gaps.
 5. Use update_project command to update project information.
 
 ${commonRules}`
   } else {
     staticPart = `You are an academic book planning assistant. The user wants to make changes to the existing roadmap.
 
-Your task: Understand the user's request, explain it, and generate the commands to apply the changes.
+Your task: Understand the user's request, use get_chapter_detail to fetch the relevant chapter(s), then generate the commands to apply the changes.
 
 ${commonRules}
 
 - Use real IDs from the existing roadmap for dbId fields.
-- displayId fields use "1.1", "1.1.1" format.`
+- displayId fields use "1.1", "1.1.1" format.
+- Do NOT guess chapter contents — always use get_chapter_detail to see current state before modifying.`
   }
 
   // --- DYNAMIC PART (changes per request) ---
-  const librarySection = libraryEntries && libraryEntries.length > 0
-    ? `\n\nUSER'S LIBRARY (match from here first, suggest your own only if needed):\n${libraryEntries.map((e) => `- ${e.authorSurname}${e.authorName ? ', ' + e.authorName : ''}: "${e.title}" (${e.year ?? '?'}) [${e.entryType}]`).join('\n')}`
-    : ''
-
   const summarySection = conversationSummary
     ? `\n\n## Previous Conversation Summary\n${conversationSummary}`
     : ''
@@ -182,12 +348,12 @@ Project information:
 - Topic: ${project.topic ?? 'Not specified'}
 - Purpose: ${project.purpose ?? 'Not specified'}
 - Target Audience: ${project.audience ?? 'Not specified'}
-- Language: ${project.language ?? 'en'}${librarySection}${summarySection}`
+- Language: ${project.language ?? 'en'}${summarySection}`
   } else {
     dynamicPart = `Respond in the language specified by the project settings (Language: ${project.language ?? 'en'}). If the language is "tr", respond in Turkish. If "en", respond in English. Match the project language.
 
-Current roadmap structure:
-${JSON.stringify(compactRoadmap, null, 2)}${librarySection}${summarySection}`
+Roadmap index (use get_chapter_detail for full details):
+${JSON.stringify(roadmapIndex)}${summarySection}`
   }
 
   return [
@@ -617,27 +783,15 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       },
     })
 
-    // Fetch user's library entries for AI context (max 200)
-    const libraryEntries = await prisma.libraryEntry.findMany({
-      where: { userId: session.user.id },
-      select: {
-        authorSurname: true,
-        authorName: true,
-        title: true,
-        year: true,
-        entryType: true,
-      },
-      take: 200,
-      orderBy: { updatedAt: 'desc' },
-    })
-
-    const compactRoadmap = buildCompactRoadmap(chapters)
+    const isCreationMode = chapters.length === 0
+    const roadmapIndex = isCreationMode ? null : buildRoadmapIndex(chapters)
+    const tools = buildTools(isCreationMode)
 
     // Compress conversation history if too long
     const { messages: compressedMessages, summary: conversationSummary } =
       await compressHistory(messages)
 
-    const systemPrompt = buildSystemPrompt(compactRoadmap, project, libraryEntries, conversationSummary)
+    const systemPrompt = buildSystemPrompt(roadmapIndex, project, conversationSummary)
 
     // Credit check
     const credits = await checkCredits(session.user.id, 'roadmap_chat')
@@ -652,12 +806,19 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          const result = await streamChatWithUsage(
+          const result = await streamChatWithTools(
             compressedMessages,
             systemPrompt,
+            tools,
+            (toolName, toolInput) => handleToolCallFn(toolName, toolInput, projectId, session.user.id),
             (chunk) => {
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`)
+              )
+            },
+            (toolName) => {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ step: 'thinking', tool: toolName })}\n\n`)
               )
             }
           )

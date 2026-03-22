@@ -23,7 +23,7 @@ export const ESTIMATED_COSTS: Record<string, number> = {
   write_subsection: 300,
   write_subsection_alt: 300,
   roadmap_generate: 400,
-  roadmap_chat: 300,
+  roadmap_chat: 400,
   style_analyze: 5,
   style_interview: 5,
   bibliography_enrich: 3,
