@@ -21,6 +21,19 @@ import path from 'path'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
+// Language-aware labels for export
+const EXPORT_LABELS: Record<string, { chapter: string; bibliography: string; notWritten: string }> = {
+  tr: { chapter: 'Bölüm', bibliography: 'Kaynakça', notWritten: '[Bu alt bölüm henüz yazılmadı]' },
+  en: { chapter: 'Chapter', bibliography: 'Bibliography', notWritten: '[This subsection has not been written yet]' },
+  ar: { chapter: 'الفصل', bibliography: 'المراجع', notWritten: '[لم يُكتب هذا القسم بعد]' },
+  de: { chapter: 'Kapitel', bibliography: 'Literaturverzeichnis', notWritten: '[Dieser Abschnitt wurde noch nicht geschrieben]' },
+  fr: { chapter: 'Chapitre', bibliography: 'Bibliographie', notWritten: "[Cette sous-section n'a pas encore été rédigée]" },
+}
+
+function getLabels(language?: string | null) {
+  return EXPORT_LABELS[language ?? 'en'] ?? EXPORT_LABELS.en
+}
+
 // ---------------------------------------------------------------------------
 // Parse [fn: ...] markers from content
 // ---------------------------------------------------------------------------
@@ -92,8 +105,10 @@ function buildDocx(
   subsections: SubsectionData[],
   bibliography: BibliographyEntry[],
   formatter: CitationFormatter,
-  includeBibliography: boolean
+  includeBibliography: boolean,
+  language?: string | null
 ): Document {
+  const labels = getLabels(language)
   const footnotes: Record<number, { children: Paragraph[] }> = {}
   let footnoteCounter = 1
   let currentChapter = ''
@@ -125,7 +140,7 @@ function buildDocx(
       }
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: `Chapter ${sub.chapterNumber}: ${sub.chapterTitle}`, bold: true, size: 32, font: 'Times New Roman', color: '000000' })],
+          children: [new TextRun({ text: `${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, bold: true, size: 32, font: 'Times New Roman', color: '000000' })],
           heading: HeadingLevel.HEADING_1,
           spacing: { after: 300 },
         })
@@ -155,7 +170,7 @@ function buildDocx(
 
     // Content with footnotes
     if (sub.content) {
-      const paragraphs = sub.content.split('\n\n').filter((p) => p.trim())
+      const paragraphs = sub.content.split('\n\n').filter((p) => p.trim() && p.trim() !== '---')
       for (const para of paragraphs) {
         const blocks = parseContent(para)
         const runs: (TextRun | FootnoteReferenceRun)[] = []
@@ -190,7 +205,7 @@ function buildDocx(
         new Paragraph({
           children: [
             new TextRun({
-              text: '[This subsection has not been written yet]',
+              text: labels.notWritten,
               italics: true,
               color: '999999',
               size: 24,
@@ -208,7 +223,7 @@ function buildDocx(
     children.push(new Paragraph({ children: [new PageBreak()] }))
     children.push(
       new Paragraph({
-        text: 'Bibliography',
+        text: labels.bibliography,
         heading: HeadingLevel.HEADING_1,
         spacing: { after: 300 },
       })
@@ -394,8 +409,10 @@ function buildPdf(
   subsections: SubsectionData[],
   bibliography: BibliographyEntry[],
   formatter: CitationFormatter,
-  includeBibliography: boolean
+  includeBibliography: boolean,
+  language?: string | null
 ): Promise<Buffer> {
+  const labels = getLabels(language)
   return new Promise((resolve, reject) => {
     const fontFamily = resolvePdfFontFamily()
     const hasCustomFont = !!fontFamily.regular
@@ -503,7 +520,7 @@ function buildPdf(
         currentSection = ''
         if (doc.y > 100) doc.addPage()
         doc.font(fonts.bold).fontSize(18)
-        doc.text(`Chapter ${sub.chapterNumber}: ${sub.chapterTitle}`, { align: 'left' })
+        doc.text(`${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, { align: 'left' })
         doc.moveDown(0.5)
       }
 
@@ -524,7 +541,7 @@ function buildPdf(
 
       // Content
       if (sub.content) {
-        const paragraphs = sub.content.split('\n\n').filter((p: string) => p.trim())
+        const paragraphs = sub.content.split('\n\n').filter((p: string) => p.trim() && p.trim() !== '---')
 
         for (const para of paragraphs) {
           // Extract footnotes from this paragraph
@@ -566,7 +583,7 @@ function buildPdf(
       } else {
         doc.fillColor('#999999')
         doc.font(fonts.italic).fontSize(11)
-        doc.text('[This subsection has not been written yet]')
+        doc.text(labels.notWritten)
         doc.fillColor('#000000')
       }
 
@@ -577,7 +594,7 @@ function buildPdf(
     if (includeBibliography && bibliography.length > 0) {
       doc.addPage()
       doc.font(fonts.bold).fontSize(18)
-      doc.text('Bibliography', { align: 'left' })
+      doc.text(labels.bibliography, { align: 'left' })
       doc.moveDown(0.5)
 
       const formatted = bibliography.map((entry) => formatter.formatBibliographyEntry(entry))
@@ -661,7 +678,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Verify project ownership
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
-      select: { id: true, title: true, citationFormat: true },
+      select: { id: true, title: true, citationFormat: true, language: true },
     })
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
@@ -732,7 +749,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         subsections,
         bibliography as unknown as BibliographyEntry[],
         formatter,
-        includeBibliography
+        includeBibliography,
+        project.language
       )
     } else {
       const doc = buildDocx(
@@ -740,7 +758,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         subsections,
         bibliography as unknown as BibliographyEntry[],
         formatter,
-        includeBibliography
+        includeBibliography,
+        project.language
       )
       buffer = await Packer.toBuffer(doc)
     }
