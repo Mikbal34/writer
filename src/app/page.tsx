@@ -444,7 +444,7 @@ function EmptyState() {
       <OrnamentDots />
       <h2
         className="font-display text-xl font-semibold mb-2 mt-2"
-        style={{ color: "#FAF7F0" }}
+        style={{ color: "#2D1F0E" }}
       >
         No books yet
       </h2>
