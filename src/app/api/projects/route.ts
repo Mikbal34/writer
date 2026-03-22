@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
-type CitationFormat = 'ISNAD' | 'APA' | 'CHICAGO' | 'MLA'
+type CitationFormat = 'ISNAD' | 'APA' | 'CHICAGO' | 'MLA' | 'HARVARD' | 'VANCOUVER' | 'IEEE' | 'AMA' | 'TURABIAN'
 
 // GET /api/projects
 // Returns all projects belonging to the authenticated user, with chapter count
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
       audience,
       citationFormat,
       language,
+      styleProfileId,
     } = body as {
       title: string
       description?: string
@@ -57,15 +58,28 @@ export async function POST(req: NextRequest) {
       audience?: string
       citationFormat?: CitationFormat
       language?: string
+      styleProfileId?: string
     }
 
     if (!title || typeof title !== 'string' || title.trim() === '') {
       return NextResponse.json({ error: 'title is required' }, { status: 400 })
     }
 
-    const validFormats: CitationFormat[] = ['ISNAD', 'APA', 'CHICAGO', 'MLA']
+    const validFormats: CitationFormat[] = ['ISNAD', 'APA', 'CHICAGO', 'MLA', 'HARVARD', 'VANCOUVER', 'IEEE', 'AMA', 'TURABIAN']
     if (citationFormat && !validFormats.includes(citationFormat)) {
       return NextResponse.json({ error: 'Invalid citationFormat' }, { status: 400 })
+    }
+
+    // If a style profile is selected, fetch and copy it
+    let styleProfile = null
+    if (styleProfileId) {
+      const userStyle = await prisma.userStyleProfile.findFirst({
+        where: { id: styleProfileId, userId },
+        select: { profile: true },
+      })
+      if (userStyle?.profile) {
+        styleProfile = userStyle.profile
+      }
     }
 
     const project = await prisma.project.create({
@@ -77,8 +91,9 @@ export async function POST(req: NextRequest) {
         purpose: purpose ?? null,
         audience: audience ?? null,
         citationFormat: citationFormat ?? 'ISNAD',
-        language: language ?? 'tr',
+        language: language ?? 'en',
         status: 'roadmap',
+        ...(styleProfile && { styleProfile }),
       },
     })
 

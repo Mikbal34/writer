@@ -17,7 +17,7 @@ export async function getOAuth2Client(userId: string) {
   })
 
   if (!account?.access_token) {
-    throw new DriveAuthError('Google hesabı bağlı değil. Lütfen çıkış yapıp tekrar giriş yapın.')
+    throw new DriveAuthError('Google account is not connected. Please sign out and sign in again.')
   }
 
   const client = new google.auth.OAuth2(
@@ -34,7 +34,7 @@ export async function getOAuth2Client(userId: string) {
   const now = Math.floor(Date.now() / 1000)
   if (account.expires_at && account.expires_at < now) {
     if (!account.refresh_token) {
-      throw new DriveAuthError('Token süresi dolmuş ve refresh token yok. Lütfen çıkış yapıp tekrar giriş yapın.')
+      throw new DriveAuthError('Token has expired and no refresh token is available. Please sign out and sign in again.')
     }
     const { credentials } = await client.refreshAccessToken()
     client.setCredentials(credentials)

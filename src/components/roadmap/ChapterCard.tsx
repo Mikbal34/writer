@@ -7,6 +7,9 @@ import {
  GripVertical,
  FileText,
  BookOpen,
+ Check,
+ Clock,
+ Pencil,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -200,29 +203,27 @@ export default function ChapterCard({
     </button>
 
     <div className="flex items-center gap-2 min-w-0 flex-1">
-     <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-accent">
-      <BookOpen className="h-3.5 w-3.5 text-primary" />
-     </div>
+     <BookOpen className="h-3.5 w-3.5 text-forest shrink-0" />
      <div className="min-w-0 flex-1" onClick={(e) => e.stopPropagation()}>
-      <span className="text-xs text-muted-foreground mr-2">
+      <span className="font-ui text-xs text-muted-foreground mr-2">
        Ch. {chapter.number}
       </span>
       <InlineEdit
        value={chapter.title}
        onSave={(v) => onTitleChange?.(chapter.id, v)}
-       className="font-semibold text-sm"
+       className="font-display font-bold text-sm"
       />
      </div>
     </div>
 
     <div className="flex items-center gap-3 shrink-0">
      {totalSubsections > 0 && (
-      <span className="text-xs text-muted-foreground tabular-nums">
+      <span className="font-ui text-xs text-muted-foreground tabular-nums">
        {completedSubsections}/{totalSubsections}
       </span>
      )}
      {chapter.estimatedPages && (
-      <span className="text-xs text-muted-foreground hidden sm:block">
+      <span className="font-ui text-xs text-muted-foreground hidden sm:block">
        ~{chapter.estimatedPages} pp.
       </span>
      )}
@@ -265,16 +266,16 @@ export default function ChapterCard({
           className="flex-1 min-w-0"
           onClick={(e) => e.stopPropagation()}
          >
-          <span className="text-xs text-muted-foreground mr-2">
+          <span className="font-ui text-xs text-muted-foreground mr-2">
            {section.sectionId}
           </span>
           <InlineEdit
            value={section.title}
            onSave={(v) => onSectionTitleChange?.(section.id, v)}
-           className="text-sm font-medium"
+           className="font-display text-sm font-semibold"
           />
          </div>
-         <span className="text-xs text-muted-foreground shrink-0">
+         <span className="font-ui text-xs text-muted-foreground shrink-0">
           {section.subsections.length} subsections
          </span>
         </div>
@@ -310,7 +311,7 @@ export default function ChapterCard({
               </div>
               <div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
                <div className="flex items-start gap-2 flex-wrap">
-                <span className="text-xs text-muted-foreground shrink-0 mt-0.5">
+                <span className="font-ui text-xs text-muted-foreground shrink-0 mt-0.5">
                  {sub.subsectionId}
                 </span>
                 <InlineEdit
@@ -318,29 +319,28 @@ export default function ChapterCard({
                  onSave={(v) =>
                   onSubsectionTitleChange?.(sub.id, v)
                  }
-                 className="text-sm flex-1 min-w-0"
+                 className="font-display text-sm font-medium flex-1 min-w-0"
                 />
                </div>
                {!isSubExpanded && sub.description && (
-                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 ml-8">
+                <p className="font-body text-xs text-muted-foreground mt-0.5 line-clamp-1 ml-8">
                  {sub.description}
                 </p>
                )}
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-2">
                {sub.estimatedPages && (
-                <span className="text-xs text-muted-foreground hidden sm:block">
+                <span className="font-ui text-xs text-muted-foreground hidden sm:block">
                  ~{sub.estimatedPages}pp
                 </span>
                )}
-               <span
-                className={cn(
-                 "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                 STATUS_STYLES[sub.status] ?? STATUS_STYLES.pending
-                )}
-               >
-                {STATUS_LABELS[sub.status] ?? "Pending"}
-               </span>
+               {sub.status === "completed" ? (
+                <Check className="w-3.5 h-3.5 text-forest" />
+               ) : sub.status === "in_progress" || sub.status === "draft" ? (
+                <Pencil className="w-3 h-3 text-ink-light" />
+               ) : (
+                <Clock className="w-3 h-3 text-[#c9bfad]" />
+               )}
               </div>
              </div>
              {isSubExpanded && (

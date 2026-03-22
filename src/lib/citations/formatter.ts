@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 import type { CitationFormat } from '@prisma/client'
 import type { BibliographyEntry, FootnoteFormat, BibliographyFormat } from '@/types/bibliography'
 
@@ -123,6 +124,36 @@ export function getCitationFormatter(format: CitationFormat): CitationFormatter 
         MLAFormatter: new () => CitationFormatter
       }
       return new MLAFormatter()
+    }
+    case 'HARVARD': {
+      const { HarvardFormatter } = require('./harvard') as {
+        HarvardFormatter: new () => CitationFormatter
+      }
+      return new HarvardFormatter()
+    }
+    case 'VANCOUVER': {
+      const { VancouverFormatter } = require('./vancouver') as {
+        VancouverFormatter: new () => CitationFormatter
+      }
+      return new VancouverFormatter()
+    }
+    case 'IEEE': {
+      const { IEEEFormatter } = require('./ieee') as {
+        IEEEFormatter: new () => CitationFormatter
+      }
+      return new IEEEFormatter()
+    }
+    case 'AMA': {
+      const { AMAFormatter } = require('./ama') as {
+        AMAFormatter: new () => CitationFormatter
+      }
+      return new AMAFormatter()
+    }
+    case 'TURABIAN': {
+      const { TurabianFormatter } = require('./turabian') as {
+        TurabianFormatter: new () => CitationFormatter
+      }
+      return new TurabianFormatter()
     }
     default: {
       const _exhaustive: never = format

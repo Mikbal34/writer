@@ -18,24 +18,21 @@ import type {
   SourceMappingInfo,
 } from '@/types/project'
 import type { CitationFormat } from '@prisma/client'
+import type { SystemPromptPart } from '@/lib/claude'
 
 // ==================== MAIN EXPORTED FUNCTIONS ====================
 
 /**
  * Builds the complete writing prompt from a WritingContext.
- * Returns { systemPrompt, userPrompt } ready to be sent to Claude.
+ * Returns { systemPromptParts, userPrompt } ready to be sent to Claude.
  *
- * Usage:
- *   const { systemPrompt, userPrompt } = getWritingPrompt(context)
- *   for await (const chunk of streamChat([{ role: 'user', content: userPrompt }], systemPrompt)) {
- *     ...
- *   }
+ * systemPromptParts uses cache_control for the static core rules portion.
  */
 export function getWritingPrompt(context: WritingContext): {
-  systemPrompt: string
+  systemPromptParts: SystemPromptPart[]
   userPrompt: string
 } {
-  const systemPrompt = buildSystemPrompt(
+  const systemPromptParts = buildSystemPromptParts(
     context.styleProfile,
     context.citationFormat,
     context.writingGuidelines
@@ -52,7 +49,7 @@ export function getWritingPrompt(context: WritingContext): {
     context.sources
   )
 
-  return { systemPrompt, userPrompt }
+  return { systemPromptParts, userPrompt }
 }
 
 /**
@@ -205,26 +202,33 @@ export function getSessionContextPrompt(
 
 // ==================== PRIVATE HELPERS ====================
 
-function buildSystemPrompt(
+function buildSystemPromptParts(
   styleProfile: Partial<StyleProfile> | null,
   citationFormat: CitationFormat,
   writingGuidelines: string | null
-): string {
-  const lines: string[] = []
+): SystemPromptPart[] {
+  // --- Part 1: Core rules + citation format (cacheable, same across project) ---
+  const coreLines: string[] = []
 
-  lines.push(
+  coreLines.push(
     `You are an expert academic ghostwriter assisting with a scholarly book. Your task is to write rigorous, well-argued academic prose for the subsection described in the user prompt.`
   )
-  lines.push('')
+  coreLines.push('')
 
-  lines.push(`## Core Writing Rules`)
-  lines.push(`- Academic register: objective, analytical, argument-driven.`)
-  lines.push(`- Do NOT use first person ("I", "we") unless the project style requires it.`)
-  lines.push(`- Every claim that draws on a source must have a footnote marker.`)
-  lines.push(`- Define technical terms on their first occurrence.`)
-  lines.push(`- Maintain dialogue between classical and modern scholarship.`)
-  lines.push(`- Paragraphs should be well-structured with clear topic sentences.`)
-  lines.push('')
+  coreLines.push(`## Core Writing Rules`)
+  coreLines.push(`- Academic register: objective, analytical, argument-driven.`)
+  coreLines.push(`- Do NOT use first person ("I", "we") unless the project style requires it.`)
+  coreLines.push(`- Every claim that draws on a source must have a footnote marker.`)
+  coreLines.push(`- Define technical terms on their first occurrence.`)
+  coreLines.push(`- Maintain dialogue between classical and modern scholarship.`)
+  coreLines.push(`- Paragraphs should be well-structured with clear topic sentences.`)
+  coreLines.push('')
+
+  coreLines.push(`## Citation Format: ${citationFormat}`)
+  coreLines.push(buildCitationSystemNote(citationFormat))
+
+  // --- Part 2: Style profile + writing guidelines (dynamic, project-specific) ---
+  const dynamicLines: string[] = []
 
   if (styleProfile) {
     const voiceNote =
@@ -233,28 +237,31 @@ function buildSystemPrompt(
         : styleProfile.usesFirstPerson === true
         ? 'First person is acceptable.'
         : ''
-    if (voiceNote) lines.push(`- ${voiceNote}`)
+    if (voiceNote) dynamicLines.push(`- ${voiceNote}`)
 
     if (styleProfile.tone) {
-      lines.push(`- Tone: ${styleProfile.tone}.`)
+      dynamicLines.push(`- Tone: ${styleProfile.tone}.`)
     }
     if (styleProfile.rhetoricalApproach) {
-      lines.push(`- Rhetorical approach: ${styleProfile.rhetoricalApproach}.`)
+      dynamicLines.push(`- Rhetorical approach: ${styleProfile.rhetoricalApproach}.`)
     }
-    lines.push('')
   }
-
-  lines.push(`## Citation Format: ${citationFormat}`)
-  lines.push(buildCitationSystemNote(citationFormat))
-  lines.push('')
 
   if (writingGuidelines) {
-    lines.push(`## Project-Specific Writing Guidelines`)
-    lines.push(writingGuidelines)
-    lines.push('')
+    dynamicLines.push('')
+    dynamicLines.push(`## Project-Specific Writing Guidelines`)
+    dynamicLines.push(writingGuidelines)
   }
 
-  return lines.join('\n')
+  const parts: SystemPromptPart[] = [
+    { text: coreLines.join('\n'), cache: true },
+  ]
+
+  if (dynamicLines.length > 0) {
+    parts.push({ text: dynamicLines.join('\n') })
+  }
+
+  return parts
 }
 
 function buildPositionInstructions(position: PositionInfo): string[] {
@@ -298,6 +305,45 @@ function buildCitationInstructions(citationFormat: CitationFormat): string {
 - Do NOT use markdown (*italic*, **bold**) inside [fn:] markers. Write plain text only.`,
     APA: `APA 7: Use (Author, Year, p. X) style markers in place of footnote markers.`,
     CHICAGO: `Chicago 17 Notes-Bibliography: Full citation on first use, short title on subsequent uses.`,
+    MLA: `MLA 9: Use (Author Page) style in-text citations. No comma between author and page number.`,
+    HARVARD: `Harvard (Cite Them Right) rules:
+- In-text citation format: (Surname Year, p. X) — e.g., (Smith 2023, p. 45)
+- Two authors: (Smith and Jones 2023)
+- Three or more authors: (Smith et al. 2023)
+- Multiple works: (Smith 2020; Jones 2023)
+- Direct quote: include page number (Smith 2023, p. 45)
+- Paraphrase: page number optional (Smith 2023)
+- Do NOT use markdown (*italic*, **bold**) inside [fn:] markers. Write plain text only.`,
+    VANCOUVER: `Vancouver/ICMJE rules:
+- Use numbered references in order of first appearance
+- Mark with superscript or bracketed numbers: [fn: 1], [fn: 2]
+- Reuse the SAME number when citing the same source again
+- Do NOT start a new number for a repeated source
+- Author format: Surname Initials (no periods) — e.g., Smith AB
+- List up to 6 authors, then "et al."
+- Do NOT use markdown inside [fn:] markers. Write plain text only.`,
+    IEEE: `IEEE citation rules:
+- Use numbered references in square brackets: [fn: [1]], [fn: [2]]
+- Number by order of first appearance; reuse same number for repeated citations
+- Author format: Initial(s). Surname — e.g., A. B. Smith
+- Article: A. B. Smith, "Article title," Journal Abbrev., vol. X, no. Y, pp. Z-W, Year.
+- Book: A. B. Smith, Book Title, Edition. City: Publisher, Year.
+- 3+ authors: first author et al.
+- Do NOT use markdown inside [fn:] markers. Write plain text only.`,
+    AMA: `AMA 11th edition rules:
+- Use superscript numbered references: [fn: 1], [fn: 2]
+- Number by order of first appearance; reuse same number
+- Place superscript after periods and commas, before colons and semicolons
+- Author format: Surname Initials (no periods) — e.g., Smith AB
+- List up to 6 authors, then "et al"
+- Journal: Author(s). Title. Journal Abbrev. Year;Vol(Issue):Pages. doi:
+- Do NOT use markdown inside [fn:] markers. Write plain text only.`,
+    TURABIAN: `Turabian 9th edition (Notes-Bibliography) rules:
+- First use: Firstname Lastname, Title (Place: Publisher, Year), Page.
+- Subsequent: Lastname, Short Title, Page.
+- Bibliography: Lastname, Firstname. Title. Place: Publisher, Year.
+- Very similar to Chicago but simplified for student papers
+- Do NOT use markdown (*italic*, **bold**) inside [fn:] markers. Write plain text only.`,
   }
 
   const specific = specifics[citationFormat]
@@ -324,6 +370,35 @@ Rules:
   - Do NOT use markdown formatting (*italic*, **bold**) inside [fn:] markers. Write plain text only.`,
     APA: `In-text citation markers: (Author, Year, p. X).`,
     CHICAGO: `Footnote markers:\n  First use:  [fn: Firstname Lastname, Title (Place: Publisher, Year), Page.]\n  Subsequent: [fn: Lastname, ShortTitle, Page.]`,
+    MLA: `In-text citation markers: (Author Page).\n  Example: (Smith 45)`,
+    HARVARD: `When writing [fn:] markers, use parenthetical format:
+  Single author:  [fn: (Smith 2023, p. 45)]
+  Two authors:    [fn: (Smith and Jones 2023, p. 12)]
+  3+ authors:     [fn: (Smith et al. 2023)]
+  No page (paraphrase): [fn: (Smith 2023)]
+  Multiple works: [fn: (Smith 2020; Jones 2023)]`,
+    VANCOUVER: `When writing [fn:] markers, use numbered format:
+  [fn: 1] [fn: 2] [fn: 3]
+  Reuse the same number for repeated citations of the same source.
+  Reference list format:
+  Journal: Surname AB, Surname CD. Title. J Abbrev. Year;Vol(Issue):Pages.
+  Book: Surname AB. Title. Edition. Place: Publisher; Year.`,
+    IEEE: `When writing [fn:] markers, use bracketed number format:
+  [fn: [1]] [fn: [2]] [fn: [3]]
+  Reuse the same number for repeated citations.
+  Reference format:
+  Journal: [1] A. B. Smith, "Title," J. Abbrev., vol. X, no. Y, pp. Z-W, Year.
+  Book: [1] A. B. Smith, Book Title, Xth ed. City: Publisher, Year.`,
+    AMA: `When writing [fn:] markers, use superscript number format:
+  [fn: 1] [fn: 2] [fn: 3]
+  Reuse the same number for repeated citations.
+  Reference format:
+  Journal: Surname AB, Surname CD. Title. J Abbrev. Year;Vol(Issue):Pages.
+  Book: Surname AB. Title. Xth ed. Publisher; Year.`,
+    TURABIAN: `When writing [fn:] markers, use notes format:
+  First use (book):    [fn: Firstname Lastname, Book Title (Place: Publisher, Year), Page.]
+  First use (article): [fn: Firstname Lastname, "Article Title," Journal Vol, no. Issue (Year): Page.]
+  Subsequent:          [fn: Lastname, Short Title, Page.]`,
   }
   return notes[citationFormat] ?? ''
 }

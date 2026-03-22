@@ -66,17 +66,17 @@ export default function SourceList({
 
  async function handleDelete(e: React.MouseEvent, sourceId: string) {
   e.stopPropagation();
-  if (!confirm("Bu kaynağı silmek istediğinize emin misiniz? Tüm chunk ve bibliyografya verileri de silinecek.")) {
+  if (!confirm("Are you sure you want to delete this source? All chunks and bibliography data will also be deleted.")) {
    return;
   }
   setDeletingId(sourceId);
   try {
    const res = await fetch(`/api/sources/${sourceId}`, { method: "DELETE" });
    if (!res.ok) throw new Error("Failed to delete source");
-   toast.success("Kaynak silindi");
+   toast.success("Source deleted");
    onSourceDeleted?.();
   } catch {
-   toast.error("Kaynak silinemedi");
+   toast.error("Failed to delete source");
   } finally {
    setDeletingId(null);
   }
@@ -154,7 +154,7 @@ export default function SourceList({
          "p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-900/30 transition-all cursor-pointer",
          deletingId === source.id && "pointer-events-none"
         )}
-        title="Kaynağı sil"
+        title="Delete source"
        >
         {deletingId === source.id ? (
          <Loader2 className="h-3.5 w-3.5 animate-spin text-red-500" />

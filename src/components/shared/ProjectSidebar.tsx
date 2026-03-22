@@ -14,16 +14,16 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import CreditBalance from "@/components/shared/CreditBalance";
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ReactNode;
   statusKey: string;
+  badge?: boolean;
 }
 
 interface ProjectSidebarProps {
@@ -60,66 +60,64 @@ export default function ProjectSidebar({
     {
       label: "Dashboard",
       href: `/projects/${projectId}`,
-      icon: <LayoutDashboard className="h-4 w-4" />,
+      icon: <LayoutDashboard className="w-4 h-4" />,
       statusKey: "onboarding",
     },
     {
       label: "Roadmap",
       href: `/projects/${projectId}/roadmap`,
-      icon: <Map className="h-4 w-4" />,
+      icon: <Map className="w-4 h-4" />,
       statusKey: "roadmap",
+      badge: true,
     },
     {
       label: "Sources",
       href: `/projects/${projectId}/sources`,
-      icon: <Library className="h-4 w-4" />,
+      icon: <Library className="w-4 h-4" />,
       statusKey: "sources",
     },
     {
       label: "Write",
       href: `/projects/${projectId}/write`,
-      icon: <PenLine className="h-4 w-4" />,
+      icon: <PenLine className="w-4 h-4" />,
       statusKey: "writing",
     },
     {
       label: "Export",
       href: `/projects/${projectId}/export`,
-      icon: <Download className="h-4 w-4" />,
+      icon: <Download className="w-4 h-4" />,
       statusKey: "completed",
     },
   ];
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      <div className="p-4">
+      {/* Project header */}
+      <div className="p-4 border-b border-[#d4c9b5]/40 hidden lg:block">
         <Link
           href="/"
-          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-4 text-sm"
+          className="flex items-center gap-2 mb-1 hover:opacity-70 transition-opacity"
         >
-          <ChevronLeft className="h-3.5 w-3.5" />
-          All Projects
+          <ChevronLeft className="w-3.5 h-3.5 text-ink-light" />
+          <span className="font-ui text-xs text-muted-foreground tracking-wide">
+            All Projects
+          </span>
         </Link>
-        <div className="flex items-start gap-2.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary mt-0.5">
-            <BookOpen className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="font-semibold text-sm leading-tight line-clamp-2">
+        <div className="mt-3 flex items-center gap-2.5">
+          <img src="/images/quillon-icon.png" alt="Quillon" className="w-9 h-9 rounded-lg" />
+          <div>
+            <p className="font-display text-sm font-semibold text-ink leading-tight line-clamp-2">
               {projectTitle}
-            </h2>
-            <Badge
-              variant="secondary"
-              className="mt-1 text-xs capitalize"
-            >
+            </p>
+            <p className="font-ui text-[10px] text-muted-foreground mt-0.5 capitalize">
               {projectStatus}
-            </Badge>
+            </p>
           </div>
         </div>
       </div>
 
-      <Separator />
-
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+      {/* Nav items */}
+      <div className="flex lg:flex-col lg:py-2 overflow-x-auto lg:overflow-y-auto flex-1 min-h-0">
         {navItems.map((item) => {
           const isActive =
             item.href === `/projects/${projectId}`
@@ -132,47 +130,38 @@ export default function ProjectSidebar({
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
-              className={cn(
-                "flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                isActive
-                  ? "bg-accent text-foreground font-medium"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
             >
-              <div className="flex items-center gap-2.5">
-                <span
-                  className={cn(
-                    isActive ? "text-foreground" : ""
-                  )}
-                >
-                  {item.icon}
-                </span>
-                {item.label}
+              <div
+                className={cn(
+                  "flex items-center gap-2.5 px-5 py-2.5 lg:py-2 font-ui text-sm transition-all duration-200 relative whitespace-nowrap",
+                  isActive
+                    ? "text-forest font-medium bg-forest/5"
+                    : "text-ink-light hover:text-ink hover:bg-[#e8dfd0]/30"
+                )}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="navIndicator"
+                    className="absolute left-0 top-0 bottom-0 w-[2px] bg-forest hidden lg:block"
+                  />
+                )}
+                <span>{item.icon}</span>
+                <span>{item.label}</span>
+                {sectionStatus === "done" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-forest ml-auto" />
+                )}
+                {sectionStatus === "active" && item.badge && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-forest ml-auto" />
+                )}
               </div>
-              {sectionStatus === "done" && (
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-              )}
-              {sectionStatus === "active" && (
-                <div className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-              )}
             </Link>
           );
         })}
-      </nav>
+      </div>
 
-      <div className="p-4 border-t border-border">
-        <div className="space-y-1.5">
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Progress</span>
-            <span className="tabular-nums">{completionPct}%</span>
-          </div>
-          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full rounded-full bg-primary transition-all duration-300"
-              style={{ width: `${completionPct}%` }}
-            />
-          </div>
-        </div>
+      {/* Bottom credit balance */}
+      <div className="hidden lg:flex mt-auto p-4 items-center justify-between border-t border-[#d4c9b5]/40">
+        <CreditBalance />
       </div>
     </div>
   );
@@ -180,19 +169,17 @@ export default function ProjectSidebar({
   return (
     <>
       {/* Mobile toggle */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="fixed top-4 left-4 z-50 md:hidden bg-background border border-border shadow-sm"
+      <button
+        className="fixed top-4 left-4 z-50 md:hidden flex h-9 w-9 items-center justify-center rounded-md bg-[#FAF7F0] border border-[#d4c9b5] shadow-sm transition-colors hover:bg-[#e8dfd0]/50"
         onClick={() => setMobileOpen(!mobileOpen)}
         aria-label="Toggle sidebar"
       >
         {mobileOpen ? (
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4 text-ink" />
         ) : (
-          <Menu className="h-4 w-4" />
+          <Menu className="h-4 w-4 text-ink" />
         )}
-      </Button>
+      </button>
 
       {/* Mobile overlay */}
       {mobileOpen && (
@@ -203,14 +190,14 @@ export default function ProjectSidebar({
       )}
 
       {/* Sidebar — mobile drawer + desktop static */}
-      <aside
+      <nav
         className={cn(
-          "fixed inset-y-0 left-0 z-40 w-64 bg-background border-r border-border transition-transform duration-200 ease-in-out md:static md:translate-x-0 md:flex md:flex-col",
+          "fixed inset-y-0 left-0 z-40 lg:w-52 w-56 border-b lg:border-b-0 lg:border-r border-[#d4c9b5]/60 bg-[#F5F0E6]/50 flex lg:flex-col shrink-0 transition-transform duration-200 ease-in-out lg:static lg:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {sidebarContent}
-      </aside>
+      </nav>
     </>
   );
 }

@@ -9,24 +9,21 @@ import {
   FileUp,
   Search,
   Loader2,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  LayoutGrid,
+  List,
+  Feather,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
+import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 import LibraryEntryTable, {
   type LibraryEntryRow,
@@ -34,15 +31,20 @@ import LibraryEntryTable, {
 import LibraryEntryForm from "@/components/library/LibraryEntryForm";
 import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
+import { Ornament } from "@/components/shared/BookElements";
+import { FadeUp, FadeIn } from "@/components/shared/Animations";
+
+const TEXTURE_URL =
+  "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp";
 
 const ENTRY_TYPES = [
-  { value: "", label: "Tümü" },
-  { value: "kitap", label: "Kitap" },
-  { value: "makale", label: "Makale" },
-  { value: "nesir", label: "Nesir" },
-  { value: "ceviri", label: "Çeviri" },
-  { value: "tez", label: "Tez" },
-  { value: "ansiklopedi", label: "Ansiklopedi" },
+  { value: "", label: "All" },
+  { value: "kitap", label: "Book" },
+  { value: "makale", label: "Article" },
+  { value: "nesir", label: "Prose" },
+  { value: "ceviri", label: "Translation" },
+  { value: "tez", label: "Thesis" },
+  { value: "ansiklopedi", label: "Encyclopedia" },
   { value: "web", label: "Web" },
 ];
 
@@ -53,6 +55,7 @@ export default function LibraryPage() {
   const [search, setSearch] = useState("");
   const [entryTypeFilter, setEntryTypeFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [viewMode, setViewMode] = useState<"list" | "card">("list");
 
   // Dialogs
   const [showEntryDialog, setShowEntryDialog] = useState(false);
@@ -73,7 +76,7 @@ export default function LibraryPage() {
       setEntries(data.entries ?? []);
       setTotal(data.total ?? 0);
     } catch {
-      toast.error("Kütüphane yüklenemedi");
+      toast.error("Failed to load library");
     } finally {
       setIsLoading(false);
     }
@@ -99,14 +102,14 @@ export default function LibraryPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Bu kaynağı silmek istediğinize emin misiniz?")) return;
+    if (!confirm("Are you sure you want to delete this source?")) return;
     try {
       const res = await fetch(`/api/library/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
-      toast.success("Kaynak silindi");
+      toast.success("Source deleted");
       fetchEntries();
     } catch {
-      toast.error("Silme başarısız");
+      toast.error("Delete failed");
     }
   }
 
@@ -119,149 +122,218 @@ export default function LibraryPage() {
   const totalPages = Math.ceil(total / 50);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b border-border bg-background/95 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <BookOpen className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <span className="font-semibold text-foreground">Writer Agent</span>
+    <div
+      className="min-h-screen"
+      style={{
+        backgroundImage: `url(${TEXTURE_URL})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundAttachment: "fixed",
+      }}
+    >
+      {/* Navbar */}
+      <nav className="bg-[#1A0F05]/95 backdrop-blur-md border-b border-[#C9A84C]/20 sticky top-0 z-20">
+        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5">
+            <img src="/images/quillon-logo-horizontal.png" alt="Quillon" className="h-20 animate-logo-in" style={{ filter: "brightness(0) invert(1)" }} />
+          </Link>
+
+          <div className="flex items-center gap-1">
+            <Link
+              href="/style"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
+            >
+              <Feather className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Writing Twin</span>
             </Link>
-            <Separator orientation="vertical" className="h-5" />
-            <div className="flex items-center gap-1.5 text-foreground">
-              <Library className="h-4 w-4 text-primary" />
-              <span className="font-medium text-sm">Kütüphanem</span>
-            </div>
+            <button
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="flex items-center gap-1.5 font-ui text-xs text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
           </div>
         </div>
-      </div>
+      </nav>
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {/* Title + Actions */}
-        <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Kütüphanem</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Tüm projelerinizde kullanabileceğiniz kişisel kaynak kütüphaneniz.
-            </p>
+      <main className="max-w-6xl mx-auto px-6 py-10">
+        {/* Back link */}
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 font-ui text-xs text-[#8a7a65] hover:text-[#2D1F0E] transition-colors mb-6"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+          Back to My Books
+        </Link>
+
+        {/* Page header */}
+        <FadeUp className="mb-8 text-center">
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-[#C9A84C]/60" />
+            <Library className="h-5 w-5 text-[#C9A84C]" />
+            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-[#C9A84C]/60" />
           </div>
+          <h1 className="font-display text-3xl font-bold text-[#2D1F0E] tracking-tight">
+            My Library
+          </h1>
+          <p className="font-body text-sm text-[#6b5a45] mt-1.5">
+            Your personal source library available across all projects.
+          </p>
+        </FadeUp>
+
+        {/* Action buttons */}
+        <FadeIn delay={0.2} className="flex items-center justify-between gap-3 flex-wrap mb-6">
+          <span className="font-ui text-xs text-[#8a7a65]">{total} sources</span>
           <div className="flex gap-2 flex-wrap">
-            <Button
-              variant="outline"
+            <button
+              type="button"
               onClick={() => setShowZoteroPanel(!showZoteroPanel)}
-              className="gap-2 text-sm"
+              className="font-ui text-xs px-3 py-2 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/80 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
             >
               Zotero
-            </Button>
-            <Button
-              variant="outline"
+            </button>
+            <button
+              type="button"
               onClick={() => setShowBibtexDialog(true)}
-              className="gap-2 text-sm"
+              className="flex items-center gap-1.5 font-ui text-xs px-3 py-2 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/80 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
             >
-              <FileUp className="h-4 w-4" />
-              BibTeX Aktar
-            </Button>
-            <Button
+              <FileUp className="h-3.5 w-3.5" />
+              Import BibTeX
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 setEditingEntry(null);
                 setShowEntryDialog(true);
               }}
-              className="gap-2 text-sm"
+              className="flex items-center gap-1.5 font-ui text-xs px-3 py-2 rounded-sm border border-[#C9A84C]/30 bg-[#2D1F0E] text-[#C9A84C] hover:bg-[#3a2910] transition-colors"
             >
-              <Plus className="h-4 w-4" />
-              Yeni Ekle
-            </Button>
+              <Plus className="h-3.5 w-3.5" />
+              Add New
+            </button>
           </div>
+        </FadeIn>
+
+        {/* Filter bar */}
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a7a65]" />
+            <input
+              type="text"
+              placeholder="Search by author or title..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full pl-10 pr-3 py-2.5 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0] font-body text-sm text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/50 focus:ring-0 transition-colors"
+            />
+          </div>
+
+          {/* Type filter */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]">
+            <Filter className="h-3.5 w-3.5 text-[#8a7a65]" />
+            <select
+              value={entryTypeFilter}
+              onChange={(e) => {
+                const v = e.target.value;
+                setEntryTypeFilter(v === "all" ? "" : v);
+                setPage(1);
+              }}
+              className="font-ui text-sm text-[#2D1F0E] bg-transparent focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="all">Filter by type</option>
+              {ENTRY_TYPES.filter((t) => t.value).map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* View mode toggle */}
+          <div className="flex items-center rounded-sm border border-[#d4c9b5]/60 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setViewMode("card")}
+              className={`flex items-center gap-1.5 px-3 py-2 font-ui text-xs transition-colors ${
+                viewMode === "card"
+                  ? "bg-[#FAF7F0] text-[#2D1F0E]"
+                  : "bg-transparent text-[#8a7a65] hover:text-[#5C4A32] hover:bg-[#FAF7F0]/50"
+              }`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Card
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1.5 px-3 py-2 font-ui text-xs transition-colors ${
+                viewMode === "list"
+                  ? "bg-[#2D1F0E] text-[#F5EDE0]"
+                  : "bg-transparent text-[#8a7a65] hover:text-[#5C4A32] hover:bg-[#FAF7F0]/50"
+              }`}
+            >
+              <List className="h-3.5 w-3.5" />
+              List
+            </button>
+          </div>
+
+          {/* Count */}
+          <span className="font-ui text-sm text-[#5C4A32]">{total} sources</span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
-          {/* Main content */}
-          <div>
-            {/* Filters */}
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Yazar veya başlık ara..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  className="pl-8 h-9 text-sm"
-                />
-              </div>
-              <Select
-                value={entryTypeFilter}
-                onValueChange={(v) => { setEntryTypeFilter(v === "all" ? "" : (v ?? "")); setPage(1); }}
-              >
-                <SelectTrigger className="w-36 h-9 text-sm">
-                  <SelectValue placeholder="Tür filtresi" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ENTRY_TYPES.map((t) => (
-                    <SelectItem key={t.value || "all"} value={t.value || "all"}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span className="text-xs text-muted-foreground shrink-0">
-                {total} kaynak
-              </span>
+        {/* Ornament divider */}
+        <Ornament className="w-32 mx-auto text-[#c9bfad] mb-5" />
+
+        {/* Content */}
+        <div className={viewMode === "list" ? "border border-[#d4c9b5]/50 rounded-sm bg-[#FAF7F0]/80 overflow-hidden" : ""}>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12 gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-[#2C5F2E]" />
+              <span className="font-body text-sm text-[#8a7a65]">Loading...</span>
             </div>
-
-            {/* Table */}
-            <Card>
-              <CardContent className="p-0">
-                {isLoading ? (
-                  <div className="flex items-center justify-center py-12 gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                    <span className="text-sm text-muted-foreground">Yükleniyor...</span>
-                  </div>
-                ) : (
-                  <LibraryEntryTable
-                    entries={entries}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                  />
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  Önceki
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  {page} / {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Sonraki
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Sidebar — Zotero */}
-          {showZoteroPanel && (
-            <div>
-              <ZoteroSettingsCard onSynced={fetchEntries} />
-            </div>
+          ) : (
+            <LibraryEntryTable
+              entries={entries}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              viewMode={viewMode}
+            />
           )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-5">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+              className="flex items-center gap-1 font-ui text-xs px-3 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/80 text-[#5C4A32] hover:bg-[#FAF7F0] disabled:opacity-40 transition-colors"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              Previous
+            </button>
+            <span className="font-ui text-xs text-[#8a7a65]">
+              {page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              className="flex items-center gap-1 font-ui text-xs px-3 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/80 text-[#5C4A32] hover:bg-[#FAF7F0] disabled:opacity-40 transition-colors"
+            >
+              Next
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Page number */}
+        <div className="text-center py-4 mt-4">
+          <span className="font-display text-xs text-[#a89880] italic">— ix —</span>
+        </div>
+
       </main>
 
       {/* Entry Form Dialog */}
@@ -274,13 +346,13 @@ export default function LibraryPage() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-[#FAF7F0] border-[#d4c9b5]">
           <DialogHeader>
-            <DialogTitle>
-              {editingEntry ? "Kaynağı Düzenle" : "Yeni Kaynak Ekle"}
+            <DialogTitle className="font-display text-[#2D1F0E]">
+              {editingEntry ? "Edit Source" : "Add New Source"}
             </DialogTitle>
           </DialogHeader>
-          <Separator className="my-3" />
+          <div className="h-px bg-[#d4c9b5]/50 my-3" />
           <LibraryEntryForm
             entryId={editingEntry?.id}
             initialData={
@@ -300,6 +372,19 @@ export default function LibraryPage() {
               setEditingEntry(null);
             }}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Zotero Dialog */}
+      <Dialog open={showZoteroPanel} onOpenChange={setShowZoteroPanel}>
+        <DialogContent className="max-w-sm bg-[#FAF7F0] border-[#d4c9b5]">
+          <DialogHeader>
+            <DialogTitle className="font-display text-[#2D1F0E]">
+              Zotero Connection
+            </DialogTitle>
+          </DialogHeader>
+          <div className="h-px bg-[#d4c9b5]/50 my-1" />
+          <ZoteroSettingsCard onSynced={() => { fetchEntries(); setShowZoteroPanel(false); }} />
         </DialogContent>
       </Dialog>
 

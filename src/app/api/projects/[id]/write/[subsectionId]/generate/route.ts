@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { streamChat } from '@/lib/claude'
+import { streamChatWithUsage } from '@/lib/claude'
+import { checkCredits, deductCredits } from '@/lib/credits'
 import { buildSessionContext } from '@/lib/prompts/session-context'
 import { getWritingPrompt } from '@/lib/prompts/writing'
 
@@ -109,7 +110,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
 
     // Build writing context
     const writingCtx = await buildSessionContext(subsectionId)
-    const { systemPrompt, userPrompt } = getWritingPrompt(writingCtx)
+    const { systemPromptParts, userPrompt } = getWritingPrompt(writingCtx)
 
     // RAG chunks
     const ragChunks = await fetchRagChunks(projectId, subsection)
@@ -143,33 +144,39 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
       },
     })
 
+    // Credit check
+    const credits = await checkCredits(session.user.id, 'write_subsection_alt')
+    if (!credits.allowed) {
+      return NextResponse.json(
+        { error: 'Insufficient credits', balance: credits.balance, cost: credits.estimatedCost },
+        { status: 402 }
+      )
+    }
+
     // Stream response via SSE
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
-        let fullResponse = ''
-
         try {
           await prisma.subsection.update({
             where: { id: subsectionId },
             data: { status: 'in_progress' },
           })
 
-          for await (const chunk of streamChat(
+          const result = await streamChatWithUsage(
             [{ role: 'user', content: fullUserPrompt }],
-            systemPrompt
-          )) {
-            fullResponse += chunk
-            // Frontend expects { delta: "..." }
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta: chunk })}\n\n`))
-          }
+            systemPromptParts,
+            (chunk) => {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta: chunk })}\n\n`))
+            }
+          )
 
-          const wordCount = fullResponse.trim().split(/\s+/).filter(Boolean).length
+          const wordCount = result.fullText.trim().split(/\s+/).filter(Boolean).length
 
           await prisma.subsection.update({
             where: { id: subsectionId },
             data: {
-              content: fullResponse,
+              content: result.fullText,
               wordCount,
               status: 'completed',
             },
@@ -178,14 +185,22 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
           await prisma.writingSession.update({
             where: { id: writingSession.id },
             data: {
-              responseReceived: fullResponse,
+              responseReceived: result.fullText,
               status: 'completed',
             },
           })
 
+          const { newBalance, creditsUsed } = await deductCredits(
+            session.user.id,
+            'write_subsection_alt',
+            result.inputTokens,
+            result.outputTokens,
+            { projectId, subsectionId }
+          )
+
           controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({ done: true, wordCount, sessionId: writingSession.id })}\n\n`
+              `data: ${JSON.stringify({ done: true, wordCount, sessionId: writingSession.id, creditsUsed, balance: newBalance })}\n\n`
             )
           )
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))

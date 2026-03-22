@@ -50,6 +50,9 @@ model User {
   libraryEntries LibraryEntry[]
   libraryTags    LibraryTag[]
   zoteroConnection ZoteroConnection?
+  creditBalance       Int                 @default(50)
+  creditTransactions  CreditTransaction[]
+  styleProfiles       UserStyleProfile[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -60,6 +63,36 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// ==================== USER STYLE PROFILES ====================
+
+model UserStyleProfile {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  profile     Json?
+  method      String   @default("chat")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatMessages StyleChatMessage[]
+
+  @@index([userId])
+}
+
+model StyleChatMessage {
+  id              String   @id @default(cuid())
+  styleProfileId  String
+  sessionId       String
+  role            String
+  content         String   @db.Text
+  createdAt       DateTime @default(now())
+
+  styleProfile UserStyleProfile @relation(fields: [styleProfileId], references: [id], onDelete: Cascade)
+
+  @@index([styleProfileId, sessionId, createdAt])
 }
 
 // ==================== PROJECT ====================
@@ -77,6 +110,11 @@ enum CitationFormat {
   APA
   CHICAGO
   MLA
+  HARVARD
+  VANCOUVER
+  IEEE
+  AMA
+  TURABIAN
 }
 
 model Project {
@@ -87,7 +125,7 @@ model Project {
   topic            String?        @db.Text
   purpose          String?        @db.Text
   audience         String?
-  language         String         @default("tr")
+  language         String         @default("en")
   citationFormat   CitationFormat @default(ISNAD)
   styleProfile     Json?
   writingGuidelines Json?
@@ -381,4 +419,32 @@ model ZoteroConnection {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ==================== CREDITS ====================
+
+enum CreditTransactionType {
+  initial_grant
+  admin_grant
+  purchase
+  ai_operation
+  refund
+}
+
+model CreditTransaction {
+  id            String                  @id @default(cuid())
+  userId        String
+  amount        Int
+  balance       Int
+  type          CreditTransactionType
+  operation     String?
+  inputTokens   Int?
+  outputTokens  Int?
+  creditsUsed   Int?
+  metadata      Json?
+  createdAt     DateTime                @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }

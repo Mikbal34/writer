@@ -32,7 +32,7 @@ const STATUS_STYLES: Record<string, { label: string; className: string }> = {
  },
  completed: {
   label: "Completed",
-  className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+  className: "bg-forest/10 text-forest",
  },
 };
 

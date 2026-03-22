@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { streamChat, type ChatMessage } from '@/lib/claude'
+import { streamChatWithUsage, type ChatMessage, type SystemPromptPart } from '@/lib/claude'
+import { compressHistory } from '@/lib/conversation'
+import { checkCredits, deductCredits } from '@/lib/credits'
 import { findOrCreateBibliography } from '@/lib/bibliography'
 import type { Prisma } from '@prisma/client'
 
@@ -84,12 +86,14 @@ type LibraryEntryCompact = {
 function buildSystemPrompt(
   compactRoadmap: ReturnType<typeof buildCompactRoadmap>,
   project: { title: string; topic: string | null; purpose: string | null; audience: string | null; language: string | null },
-  libraryEntries?: LibraryEntryCompact[]
-) {
+  libraryEntries?: LibraryEntryCompact[],
+  conversationSummary?: string | null
+): SystemPromptPart[] {
   const isCreationMode = compactRoadmap.length === 0
 
+  // --- STATIC PART (cacheable — same across all requests) ---
   const commandDocs = `
-Kullanilabilir komutlar:
+Available commands:
 - {"action": "update_subsection", "subsectionDbId": "...", "fields": {"title?": "...", "description?": "...", "whatToWrite?": "...", "keyPoints?": [...], "writingStrategy?": "...", "estimatedPages?": N}}
 - {"action": "add_subsection", "sectionDbId": "...", "subsection": {"subsectionId": "1.1.4", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N}}
 - {"action": "remove_subsection", "subsectionDbId": "..."}
@@ -101,86 +105,95 @@ Kullanilabilir komutlar:
 - {"action": "remove_chapter", "chapterDbId": "..."}
 - {"action": "move_section", "sectionDbId": "...", "targetChapterDbId": "..."}
 - {"action": "update_source", "sourceMappingDbId": "...", "fields": {"howToUse?": "...", "whereToFind?": "...", "extractionGuide?": "...", "relevance?": "...", "priority?": "primary|supporting"}}
-- {"action": "add_source", "subsectionDbId": "...", "source": {"author": "Soyadi, Adi", "work": "Eser Adi", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}}
+- {"action": "add_source", "subsectionDbId": "...", "source": {"author": "Surname, Name", "work": "Work Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}}
 - {"action": "remove_source", "sourceMappingDbId": "..."}
 - {"action": "update_project", "fields": {"topic?": "...", "purpose?": "...", "audience?": "..."}}
 
-KAYNAK KURALLARI:
-- add_source komutunda su alanlarin TAMAMI doldurulmali, hicbiri bos birakilmamali: relevance, howToUse, whereToFind, extractionGuide. Bilgi eksikse bile en iyi tahminini yaz.
-- Kaynak eklerken ONCE kullanicinin kutuphanesindeki kaynaklari tercih et. Kutuphanede uygun kaynak varsa onu kullan, eksik kalirsa kendin oner.`
+SOURCE RULES:
+- In add_source commands, ALL of the following fields MUST be filled, none can be left empty: relevance, howToUse, whereToFind, extractionGuide. If information is missing, write your best estimate.
+- When adding sources, PREFER sources from the user's library first. If a suitable source exists in the library, use it; only suggest your own if none fit.`
 
-  const librarySection = libraryEntries && libraryEntries.length > 0
-    ? `\n\nKULLANICININ KUTUPHANESI (once buradan eslestir, eksik kalirsa kendin oner):\n${libraryEntries.map((e) => `- ${e.authorSurname}${e.authorName ? ', ' + e.authorName : ''}: "${e.title}" (${e.year ?? '?'}) [${e.entryType}]`).join('\n')}`
-    : ''
-
-  if (isCreationMode) {
-    return `Sen bir akademik kitap planlama asistanisin. Kullanici yeni bir kitap projesi olusturdu, henuz roadmap yok.
-
-Proje bilgileri:
-- Baslik: ${project.title}
-- Konu: ${project.topic ?? 'Belirtilmedi'}
-- Amac: ${project.purpose ?? 'Belirtilmedi'}
-- Hedef Kitle: ${project.audience ?? 'Belirtilmedi'}
-- Dil: ${project.language ?? 'tr'}
-
-Gorevin:
-1. Eger konu, amac veya hedef kitle belirtilmemisse, kullaniciya kitap hakkinda sorular sor.
-2. Kitabin icerigi ve yapisi hakkinda yeterli bilgi topladiktan sonra, roadmap olusturmadan ONCE kullaniciya kaynaklarla ilgili sorular sor:
-   - Kullanmayi dusundukleri belirli kaynaklar (kitaplar, makaleler, yazarlar) var mi?
-   - Kaynak tercihleri nedir? (klasik mi modern mi, birincil mi ikincil mi)
-   - Her alt baslik icin yaklasik kac kaynak istiyorlar? (ornek: 2-3 kaynak)
-   - Belirli bir akademik gelenek veya ekol tercih ediyorlar mi?
-3. Kaynak bilgilerini aldiktan sonra (veya kullanici "sen sec/sen belirle" derse), kapsamli bir roadmap olustur (4-6 bolum, her bolumde 2-3 alt bolum, her alt bolumde 2-3 alt kisim).
-4. Roadmap'i olustururken HER alt baslige mutlaka kaynak ekle (add_source komutuyla). Kullanicinin verdigi kaynaklari kullan, eksik kalanlari kendin oner.
-5. update_project komutu ile proje bilgilerini guncelle.
-
-KURALLAR:
-1. Once kullaniciya ne yapacagini kisa ve net acikla (Turkce).
-2. Sonra asagidaki formatta komutlari ekle:
+  const commonRules = `RULES:
+1. First, briefly and clearly explain what you will do (in the project's language).
+2. Then add commands in the following format:
 <roadmap_commands>
-[...komutlar JSON array...]
+[...commands JSON array...]
 </roadmap_commands>
 
-TOPLU OLUSTURMA:
-- Yeni bolumler olustururken add_chapter komutuna tempId ver (ornek: "__temp_ch_1").
-- add_chapter icindeki sections ve subsections alt ogeleri otomatik olusturulur.
-- Sonraki komutlarda tempId'leri referans olarak kullanabilirsin.
+BATCH CREATION:
+- When creating new chapters, give the add_chapter command a tempId (e.g., "__temp_ch_1").
+- Sections and subsections within add_chapter are automatically created.
+- You can reference tempIds in subsequent commands.
 
 ${commandDocs}
 
-ONEMLI:
-- Eger kullanici sadece soru soruyorsa veya bilgi istiyorsa, komut ekleme.
-- Birden fazla degisiklik isterse, hepsini tek bir commands array'inde topla.
-- Kaynak eklerken author formatini "Soyadi, Adi" olarak kullan.${librarySection}`
+IMPORTANT:
+- If the user is just asking questions or requesting information, do not add commands.
+- If multiple changes are requested, combine them all in a single commands array.
+- When adding sources, use author format "Surname, Name".
+
+FORMAT RULES:
+- NEVER use emoji. Never. Not in headings, text, or lists.
+- Use markdown formatting for lists, tables, and structural information (tables, headings, bullet points).
+- Use markdown tables for source lists and comparisons (| heading | heading | format).`
+
+  let staticPart: string
+  if (isCreationMode) {
+    staticPart = `You are an academic book planning assistant. The user has created a new book project with no roadmap yet.
+
+Your tasks:
+1. If topic, purpose, or target audience are not specified, ask the user questions about the book.
+2. After gathering enough information about the book's content and structure, BEFORE creating the roadmap, ask the user about sources:
+   - Do they have specific sources (books, articles, authors) they plan to use?
+   - What are their source preferences? (classical vs modern, primary vs secondary)
+   - How many sources per subsection do they want? (e.g., 2-3 sources)
+   - Do they prefer a specific academic tradition or school of thought?
+3. After gathering source information (or if the user says "you decide"), create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section).
+4. When creating the roadmap, add sources to EVERY subsection (using add_source commands). Use sources the user provided; suggest your own for any gaps.
+5. Use update_project command to update project information.
+
+${commonRules}`
+  } else {
+    staticPart = `You are an academic book planning assistant. The user wants to make changes to the existing roadmap.
+
+Your task: Understand the user's request, explain it, and generate the commands to apply the changes.
+
+${commonRules}
+
+- Use real IDs from the existing roadmap for dbId fields.
+- displayId fields use "1.1", "1.1.1" format.`
   }
 
-  return `Sen bir akademik kitap planlama asistanisin. Kullanici mevcut roadmap uzerinde degisiklik yapmak istiyor.
+  // --- DYNAMIC PART (changes per request) ---
+  const librarySection = libraryEntries && libraryEntries.length > 0
+    ? `\n\nUSER'S LIBRARY (match from here first, suggest your own only if needed):\n${libraryEntries.map((e) => `- ${e.authorSurname}${e.authorName ? ', ' + e.authorName : ''}: "${e.title}" (${e.year ?? '?'}) [${e.entryType}]`).join('\n')}`
+    : ''
 
-Mevcut roadmap yapisi:
-${JSON.stringify(compactRoadmap, null, 2)}
+  const summarySection = conversationSummary
+    ? `\n\n## Previous Conversation Summary\n${conversationSummary}`
+    : ''
 
-Gorevin: Kullanicinin istegini anla, acikla, ve sonra degisiklikleri uygulayacak komutlari uret.
+  let dynamicPart: string
+  if (isCreationMode) {
+    dynamicPart = `Respond in the language specified by the project settings (Language: ${project.language ?? 'en'}). If the language is "tr", respond in Turkish. If "en", respond in English. Match the project language.
 
-KURALLAR:
-1. Once kullaniciya ne yapacagini kisa ve net acikla (Turkce).
-2. Sonra asagidaki formatta komutlari ekle:
-<roadmap_commands>
-[...komutlar JSON array...]
-</roadmap_commands>
+Project information:
+- Title: ${project.title}
+- Topic: ${project.topic ?? 'Not specified'}
+- Purpose: ${project.purpose ?? 'Not specified'}
+- Target Audience: ${project.audience ?? 'Not specified'}
+- Language: ${project.language ?? 'en'}${librarySection}${summarySection}`
+  } else {
+    dynamicPart = `Respond in the language specified by the project settings (Language: ${project.language ?? 'en'}). If the language is "tr", respond in Turkish. If "en", respond in English. Match the project language.
 
-TOPLU OLUSTURMA:
-- Yeni bolumler olustururken add_chapter komutuna tempId ver (ornek: "__temp_ch_1").
-- add_chapter icindeki sections ve subsections alt ogeleri otomatik olusturulur.
-- Sonraki komutlarda tempId'leri referans olarak kullanabilirsin.
+Current roadmap structure:
+${JSON.stringify(compactRoadmap, null, 2)}${librarySection}${summarySection}`
+  }
 
-${commandDocs}
-
-ONEMLI:
-- dbId alanlari icin mevcut roadmap'teki gercek ID'leri kullan.
-- displayId alanlari "1.1", "1.1.1" formatinda.
-- Eger kullanici sadece soru soruyorsa veya bilgi istiyorsa, komut ekleme.
-- Birden fazla degisiklik isterse, hepsini tek bir commands array'inde topla.
-- Kaynak eklerken author formatini "Soyadi, Adi" olarak kullan.${librarySection}`
+  return [
+    { text: staticPart, cache: true },
+    { text: dynamicPart },
+  ]
 }
 
 // ---------------------------------------------------------------------------
@@ -619,22 +632,47 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     })
 
     const compactRoadmap = buildCompactRoadmap(chapters)
-    const systemPrompt = buildSystemPrompt(compactRoadmap, project, libraryEntries)
+
+    // Compress conversation history if too long
+    const { messages: compressedMessages, summary: conversationSummary } =
+      await compressHistory(messages)
+
+    const systemPrompt = buildSystemPrompt(compactRoadmap, project, libraryEntries, conversationSummary)
+
+    // Credit check
+    const credits = await checkCredits(session.user.id, 'roadmap_chat')
+    if (!credits.allowed) {
+      return new Response(
+        JSON.stringify({ error: 'Insufficient credits', balance: credits.balance, cost: credits.estimatedCost }),
+        { status: 402, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
 
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
-        let fullResponse = ''
         try {
-          for await (const chunk of streamChat(messages, systemPrompt)) {
-            fullResponse += chunk
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`)
-            )
-          }
+          const result = await streamChatWithUsage(
+            compressedMessages,
+            systemPrompt,
+            (chunk) => {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`)
+              )
+            }
+          )
+
+          // Deduct credits based on actual usage
+          const { newBalance, creditsUsed } = await deductCredits(
+            session.user.id,
+            'roadmap_chat',
+            result.inputTokens,
+            result.outputTokens,
+            { projectId }
+          )
 
           // Parse and apply commands
-          const commands = parseCommands(fullResponse)
+          const commands = parseCommands(result.fullText)
           let commandsApplied = false
 
           if (commands.length > 0) {
@@ -650,7 +688,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
               console.error('[roadmap/chat] Failed to apply commands:', cmdErr)
               controller.enqueue(
                 encoder.encode(
-                  `data: ${JSON.stringify({ chunk: '\n\n[Komutlar uygulanirken hata olustu. Lutfen tekrar deneyin.]' })}\n\n`
+                  `data: ${JSON.stringify({ chunk: '\n\n[An error occurred while applying commands. Please try again.]' })}\n\n`
                 )
               )
             }
@@ -661,12 +699,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
           controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({ done: true, commandsApplied, commandCount: commands.length })}\n\n`
+              `data: ${JSON.stringify({ done: true, commandsApplied, commandCount: commands.length, creditsUsed, balance: newBalance })}\n\n`
             )
           )
 
           // Persist chat messages to DB
-          const strippedContent = fullResponse
+          const strippedContent = result.fullText
             .replace(/<roadmap_commands>[\s\S]*?<\/roadmap_commands>/g, '')
             .trim()
           try {

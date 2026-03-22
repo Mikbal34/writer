@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Loader2, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,14 +23,27 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
-type CitationFormat = "ISNAD" | "APA" | "CHICAGO" | "MLA";
+type CitationFormat = "ISNAD" | "APA" | "CHICAGO" | "MLA" | "HARVARD" | "VANCOUVER" | "IEEE" | "AMA" | "TURABIAN";
 
 const LANGUAGES = [
-  { value: "tr", label: "Turkish" },
   { value: "en", label: "English" },
+  { value: "tr", label: "Turkish" },
   { value: "ar", label: "Arabic" },
+  { value: "fa", label: "Persian" },
+  { value: "ur", label: "Urdu" },
   { value: "de", label: "German" },
   { value: "fr", label: "French" },
+  { value: "es", label: "Spanish" },
+  { value: "pt", label: "Portuguese" },
+  { value: "it", label: "Italian" },
+  { value: "ru", label: "Russian" },
+  { value: "zh", label: "Chinese" },
+  { value: "ja", label: "Japanese" },
+  { value: "ko", label: "Korean" },
+  { value: "id", label: "Indonesian" },
+  { value: "ms", label: "Malay" },
+  { value: "hi", label: "Hindi" },
+  { value: "nl", label: "Dutch" },
 ];
 
 const CITATION_FORMATS: { value: CitationFormat; label: string }[] = [
@@ -38,24 +51,49 @@ const CITATION_FORMATS: { value: CitationFormat; label: string }[] = [
   { value: "APA", label: "APA 7th" },
   { value: "CHICAGO", label: "Chicago" },
   { value: "MLA", label: "MLA 9th" },
+  { value: "HARVARD", label: "Harvard" },
+  { value: "VANCOUVER", label: "Vancouver" },
+  { value: "IEEE", label: "IEEE" },
+  { value: "AMA", label: "AMA 11th" },
+  { value: "TURABIAN", label: "Turabian 9th" },
 ];
 
 interface NewProjectDialogProps {
   variant?: "default" | "empty";
 }
 
+interface StyleProfileOption {
+  id: string;
+  name: string;
+  profile: unknown;
+}
+
 export default function NewProjectDialog({ variant = "default" }: NewProjectDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [language, setLanguage] = useState("tr");
+  const [language, setLanguage] = useState("en");
   const [citationFormat, setCitationFormat] = useState<CitationFormat>("ISNAD");
+  const [styleProfileId, setStyleProfileId] = useState("none");
+  const [styleProfiles, setStyleProfiles] = useState<StyleProfileOption[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/style-profiles")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        const withProfile = (data as StyleProfileOption[]).filter((p) => p.profile !== null);
+        setStyleProfiles(withProfile);
+      })
+      .catch(() => setStyleProfiles([]));
+  }, [open]);
 
   function resetForm() {
     setTitle("");
-    setLanguage("tr");
+    setLanguage("en");
     setCitationFormat("ISNAD");
+    setStyleProfileId("none");
   }
 
   async function handleCreate() {
@@ -73,6 +111,7 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
           title: title.trim(),
           language,
           citationFormat,
+          ...(styleProfileId !== "none" && { styleProfileId }),
         }),
       });
 
@@ -177,6 +216,25 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
                 </Select>
               </div>
             </div>
+
+            {styleProfiles.length > 0 && (
+              <div className="space-y-2">
+                <Label>Writing Style Profile</Label>
+                <Select value={styleProfileId} onValueChange={(v) => v && setStyleProfileId(v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No style profile</SelectItem>
+                    {styleProfiles.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <DialogFooter>

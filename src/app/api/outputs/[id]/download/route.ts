@@ -80,7 +80,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       status: 200,
       headers: {
         'Content-Type': mimeType,
-        'Content-Disposition': `attachment; filename="${downloadFilename}"`,
+        'Content-Disposition': `attachment; filename="${downloadFilename}"; filename*=UTF-8''${encodeURIComponent(downloadFilename)}`,
         'Content-Length': String(stats.size),
         'Cache-Control': 'no-store',
       },

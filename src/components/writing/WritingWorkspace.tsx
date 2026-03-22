@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
- Sparkles,
  ChevronLeft,
  ChevronRight,
  PanelLeftOpen,
@@ -15,14 +14,11 @@ import {
  PlayCircle,
  Square,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ContentEditor from "./ContentEditor";
 import ContextPanel from "./ContextPanel";
+import { FadeUp, FadeIn } from "@/components/shared/Animations";
 
 interface SubsectionNode {
  id: string;
@@ -93,19 +89,21 @@ interface WritingContextData {
 
 interface WritingWorkspaceProps {
  projectId: string;
+ projectTitle: string;
  chapters: ChapterNode[];
 }
 
 const STATUS_DOT: Record<string, string> = {
- pending: "bg-muted-foreground/30",
- in_progress: "bg-primary",
- draft: "bg-amber-500",
- review: "bg-sky-500",
- completed: "bg-emerald-500",
+ pending: "bg-[#c9bfad]",
+ in_progress: "bg-ink",
+ draft: "bg-gold-dark",
+ review: "bg-ink-light",
+ completed: "bg-forest",
 };
 
 export default function WritingWorkspace({
  projectId,
+ projectTitle,
  chapters,
 }: WritingWorkspaceProps) {
  const searchParams = useSearchParams();
@@ -113,16 +111,17 @@ export default function WritingWorkspace({
 
  const [showLeftPanel, setShowLeftPanel] = useState(true);
  const [showRightPanel, setShowRightPanel] = useState(true);
+ const [bookExpanded, setBookExpanded] = useState(true);
  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
   new Set(chapters.map((c) => c.id))
  );
 
  // Batch writing state
- const [batchQueue, setBatchQueue] = useState<SubsectionNode[]>([]);
  const [batchCurrent, setBatchCurrent] = useState(0);
  const [batchTotal, setBatchTotal] = useState(0);
  const [isBatchWriting, setIsBatchWriting] = useState(false);
  const batchAbortRef = useRef(false);
+ const streamAbortRef = useRef<AbortController | null>(null);
 
  const [selectedSubsectionId, setSelectedSubsectionId] = useState<string | null>(
   searchParams.get("subsection")
@@ -188,14 +187,24 @@ export default function WritingWorkspace({
  async function handleWriteWithAI() {
   if (!selectedSubsectionId) return;
 
+  const abortController = new AbortController();
+  streamAbortRef.current = abortController;
+
   setIsStreaming(true);
   setStreamingContent("");
 
   try {
    const res = await fetch(
     `/api/projects/${projectId}/write/${selectedSubsectionId}/generate`,
-    { method: "POST" }
+    { method: "POST", signal: abortController.signal }
    );
+
+   if (res.status === 402) {
+    const errData = await res.json().catch(() => ({}));
+    toast.error(`Insufficient credits (${errData.balance ?? 0} remaining). You need ~${errData.cost ?? '?'} credits.`);
+    setIsStreaming(false);
+    return;
+   }
 
    if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Generation failed" }));
@@ -208,111 +217,132 @@ export default function WritingWorkspace({
    const decoder = new TextDecoder();
    let accumulated = "";
 
-   while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+   try {
+    while (true) {
+     const { done, value } = await reader.read();
+     if (done) break;
 
-    const chunk = decoder.decode(value, { stream: true });
-    // Parse SSE chunks
-    const lines = chunk.split("\n");
-    for (const line of lines) {
-     if (line.startsWith("data: ")) {
-      const data = line.slice(6).trim();
-      if (data === "[DONE]") continue;
-      try {
-       const parsed = JSON.parse(data);
-       if (parsed.delta) {
-        accumulated += parsed.delta;
+     const chunk = decoder.decode(value, { stream: true });
+     const lines = chunk.split("\n");
+     for (const line of lines) {
+      if (line.startsWith("data: ")) {
+       const data = line.slice(6).trim();
+       if (data === "[DONE]") continue;
+       try {
+        const parsed = JSON.parse(data);
+        if (parsed.delta) {
+         accumulated += parsed.delta;
+         setStreamingContent(accumulated);
+        }
+       } catch {
+        accumulated += data;
         setStreamingContent(accumulated);
        }
-      } catch {
-       // not JSON, treat as raw text
-       accumulated += data;
-       setStreamingContent(accumulated);
       }
      }
     }
+   } catch {
+    // reader cancelled via abort
    }
 
-   setCurrentContent(accumulated);
-   toast.success("AI writing complete!");
+   if (accumulated) {
+    setCurrentContent(accumulated);
+   }
+   if (!abortController.signal.aborted) {
+    toast.success("AI writing completed!");
+   } else {
+    toast.info("Writing stopped.");
+   }
   } catch (err) {
-   toast.error(err instanceof Error ? err.message : "AI generation failed");
+   if (err instanceof DOMException && err.name === "AbortError") {
+    toast.info("Writing stopped.");
+   } else {
+    toast.error(err instanceof Error ? err.message : "AI generation failed");
+   }
   } finally {
    setIsStreaming(false);
+   streamAbortRef.current = null;
+  }
+ }
+
+ function handleStopStream() {
+  if (streamAbortRef.current) {
+   streamAbortRef.current.abort();
   }
  }
 
  // Write a single subsection and return success/fail
  async function writeOneSubsection(subId: string): Promise<boolean> {
+  const abortController = new AbortController();
+  streamAbortRef.current = abortController;
+
   try {
    const res = await fetch(
     `/api/projects/${projectId}/write/${subId}/generate`,
-    { method: "POST" }
+    { method: "POST", signal: abortController.signal }
    );
+   if (res.status === 402) {
+    const errData = await res.json().catch(() => ({}));
+    toast.error(`Insufficient credits (${errData.balance ?? 0} remaining). Batch writing stopped.`);
+    return false;
+   }
    if (!res.ok || !res.body) return false;
 
    const reader = res.body.getReader();
    const decoder = new TextDecoder();
    let accumulated = "";
 
-   while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const chunk = decoder.decode(value, { stream: true });
-    const lines = chunk.split("\n");
-    for (const line of lines) {
-     if (line.startsWith("data: ")) {
-      const data = line.slice(6).trim();
-      if (data === "[DONE]") continue;
-      try {
-       const parsed = JSON.parse(data);
-       if (parsed.delta) {
-        accumulated += parsed.delta;
+   try {
+    while (true) {
+     const { done, value } = await reader.read();
+     if (done) break;
+     const chunk = decoder.decode(value, { stream: true });
+     const lines = chunk.split("\n");
+     for (const line of lines) {
+      if (line.startsWith("data: ")) {
+       const data = line.slice(6).trim();
+       if (data === "[DONE]") continue;
+       try {
+        const parsed = JSON.parse(data);
+        if (parsed.delta) {
+         accumulated += parsed.delta;
+         setStreamingContent(accumulated);
+        }
+       } catch {
+        accumulated += data;
         setStreamingContent(accumulated);
        }
-      } catch {
-       accumulated += data;
-       setStreamingContent(accumulated);
       }
      }
     }
+   } catch {
+    // reader cancelled via abort
    }
 
-   setCurrentContent(accumulated);
-   return true;
+   if (accumulated) {
+    setCurrentContent(accumulated);
+   }
+   streamAbortRef.current = null;
+   return !abortController.signal.aborted;
   } catch {
+   streamAbortRef.current = null;
    return false;
   }
  }
 
- async function handleBatchWrite(subsections: SubsectionNode[]) {
-  // Filter to only pending/incomplete subsections
-  const queue = subsections.filter(
-   (s) => s.status === "pending" || s.status === "in_progress"
-  );
-
-  if (queue.length === 0) {
-   toast.info("Yazılacak pending alt başlık yok.");
-   return;
-  }
-
+ async function runBatchWrite(queue: SubsectionNode[]) {
   setIsBatchWriting(true);
   batchAbortRef.current = false;
-  setBatchQueue(queue);
   setBatchTotal(queue.length);
+  setBatchCurrent(0);
 
   let completed = 0;
   for (let i = 0; i < queue.length; i++) {
-   if (batchAbortRef.current) {
-    toast.info(`Toplu yazma durduruldu. ${completed}/${queue.length} tamamlandı.`);
-    break;
-   }
+   if (batchAbortRef.current) break;
 
    setBatchCurrent(i + 1);
    const sub = queue[i];
 
-   // Select this subsection in UI
    setSelectedSubsectionId(sub.id);
    router.push(`?subsection=${sub.id}`);
    await fetchContext(sub.id);
@@ -322,21 +352,41 @@ export default function WritingWorkspace({
    const ok = await writeOneSubsection(sub.id);
    setIsStreaming(false);
 
+   if (batchAbortRef.current) break;
+
    if (ok) {
     completed++;
    } else {
-    toast.error(`"${sub.title}" yazılamadı, devam ediliyor...`);
+    toast.error(`Failed to write "${sub.title}", continuing...`);
    }
 
-   // Small delay between subsections
    await new Promise((r) => setTimeout(r, 1000));
   }
 
-  toast.success(`Toplu yazma tamamlandı! ${completed}/${queue.length} alt başlık yazıldı.`);
+  if (batchAbortRef.current) {
+   toast.info(`Cancelled. ${completed}/${queue.length} written.`);
+  } else {
+   toast.success(`Done! ${completed}/${queue.length} subsections written.`);
+  }
   setIsBatchWriting(false);
-  setBatchQueue([]);
   setBatchCurrent(0);
   setBatchTotal(0);
+ }
+
+ function handleBatchWrite(subsections: SubsectionNode[]) {
+  const queue = subsections.filter(
+   (s) => s.status === "pending" || s.status === "in_progress"
+  );
+  if (queue.length === 0) {
+   toast.info("No pending subsections to write.");
+   return;
+  }
+  runBatchWrite(queue);
+ }
+
+ function handleBatchWriteAll() {
+  const allSubs = chapters.flatMap((c) => c.sections.flatMap((s) => s.subsections));
+  handleBatchWrite(allSubs);
  }
 
  function handleBatchWriteChapter(chapter: ChapterNode) {
@@ -350,6 +400,9 @@ export default function WritingWorkspace({
 
  function handleStopBatch() {
   batchAbortRef.current = true;
+  if (streamAbortRef.current) {
+   streamAbortRef.current.abort();
+  }
  }
 
  return (
@@ -357,230 +410,280 @@ export default function WritingWorkspace({
    {/* Left panel: subsection navigator */}
    <div
     className={cn(
-     "shrink-0 border-r border-border bg-background transition-all duration-200 overflow-hidden",
+     "shrink-0 border-r border-[#d4c9b5]/40 transition-all duration-200 overflow-hidden flex flex-col",
      showLeftPanel ? "w-64" : "w-0"
     )}
    >
-    <div className="flex items-center justify-between px-3 py-3 border-b border-border">
-     <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-      Sections
-     </h2>
-     <Button
-      variant="ghost"
-      size="icon"
-      className="h-6 w-6"
+    {/* Panel header — collapse button only */}
+    <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#d4c9b5]/40 shrink-0">
+     <span className="font-ui text-[10px] text-muted-foreground tracking-wider uppercase">Contents</span>
+     <button
+      className="h-6 w-6 flex items-center justify-center rounded-sm hover:bg-[#e8dfd0]/30 transition-colors shrink-0"
       onClick={() => setShowLeftPanel(false)}
-      aria-label="Hide sections panel"
+      aria-label="Hide panel"
      >
-      <ChevronLeft className="h-3.5 w-3.5" />
-     </Button>
+      <ChevronLeft className="h-3.5 w-3.5 text-ink-light" />
+     </button>
     </div>
 
-    <ScrollArea className="h-[calc(100%-49px)]">
+    {/* Tree */}
+    <div className="flex-1 overflow-y-auto">
      <div className="p-2 space-y-1">
-      {chapters.map((chapter) => {
-       const isExpanded = expandedChapters.has(chapter.id);
-       return (
-        <div key={chapter.id}>
-         <div className="flex items-center group/chapter">
-          <button
-           type="button"
-           onClick={() => toggleChapter(chapter.id)}
-           className="flex items-center gap-2 flex-1 min-w-0 rounded-md px-2 py-1.5 hover:bg-muted transition-colors text-left"
-          >
-           <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-           <span className="text-xs font-medium truncate flex-1">
-            Ch.{chapter.number} {chapter.title}
-           </span>
-           <ChevronDown
-            className={cn(
-             "h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform",
-             isExpanded ? "rotate-0" : "-rotate-90"
-            )}
-           />
-          </button>
-          <div
-           role="button"
-           tabIndex={-1}
-           title="Tüm bölümü yazdır"
-           onClick={(e) => {
-            e.stopPropagation();
-            (e.currentTarget as HTMLElement).blur();
-            handleBatchWriteChapter(chapter);
-           }}
-           className="p-1 rounded opacity-50 hover:opacity-100 hover:bg-accent transition-opacity cursor-pointer shrink-0"
-          >
-           <PlayCircle className="h-3.5 w-3.5 text-primary" />
-          </div>
-         </div>
 
-         {isExpanded && (
-          <div className="ml-3 space-y-0.5 mt-0.5">
-           {chapter.sections.map((section) => (
-            <div key={section.id}>
-             <div className="flex items-center gap-1.5 px-2 py-1 group/section">
-              <FileText className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 font-semibold truncate flex-1">
-               {section.title}
+      {/* Book-level row — same pattern as chapters */}
+      <div>
+       <div className="flex items-center group/book">
+        <button
+         type="button"
+         onClick={() => setBookExpanded(!bookExpanded)}
+         className="flex items-center gap-2 flex-1 min-w-0 rounded-sm px-3 py-2 hover:bg-[#e8dfd0]/30 transition-colors text-left"
+        >
+         <BookOpen className="h-4 w-4 text-[#C9A84C] shrink-0" />
+         <span className="font-display text-xs font-bold text-ink truncate flex-1">
+          {projectTitle}
+         </span>
+         {bookExpanded ? (
+          <ChevronDown className="h-3 w-3 text-ink-light shrink-0" />
+         ) : (
+          <ChevronRight className="h-3 w-3 text-ink-light shrink-0" />
+         )}
+        </button>
+        {isBatchWriting || isStreaming ? (
+         <button
+          onClick={isBatchWriting ? handleStopBatch : handleStopStream}
+          title="Cancel"
+          className="p-1 rounded-sm hover:bg-red-50 transition-colors cursor-pointer shrink-0"
+         >
+          <Square className="h-3.5 w-3.5 text-red-500" />
+         </button>
+        ) : (
+         <div
+          role="button"
+          tabIndex={-1}
+          title="Write all"
+          onClick={(e) => {
+           e.stopPropagation();
+           (e.currentTarget as HTMLElement).blur();
+           handleBatchWriteAll();
+          }}
+          className="p-1 rounded-sm opacity-0 group-hover/book:opacity-100 hover:bg-[#e8dfd0]/30 transition-opacity cursor-pointer shrink-0"
+         >
+          <PlayCircle className="h-4 w-4 text-[#C9A84C]" />
+         </div>
+        )}
+       </div>
+
+       {/* Batch progress indicator */}
+       {isBatchWriting && (
+        <div className="flex items-center gap-1.5 px-3 py-1 ml-3">
+         <Loader2 className="h-3 w-3 animate-spin text-forest" />
+         <span className="font-ui text-[10px] text-forest font-medium">
+          Writing {batchCurrent}/{batchTotal}…
+         </span>
+        </div>
+       )}
+
+       {/* Chapters — nested under book */}
+       {bookExpanded && (
+        <div className="ml-2 space-y-0.5 mt-0.5">
+         {chapters.map((chapter) => {
+          const isExpanded = expandedChapters.has(chapter.id);
+          const chapterSubs = chapter.sections.flatMap((s) => s.subsections);
+          const completedSubs = chapterSubs.filter((s) => s.status === "completed").length;
+          return (
+           <div key={chapter.id}>
+            <div className="flex items-center group/chapter">
+             <button
+              type="button"
+              onClick={() => toggleChapter(chapter.id)}
+              className="flex items-center gap-2 flex-1 min-w-0 rounded-sm px-3 py-1.5 hover:bg-[#e8dfd0]/30 transition-colors text-left"
+             >
+              <BookOpen className="h-3.5 w-3.5 text-forest shrink-0" />
+              <span className="font-ui text-xs text-ink truncate flex-1">
+               {chapter.title}
               </span>
-              <div
-               role="button"
-               tabIndex={-1}
-               title="Bu bölümü yazdır"
-               onClick={(e) => {
-                (e.currentTarget as HTMLElement).blur();
-                handleBatchWriteSection(section);
-               }}
-               className="p-0.5 rounded opacity-50 hover:opacity-100 hover:bg-accent transition-opacity cursor-pointer shrink-0"
-              >
-               <PlayCircle className="h-3 w-3 text-primary" />
-              </div>
-             </div>
-             <div className="space-y-0.5">
-              {section.subsections.map((sub) => {
-               const isActive = sub.id === selectedSubsectionId;
-               return (
-                <button
-                 key={sub.id}
-                 type="button"
-                 onClick={() => handleSelectSubsection(sub.id)}
-                 className={cn(
-                  "flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left transition-colors",
-                  isActive
-                   ? "bg-accent text-primary"
-                   : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                 )}
-                >
-                 <div
-                  className={cn(
-                   "h-1.5 w-1.5 rounded-full shrink-0",
-                   STATUS_DOT[sub.status] ?? STATUS_DOT.pending
-                  )}
-                 />
-                 <span className="text-xs truncate leading-tight">
-                  {sub.title}
-                 </span>
-                 {sub.wordCount > 0 && (
-                  <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
-                   {sub.wordCount}w
-                  </span>
-                 )}
-                </button>
-               );
-              })}
+              <span className="font-ui text-[9px] text-muted-foreground shrink-0 mr-1">
+               {completedSubs}/{chapterSubs.length}
+              </span>
+              {isExpanded ? (
+               <ChevronDown className="h-3 w-3 text-ink-light shrink-0" />
+              ) : (
+               <ChevronRight className="h-3 w-3 text-ink-light shrink-0" />
+              )}
+             </button>
+             <div
+              role="button"
+              tabIndex={-1}
+              title="Write this chapter"
+              onClick={(e) => {
+               e.stopPropagation();
+               (e.currentTarget as HTMLElement).blur();
+               handleBatchWriteChapter(chapter);
+              }}
+              className="p-1 rounded-sm opacity-0 group-hover/chapter:opacity-100 hover:bg-[#e8dfd0]/30 transition-opacity cursor-pointer shrink-0"
+             >
+              <PlayCircle className="h-3.5 w-3.5 text-forest" />
              </div>
             </div>
-           ))}
-          </div>
-         )}
+
+            {isExpanded && (
+             <div className="ml-3 space-y-0.5 mt-0.5">
+              {chapter.sections.map((section) => (
+               <div key={section.id}>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 group/section">
+                 <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
+                 <span className="font-ui text-[10px] text-muted-foreground tracking-wider uppercase truncate flex-1">
+                  {section.title}
+                 </span>
+                 <div
+                  role="button"
+                  tabIndex={-1}
+                  title="Write this section"
+                  onClick={(e) => {
+                   (e.currentTarget as HTMLElement).blur();
+                   handleBatchWriteSection(section);
+                  }}
+                  className="p-0.5 rounded-sm opacity-0 group-hover/section:opacity-100 hover:bg-[#e8dfd0]/30 transition-opacity cursor-pointer shrink-0"
+                 >
+                  <PlayCircle className="h-3 w-3 text-forest" />
+                 </div>
+                </div>
+                <div className="space-y-0.5">
+                 {section.subsections.map((sub) => {
+                  const isActive = sub.id === selectedSubsectionId;
+                  const isCurrentlyWriting = isStreaming && isActive;
+                  return (
+                   <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => handleSelectSubsection(sub.id)}
+                    className={cn(
+                     "flex items-center gap-2 w-full rounded-sm px-3 py-1.5 text-left transition-colors",
+                     isActive
+                      ? "bg-forest/5 text-forest"
+                      : "text-ink hover:bg-[#e8dfd0]/20"
+                    )}
+                   >
+                    {isCurrentlyWriting ? (
+                     <Loader2 className="w-3 h-3 animate-spin text-forest shrink-0" />
+                    ) : (
+                     <span
+                      className={cn(
+                       "w-1.5 h-1.5 rounded-full shrink-0",
+                       isActive ? "bg-forest" : (STATUS_DOT[sub.status] ?? STATUS_DOT.pending)
+                      )}
+                     />
+                    )}
+                    <span className="font-body text-xs truncate leading-tight">
+                     {sub.title}
+                    </span>
+                    {sub.wordCount > 0 && (
+                     <span className="font-ui text-[10px] text-muted-foreground ml-auto shrink-0">
+                      {sub.wordCount}w
+                     </span>
+                    )}
+                   </button>
+                  );
+                 })}
+                </div>
+               </div>
+              ))}
+             </div>
+            )}
+           </div>
+          );
+         })}
         </div>
-       );
-      })}
+       )}
+      </div>
+
      </div>
-    </ScrollArea>
+    </div>
    </div>
 
    {/* Center: main editor */}
    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
     {/* Top bar */}
-    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-background/95 shrink-0">
+    <div className="flex items-center gap-3 px-6 py-3 border-b border-[#d4c9b5]/40 shrink-0">
      {!showLeftPanel && (
-      <Button
-       variant="ghost"
-       size="icon"
-       className="h-7 w-7 shrink-0"
+      <button
+       className="h-7 w-7 shrink-0 flex items-center justify-center rounded-sm hover:bg-[#e8dfd0]/30 transition-colors"
        onClick={() => setShowLeftPanel(true)}
        aria-label="Show sections panel"
       >
-       <PanelLeftOpen className="h-4 w-4" />
-      </Button>
+       <PanelLeftOpen className="h-4 w-4 text-ink-light" />
+      </button>
      )}
 
      <div className="flex-1 min-w-0">
       {context ? (
-       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-muted-foreground hidden sm:block">
-         {context.chapter.title}
-         {" › "}
-         {context.section.title}
-         {" › "}
-        </span>
-        <span className="text-sm font-semibold truncate">
-         {context.subsection.title}
-        </span>
-        <Badge
-         variant="secondary"
-         className="text-xs hidden sm:inline-flex"
-        >
-         {context.subsection.subsectionId}
-        </Badge>
+       <div className="flex items-center gap-1.5 font-ui text-xs text-muted-foreground">
+        <span className="hidden sm:block">{context.chapter.title}</span>
+        <ChevronRight className="w-3 h-3 hidden sm:block" />
+        <span className="hidden sm:block">{context.section.title}</span>
+        <ChevronRight className="w-3 h-3 hidden sm:block" />
+        <span className="text-ink font-medium">{context.subsection.title}</span>
+        <span className="ml-2 text-muted-foreground">{context.subsection.subsectionId}</span>
        </div>
       ) : (
-       <span className="text-sm text-muted-foreground">
+       <span className="font-body text-sm text-muted-foreground">
         Select a subsection to start writing
        </span>
       )}
      </div>
 
-     {isBatchWriting ? (
+     {isBatchWriting && (
       <div className="flex items-center gap-2 shrink-0">
-       <div className="flex items-center gap-1.5 text-xs text-primary">
+       <div className="flex items-center gap-1.5 font-ui text-xs text-forest">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         <span className="font-medium">
          {batchCurrent}/{batchTotal}
         </span>
        </div>
-       <Button
+       <button
         onClick={handleStopBatch}
-        variant="outline"
-        className="h-8 text-xs gap-1.5 border-red-200 text-red-600 hover:bg-red-50"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm border border-red-200 text-red-600 font-ui text-xs hover:bg-red-50 transition-colors"
        >
         <Square className="h-3 w-3" />
-        Durdur
-       </Button>
+        Cancel
+       </button>
       </div>
-     ) : (
-      <Button
-       onClick={handleWriteWithAI}
-       disabled={!context || isStreaming || isLoadingContext}
-       className="shrink-0 gap-2 h-8 text-xs"
+     )}
+     {isStreaming && !isBatchWriting && (
+      <button
+       onClick={handleStopStream}
+       className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm border border-red-200 text-red-600 font-ui text-xs hover:bg-red-50 transition-colors shrink-0"
       >
-       {isStreaming ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-       ) : (
-        <Sparkles className="h-3.5 w-3.5" />
-       )}
-       {isStreaming ? "Writing..." : "Write with AI"}
-      </Button>
+       <Square className="h-3 w-3" />
+       Stop
+      </button>
      )}
 
      {!showRightPanel && (
-      <Button
-       variant="ghost"
-       size="icon"
-       className="h-7 w-7 shrink-0"
+      <button
+       className="h-7 w-7 shrink-0 flex items-center justify-center rounded-sm hover:bg-[#e8dfd0]/30 transition-colors"
        onClick={() => setShowRightPanel(true)}
        aria-label="Show context panel"
       >
-       <PanelRightOpen className="h-4 w-4" />
-      </Button>
+       <PanelRightOpen className="h-4 w-4 text-ink-light" />
+      </button>
      )}
     </div>
 
     {/* Editor area */}
     <div className="flex-1 overflow-hidden">
      {isLoadingContext ? (
-      <div className="flex items-center justify-center h-full gap-3">
-       <Loader2 className="h-5 w-5 animate-spin text-primary" />
+      <FadeIn className="flex items-center justify-center h-full gap-3">
+       <Loader2 className="h-5 w-5 animate-spin text-forest" />
        <span className="text-sm text-muted-foreground">Loading...</span>
-      </div>
+      </FadeIn>
      ) : !context ? (
-      <div className="flex flex-col items-center justify-center h-full text-center p-8">
+      <FadeUp delay={0.2} className="flex flex-col items-center justify-center h-full text-center p-8">
        <BookOpen className="h-10 w-10 text-muted-foreground/30 mb-4" />
        <p className="text-sm text-muted-foreground">
         Select a subsection from the left panel to start writing.
        </p>
-      </div>
+      </FadeUp>
      ) : (
       <ContentEditor
        subsectionId={context.subsection.id}
@@ -598,23 +701,19 @@ export default function WritingWorkspace({
    {/* Right panel: context */}
    <div
     className={cn(
-     "shrink-0 border-l border-border bg-background transition-all duration-200 overflow-hidden",
+     "shrink-0 border-l border-[#d4c9b5]/40 transition-all duration-200 overflow-hidden",
      showRightPanel ? "w-64" : "w-0"
     )}
    >
-    <div className="flex items-center justify-between px-3 py-3 border-b border-border">
-     <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-      Context
-     </h2>
-     <Button
-      variant="ghost"
-      size="icon"
-      className="h-6 w-6"
+    <div className="flex items-center justify-between p-4 border-b border-[#d4c9b5]/40">
+     <span className="font-display text-sm font-semibold text-ink">CONTEXT</span>
+     <button
+      className="h-6 w-6 flex items-center justify-center rounded-sm hover:bg-[#e8dfd0]/30 transition-colors"
       onClick={() => setShowRightPanel(false)}
       aria-label="Hide context panel"
      >
-      <ChevronRight className="h-3.5 w-3.5" />
-     </Button>
+      <ChevronRight className="h-3.5 w-3.5 text-ink-light" />
+     </button>
     </div>
 
     <div className="h-[calc(100%-49px)] overflow-hidden">

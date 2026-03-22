@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { CheckCircle, XCircle, ChevronDown, ChevronRight, Plus, Pencil, Trash2, BookOpen, Info } from "lucide-react";
-import CommandCard from "./CommandCard";
+import { CheckCircle, XCircle } from "lucide-react";
 
 interface CommandGroupProps {
   commands: Array<Record<string, unknown>>;
@@ -41,65 +39,33 @@ function buildSummaryText(commands: Array<Record<string, unknown>>): string {
   }
 
   const parts: string[] = [];
-  if (chapters > 0) parts.push(`${chapters} bölüm`);
-  if (sections > 0) parts.push(`${sections} alt bölüm`);
-  if (subsections > 0) parts.push(`${subsections} alt başlık`);
-  if (sources > 0) parts.push(`${sources} kaynak`);
-  if (updates > 0) parts.push(`${updates} güncelleme`);
-  if (removals > 0) parts.push(`${removals} silme`);
-  if (projectUpdates > 0) parts.push(`${projectUpdates} proje güncellemesi`);
+  if (chapters > 0) parts.push(`${chapters} chapter${chapters !== 1 ? 's' : ''}`);
+  if (sections > 0) parts.push(`${sections} section${sections !== 1 ? 's' : ''}`);
+  if (subsections > 0) parts.push(`${subsections} subsection${subsections !== 1 ? 's' : ''}`);
+  if (sources > 0) parts.push(`${sources} source${sources !== 1 ? 's' : ''}`);
+  if (updates > 0) parts.push(`${updates} update${updates !== 1 ? 's' : ''}`);
+  if (removals > 0) parts.push(`${removals} removal${removals !== 1 ? 's' : ''}`);
+  if (projectUpdates > 0) parts.push(`${projectUpdates} project update${projectUpdates !== 1 ? 's' : ''}`);
 
   return parts.join(" · ");
 }
 
-function getGroupIcon(commands: Array<Record<string, unknown>>) {
-  const actions = commands.map((c) => c.action as string);
-  const hasAdd = actions.some((a) => a.startsWith("add_"));
-  const hasRemove = actions.some((a) => a.startsWith("remove_"));
-  const hasUpdate = actions.some((a) => a.startsWith("update_") || a === "move_section");
-
-  if (hasRemove && !hasAdd) return { Icon: Trash2, color: "text-red-600" };
-  if (hasUpdate && !hasAdd && !hasRemove) return { Icon: Pencil, color: "text-blue-600" };
-  if (hasAdd) return { Icon: Plus, color: "text-green-600" };
-  return { Icon: Info, color: "text-muted-foreground" };
-}
-
 export default function CommandGroup({ commands, applied }: CommandGroupProps) {
-  const [expanded, setExpanded] = useState(false);
   const summary = buildSummaryText(commands);
-  const { Icon: GroupIcon, color: iconColor } = getGroupIcon(commands);
 
   return (
-    <div className="mt-2 rounded-lg border bg-card text-card-foreground shadow-sm">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full px-3 py-2.5 flex items-center gap-2 text-left hover:bg-muted/50 transition-colors rounded-lg"
-      >
-        {applied ? (
-          <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
-        ) : (
-          <XCircle className="h-4 w-4 text-amber-500 shrink-0" />
-        )}
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium">
-            {applied ? "Roadmap güncellendi" : "Değişiklikler uygulanamadı"}
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">{summary}</p>
-        </div>
-        {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        )}
-      </button>
-      {expanded && (
-        <div className="px-3 pb-2 border-t">
-          {commands.map((cmd, j) => (
-            <CommandCard key={j} command={cmd} />
-          ))}
-        </div>
+    <div className="mt-2 rounded-lg border bg-card text-card-foreground shadow-sm px-3 py-2.5 flex items-center gap-2">
+      {applied ? (
+        <CheckCircle className="h-4 w-4 text-[#C9A84C] shrink-0" />
+      ) : (
+        <XCircle className="h-4 w-4 text-[#8a4a4a] shrink-0" />
       )}
+      <div className="flex-1 min-w-0">
+        <p className="font-ui text-xs font-medium">
+          {applied ? "Roadmap updated" : "Changes could not be applied"}
+        </p>
+        <p className="font-ui text-[11px] text-muted-foreground mt-0.5">{summary}</p>
+      </div>
     </div>
   );
 }

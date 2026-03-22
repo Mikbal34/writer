@@ -1,11 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Loader2, Bot, User, Plus, History, MessageSquare } from "lucide-react";
+import { Send, Loader2, User, Plus, History, MessageSquare } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import CommandGroup from "./CommandGroup";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { FadeUp, StaggerItem } from "@/components/shared/Animations";
 
 interface Message {
  role: "user" | "assistant";
@@ -51,11 +55,11 @@ function formatSessionDate(dateStr: string): string {
  const diffHours = Math.floor(diffMs / 3600000);
  const diffDays = Math.floor(diffMs / 86400000);
 
- if (diffMins < 1) return "Az once";
- if (diffMins < 60) return `${diffMins}dk once`;
- if (diffHours < 24) return `${diffHours}sa once`;
- if (diffDays < 7) return `${diffDays}g once`;
- return date.toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+ if (diffMins < 1) return "Just now";
+ if (diffMins < 60) return `${diffMins}m ago`;
+ if (diffHours < 24) return `${diffHours}h ago`;
+ if (diffDays < 7) return `${diffDays}d ago`;
+ return date.toLocaleDateString("en-US", { day: "numeric", month: "short" });
 }
 
 export default function RoadmapChat({
@@ -170,6 +174,13 @@ export default function RoadmapChat({
     }),
    });
 
+   if (res.status === 402) {
+    const errData = await res.json().catch(() => ({}));
+    toast.error(`Insufficient credits (${errData.balance ?? 0} remaining). You need ~${errData.cost ?? '?'} credits for this operation.`);
+    setMessages(newMessages); // remove empty assistant message
+    setIsStreaming(false);
+    return;
+   }
    if (!res.ok) throw new Error("Chat request failed");
 
    const reader = res.body?.getReader();
@@ -198,7 +209,7 @@ export default function RoadmapChat({
 
       if (parsed.step) {
        if (parsed.step === "applying") {
-        setStreamingStep("Değişiklikler uygulanıyor...");
+        setStreamingStep("Applying changes...");
        } else if (parsed.step === "applied") {
         setStreamingStep(null);
        }
@@ -210,7 +221,7 @@ export default function RoadmapChat({
 
        // Detect <roadmap_commands> tag during streaming
        if (fullContent.includes("<roadmap_commands>") && !fullContent.includes("</roadmap_commands>")) {
-        setStreamingStep("Roadmap komutları hazırlanıyor...");
+        setStreamingStep("Preparing roadmap commands...");
        }
 
        setMessages((prev) => {
@@ -244,7 +255,7 @@ export default function RoadmapChat({
         const updated = [...prev];
         updated[assistantIndex] = {
          role: "assistant",
-         content: "Bir hata olustu. Lutfen tekrar deneyin.",
+         content: "An error occurred. Please try again.",
         };
         return updated;
        });
@@ -275,7 +286,7 @@ export default function RoadmapChat({
     if (updated[assistantIndex]) {
      updated[assistantIndex] = {
       role: "assistant",
-      content: "Baglanti hatasi. Lutfen tekrar deneyin.",
+      content: "Connection error. Please try again.",
      };
     }
     return updated;
@@ -297,17 +308,17 @@ export default function RoadmapChat({
   <div className={`flex flex-col h-full ${className ?? ""}`}>
    {/* Header */}
    <div className="px-4 py-3 border-b shrink-0 flex items-center justify-between">
-    <h2 className="text-base font-semibold">Roadmap AI Chat</h2>
+    <h2 className="font-display text-base font-bold">Roadmap AI Chat</h2>
     <div className="flex items-center gap-1">
      {!isStreaming && (
       <Button
        variant="ghost"
        size="sm"
        onClick={() => setShowSessions(!showSessions)}
-       className={`h-7 text-xs gap-1 ${showSessions ? "text-foreground bg-muted" : "text-muted-foreground"}`}
+       className={`h-7 font-ui text-xs gap-1 ${showSessions ? "text-foreground bg-muted" : "text-muted-foreground"}`}
       >
        <History className="h-3.5 w-3.5" />
-       Gecmis
+       History
       </Button>
      )}
      {!isStreaming && (
@@ -315,10 +326,10 @@ export default function RoadmapChat({
        variant="ghost"
        size="sm"
        onClick={handleNewChat}
-       className="h-7 text-xs gap-1 text-muted-foreground"
+       className="h-7 font-ui text-xs gap-1 text-muted-foreground"
       >
        <Plus className="h-3.5 w-3.5" />
-       Yeni
+       New
       </Button>
      )}
     </div>
@@ -330,8 +341,8 @@ export default function RoadmapChat({
      <ScrollArea className="max-h-[200px]">
       <div className="py-1">
        {sessions.length === 0 && (
-        <p className="text-xs text-muted-foreground text-center py-4">
-         Henuz gecmis sohbet yok
+        <p className="font-body text-xs text-muted-foreground text-center py-4">
+         No chat history yet
         </p>
        )}
        {sessions.map((s) => (
@@ -346,10 +357,10 @@ export default function RoadmapChat({
         >
          <MessageSquare className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
          <div className="flex-1 min-w-0">
-          <p className="text-xs truncate">
-           {s.preview || "Bos sohbet"}
+          <p className="font-body text-xs truncate">
+           {s.preview || "Empty chat"}
           </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
+          <p className="font-ui text-[10px] text-muted-foreground mt-0.5">
            {formatSessionDate(s.createdAt)}
           </p>
          </div>
@@ -364,45 +375,39 @@ export default function RoadmapChat({
    <ScrollArea className="flex-1 min-h-0" ref={scrollRef}>
     <div className="px-4 py-3 space-y-4">
      {isLoadingHistory && (
-      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
        <Loader2 className="h-5 w-5 animate-spin mr-2" />
-       <span>Sohbet gecmisi yukleniyor...</span>
+       <span className="font-body text-sm">Loading chat history...</span>
       </div>
      )}
      {!isLoadingHistory && messages.length === 0 && (
-      <div className="text-center py-12 text-muted-foreground text-sm">
-       <Bot className="h-8 w-8 mx-auto mb-3 opacity-40" />
-       <p>Roadmap uzerinde degisiklik yapmak icin mesaj yazin.</p>
-       <p className="text-xs mt-1 opacity-70">
-        Ornek: &quot;1.1.1&apos;in yazim stratejisini degistir&quot;
+      <div className="text-center py-12 text-muted-foreground">
+       <img src="/images/quillon-icon.png" alt="Quillon" className="h-12 w-12 mx-auto mb-3 opacity-60 rounded-lg" />
+       <p className="font-body text-sm">Send a message to make changes to the roadmap.</p>
+       <p className="font-body text-xs mt-1 opacity-70">
+        Example: &quot;Change the writing strategy of 1.1.1&quot;
        </p>
       </div>
      )}
      {messages.map((msg, i) => (
-      <div key={i}>
+      <StaggerItem key={i} index={i} baseDelay={0.1} stagger={0.05}>
        <div className="flex gap-2.5 items-start">
-        <div
-         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-          msg.role === "user"
-           ? "bg-accent"
-           : "bg-emerald-100 dark:bg-emerald-900/30"
-         }`}
-        >
-         {msg.role === "user" ? (
-          <User className="h-3.5 w-3.5 text-primary" />
-         ) : (
-          <Bot className="h-3.5 w-3.5 text-emerald-600" />
-         )}
-        </div>
+        {msg.role === "user" ? (
+         <User className="h-7 w-7 shrink-0 text-[#8a7a65]" />
+        ) : (
+         <img src="/images/quillon-icon.png" alt="Q" className="h-7 w-7 shrink-0 rounded-lg" />
+        )}
         <div className="flex-1 min-w-0">
-         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-          {msg.content}
+         <div className="font-body text-sm prose-chat break-words">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+           {msg.content}
+          </ReactMarkdown>
           {isStreaming &&
            i === messages.length - 1 &&
            msg.role === "assistant" && (
             <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5 align-middle" />
            )}
-         </p>
+         </div>
          {msg.commands && msg.commands.length > 0 && (
           <CommandGroup
            commands={msg.commands}
@@ -410,14 +415,14 @@ export default function RoadmapChat({
           />
          )}
          {isStreaming && i === messages.length - 1 && msg.role === "assistant" && streamingStep && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+          <div className="flex items-center gap-1.5 font-ui text-xs text-muted-foreground mt-2">
            <Loader2 className="h-3 w-3 animate-spin" />
            <span>{streamingStep}</span>
           </div>
          )}
         </div>
        </div>
-      </div>
+      </StaggerItem>
      ))}
     </div>
    </ScrollArea>
@@ -430,8 +435,8 @@ export default function RoadmapChat({
       value={input}
       onChange={(e) => setInput(e.target.value)}
       onKeyDown={handleKeyDown}
-      placeholder="Roadmap degisikligi icin mesaj yazin..."
-      className="min-h-[40px] max-h-[120px] resize-none text-sm"
+      placeholder="Type a message to modify the roadmap..."
+      className="min-h-[40px] max-h-[120px] resize-none font-body text-sm"
       rows={1}
       disabled={isStreaming}
      />

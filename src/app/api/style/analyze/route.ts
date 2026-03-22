@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateJSON } from "@/lib/claude";
+import { requireAuth, AuthError } from "@/lib/auth";
+import { generateJSONWithUsage, HAIKU } from "@/lib/claude";
+import { checkCredits, deductCredits } from "@/lib/credits";
 import type { StyleProfile } from "@/types/project";
 
 const STYLE_ANALYSIS_SYSTEM = `You are an expert literary analyst specialising in academic and scholarly writing styles.
@@ -20,6 +22,8 @@ Respond with valid JSON only. No markdown fences, no explanation.`;
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await requireAuth();
+
     const body = await req.json();
     const sampleText = body.sampleText ?? body.data?.sampleText ?? body.data?.sample;
 
@@ -30,11 +34,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const prompt = `Analyse the following writing sample and return a StyleProfile JSON object:\n\n---\n${sampleText}\n---`;
-    const styleProfile = await generateJSON<StyleProfile>(prompt, STYLE_ANALYSIS_SYSTEM);
+    const credits = await checkCredits(session.user.id, "style_analyze");
+    if (!credits.allowed) {
+      return NextResponse.json(
+        { error: "Insufficient credits", balance: credits.balance, cost: credits.estimatedCost },
+        { status: 402 }
+      );
+    }
 
-    return NextResponse.json({ styleProfile });
+    const prompt = `Analyse the following writing sample and return a StyleProfile JSON object:\n\n---\n${sampleText}\n---`;
+    const result = await generateJSONWithUsage<StyleProfile>(prompt, STYLE_ANALYSIS_SYSTEM, { model: HAIKU });
+
+    await deductCredits(
+      session.user.id,
+      "style_analyze",
+      result.inputTokens,
+      result.outputTokens
+    );
+
+    return NextResponse.json({ styleProfile: result.data });
   } catch (err) {
+    if (err instanceof AuthError) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[POST /api/style/analyze]", errMsg, err);
     return NextResponse.json(

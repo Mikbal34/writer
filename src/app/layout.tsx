@@ -1,18 +1,35 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Playfair_Display, Crimson_Text, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/shared/Providers";
 import { Toaster } from "@/components/ui/sonner";
 
-const inter = Inter({
-  variable: "--font-sans",
+const playfair = Playfair_Display({
+  variable: "--font-display",
   subsets: ["latin"],
+  display: "swap",
+});
+
+const crimson = Crimson_Text({
+  variable: "--font-body",
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  display: "swap",
+});
+
+const sourceSans = Source_Sans_3({
+  variable: "--font-ui",
+  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Writer Agent - AI Book Writing Assistant",
+  title: "Quillon — Forge Your Words",
   description:
-    "Create, structure, and write your book with the help of AI. Define your style, generate roadmaps, and produce polished chapters.",
+    "Quillon is an AI-powered book writing assistant. Plan, research, write, and export your book.",
+  icons: {
+    icon: "/images/quillon-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -22,7 +39,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} antialiased`}>
+      <body className={`${playfair.variable} ${crimson.variable} ${sourceSans.variable} antialiased`}>
         <Providers>
           {children}
           <Toaster richColors position="top-right" />

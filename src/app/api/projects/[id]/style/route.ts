@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { generateJSON, streamChat } from '@/lib/claude'
+import { generateJSON, streamChat, HAIKU } from '@/lib/claude'
 import type { StyleProfile } from '@/types/project'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       }
 
       const prompt = `Analyse the following writing sample and return a StyleProfile JSON object:\n\n---\n${sample}\n---`
-      const styleProfile = await generateJSON<StyleProfile>(prompt, STYLE_ANALYSIS_SYSTEM)
+      const styleProfile = await generateJSON<StyleProfile>(prompt, STYLE_ANALYSIS_SYSTEM, { model: HAIKU })
 
       const updated = await prisma.project.update({
         where: { id },
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           let accumulated = ''
 
           try {
-            for await (const chunk of streamChat(messages, INTERVIEW_SYSTEM)) {
+            for await (const chunk of streamChat(messages, INTERVIEW_SYSTEM, { model: HAIKU })) {
               accumulated += chunk
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`))
             }

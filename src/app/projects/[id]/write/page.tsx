@@ -47,8 +47,8 @@ export default async function WritePage({ params }: WritePageProps) {
   }
 
   return (
-    <div className="h-full">
-      <WritingWorkspace projectId={project.id} chapters={project.chapters} />
+    <div className="h-full flex flex-col overflow-hidden">
+      <WritingWorkspace projectId={project.id} projectTitle={project.title} chapters={project.chapters} />
     </div>
   );
 }

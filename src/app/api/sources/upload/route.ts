@@ -3,7 +3,8 @@ import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
-import { generateJSON } from '@/lib/claude'
+import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
+import { checkCredits, deductCredits } from '@/lib/credits'
 
 // The uploads directory is at the project root (same level as /src)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads')
@@ -87,6 +88,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Credit check for AI extraction
+    const credits = await checkCredits(session.user.id, 'source_upload_extract')
+    if (!credits.allowed) {
+      return NextResponse.json(
+        { error: 'Insufficient credits', balance: credits.balance, cost: credits.estimatedCost },
+        { status: 402 }
+      )
+    }
+
     // Create project-specific upload directory
     const projectUploadsDir = path.join(UPLOADS_DIR, projectId)
     await mkdir(projectUploadsDir, { recursive: true })
@@ -113,7 +123,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Trigger async processing + AI bibliography extraction (fire-and-forget)
-    processAndExtractBibliography(source.id, projectId, filePath, extension, bibliographyId).catch(
+    processAndExtractBibliography(source.id, projectId, filePath, extension, bibliographyId, session.user.id).catch(
       (err) => {
         console.error(
           `[sources/upload] Processing failed for source ${source.id}:`,
@@ -140,7 +150,8 @@ async function processAndExtractBibliography(
   projectId: string,
   filePath: string,
   fileType: string,
-  bibliographyId: string | null = null
+  bibliographyId: string | null = null,
+  userId: string | null = null
 ): Promise<void> {
   try {
     const pythonServiceUrl =
@@ -181,43 +192,60 @@ async function processAndExtractBibliography(
 
     if (extractedText && extractedText.trim().length > 0) {
       try {
-        const bibData = await generateJSON<BibliographyExtraction>(
-          `Aşağıdaki PDF'in ilk sayfalarından çıkarılmış metni analiz et ve bibliyografya bilgilerini JSON olarak döndür.
+        const aiResult = await generateJSONWithUsage<BibliographyExtraction>(
+          `Analyze the text extracted from the first pages of the following PDF and return bibliography information as JSON.
 
-Metin:
+Text:
 ---
 ${extractedText.slice(0, 8000)}
 ---
 
-Aşağıdaki JSON formatında döndür:
+Return in the following JSON format:
 {
   "entryType": "kitap" | "makale" | "nesir" | "ceviri" | "tez" | "ansiklopedi" | "web",
-  "authorSurname": "Yazarın soyadı",
-  "authorName": "Yazarın adı veya null",
-  "title": "Eserin tam başlığı",
-  "shortTitle": "Kısa başlık veya null",
-  "editor": "Editör/tahkik eden veya null",
-  "translator": "Çevirmen veya null",
-  "publisher": "Yayınevi veya null",
-  "publishPlace": "Yayın yeri veya null",
-  "year": "Yayın yılı veya null",
-  "volume": "Cilt bilgisi veya null",
-  "edition": "Baskı numarası veya null",
-  "journalName": "Dergi adı veya null",
-  "journalVolume": "Dergi cilt veya null",
-  "journalIssue": "Dergi sayı veya null",
-  "pageRange": "Sayfa aralığı veya null",
-  "doi": "DOI veya null",
-  "url": "URL veya null"
+  "authorSurname": "Author's surname",
+  "authorName": "Author's first name or null",
+  "title": "Full title of the work",
+  "shortTitle": "Short title or null",
+  "editor": "Editor or null",
+  "translator": "Translator or null",
+  "publisher": "Publisher or null",
+  "publishPlace": "Place of publication or null",
+  "year": "Publication year or null",
+  "volume": "Volume information or null",
+  "edition": "Edition number or null",
+  "journalName": "Journal name or null",
+  "journalVolume": "Journal volume or null",
+  "journalIssue": "Journal issue or null",
+  "pageRange": "Page range or null",
+  "doi": "DOI or null",
+  "url": "URL or null"
 }
 
-Kurallar:
-- Metinden çıkaramadığın alanları null olarak bırak.
-- entryType alanını metnin türüne göre belirle (akademik makale ise "makale", kitap ise "kitap" vb.).
-- Yazar adı yoksa "Bilinmiyor" yaz.
-- Sadece JSON döndür, başka bir şey yazma.`,
-          'You are a bibliography extraction assistant. Extract bibliographic metadata from the given text. Always respond with valid JSON only.'
+Rules:
+- Leave fields you cannot extract from the text as null.
+- Determine the entryType based on the type of text (academic article → "makale", book → "kitap", etc.).
+- If no author name is found, write "Unknown".
+- Return only JSON, nothing else.`,
+          'You are a bibliography extraction assistant. Extract bibliographic metadata from the given text. Always respond with valid JSON only.',
+          { model: HAIKU }
         )
+        const bibData = aiResult.data
+
+        // Deduct credits for AI extraction
+        if (userId) {
+          try {
+            await deductCredits(
+              userId,
+              'source_upload_extract',
+              aiResult.inputTokens,
+              aiResult.outputTokens,
+              { sourceId, projectId }
+            )
+          } catch (creditErr) {
+            console.error('[sources/upload] Credit deduction failed:', creditErr)
+          }
+        }
 
         if (bibliographyId) {
           // Merge AI-extracted data into existing bibliography — only fill empty fields

@@ -13,21 +13,21 @@ function getCommandStyle(action: string): {
  label: string;
 } {
  if (action === "add_source") {
-  return { borderClass: "border-green-500 bg-green-50 dark:bg-green-950/20", Icon: BookOpen, label: "Kaynak eklendi" };
+  return { borderClass: "border-[#C9A84C]/40 bg-[#C9A84C]/5", Icon: BookOpen, label: "Source added" };
  }
  if (action === "update_project") {
-  return { borderClass: "border-primary bg-accent", Icon: Info, label: "Proje güncellendi" };
+  return { borderClass: "border-[#C9A84C]/40 bg-[#C9A84C]/5", Icon: Info, label: "Project updated" };
  }
  if (action.startsWith("add_")) {
-  return { borderClass: "border-green-500 bg-green-50 dark:bg-green-950/20", Icon: Plus, label: "Eklendi" };
+  return { borderClass: "border-[#C9A84C]/40 bg-[#C9A84C]/5", Icon: Plus, label: "Added" };
  }
  if (action.startsWith("update_")) {
-  return { borderClass: "border-blue-500 bg-blue-50 dark:bg-blue-950/20", Icon: Pencil, label: "Güncellendi" };
+  return { borderClass: "border-[#8a7a65]/30 bg-[#8a7a65]/5", Icon: Pencil, label: "Updated" };
  }
  if (action.startsWith("remove_")) {
-  return { borderClass: "border-red-500 bg-red-50 dark:bg-red-950/20", Icon: Trash2, label: "Silindi" };
+  return { borderClass: "border-[#8a4a4a]/30 bg-[#8a4a4a]/5", Icon: Trash2, label: "Removed" };
  }
- return { borderClass: "border-gray-400 bg-gray-50 dark:bg-gray-950/20", Icon: Info, label: action };
+ return { borderClass: "border-[#d4c9b5]/50 bg-[#d4c9b5]/10", Icon: Info, label: action };
 }
 
 function getDetail(command: Record<string, unknown>): string {

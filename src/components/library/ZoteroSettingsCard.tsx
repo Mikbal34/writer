@@ -65,8 +65,8 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
       const username = searchParams.get("username");
       toast.success(
         username
-          ? `Zotero bağlandı (${username})`
-          : "Zotero bağlandı"
+          ? `Zotero connected (${username})`
+          : "Zotero connected"
       );
       setConnected(true);
       fetchCollections();
@@ -74,7 +74,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
       window.history.replaceState({}, "", "/library");
     } else if (zoteroStatus === "error") {
       const reason = searchParams.get("reason");
-      toast.error(`Zotero bağlantısı başarısız: ${reason ?? "bilinmeyen hata"}`);
+      toast.error(`Zotero connection failed: ${reason ?? "unknown error"}`);
       window.history.replaceState({}, "", "/library");
     }
   }, [searchParams, fetchCollections]);
@@ -91,12 +91,12 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
 
       if (data.needsManual) {
         setShowManual(true);
-        toast.info("OAuth yapılandırılmamış. Manuel API key ile bağlanabilirsiniz.");
+        toast.info("OAuth not configured. You can connect with a manual API key.");
         return;
       }
 
       if (!res.ok) {
-        throw new Error(data.error ?? "Bağlantı başarısız");
+        throw new Error(data.error ?? "Connection failed");
       }
 
       if (data.authorizeUrl) {
@@ -107,7 +107,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
         fetchCollections();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Bağlantı başarısız");
+      toast.error(err instanceof Error ? err.message : "Connection failed");
     } finally {
       setIsConnecting(false);
     }
@@ -115,7 +115,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
 
   async function handleManualConnect() {
     if (!apiKey.trim() || !zoteroUserId.trim()) {
-      toast.error("API key ve Zotero User ID gerekli");
+      toast.error("API key and Zotero User ID are required");
       return;
     }
     setIsConnecting(true);
@@ -126,17 +126,17 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
         body: JSON.stringify({ apiKey, zoteroUserId }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Bağlantı başarısız" }));
-        throw new Error(err.error ?? "Bağlantı başarısız");
+        const err = await res.json().catch(() => ({ error: "Connection failed" }));
+        throw new Error(err.error ?? "Connection failed");
       }
-      toast.success("Zotero bağlandı");
+      toast.success("Zotero connected");
       setConnected(true);
       setApiKey("");
       setZoteroUserId("");
       setShowManual(false);
       fetchCollections();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Bağlantı başarısız");
+      toast.error(err instanceof Error ? err.message : "Connection failed");
     } finally {
       setIsConnecting(false);
     }
@@ -148,9 +148,9 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
       setConnected(false);
       setCollections([]);
       setSyncCollections([]);
-      toast.success("Zotero bağlantısı kaldırıldı");
+      toast.success("Zotero disconnected");
     } catch {
-      toast.error("Bağlantı kaldırma başarısız");
+      toast.error("Failed to disconnect");
     }
   }
 
@@ -162,7 +162,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
 
   async function handleSync() {
     if (syncCollections.length === 0) {
-      toast.error("En az bir koleksiyon seçin");
+      toast.error("Select at least one collection");
       return;
     }
     setIsSyncing(true);
@@ -173,17 +173,17 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
         body: JSON.stringify({ collectionKeys: syncCollections }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Sync başarısız" }));
-        throw new Error(err.error ?? "Sync başarısız");
+        const err = await res.json().catch(() => ({ error: "Sync failed" }));
+        throw new Error(err.error ?? "Sync failed");
       }
       const data = await res.json();
-      const parts = [`${data.created} yeni`, `${data.updated} güncellendi`];
-      if (data.filesDownloaded > 0) parts.push(`${data.filesDownloaded} dosya indirildi`);
-      toast.success(`Sync tamamlandı: ${parts.join(", ")}`);
-      setLastSyncAt(new Date().toLocaleString("tr-TR"));
+      const parts = [`${data.created} new`, `${data.updated} updated`];
+      if (data.filesDownloaded > 0) parts.push(`${data.filesDownloaded} files downloaded`);
+      toast.success(`Sync complete: ${parts.join(", ")}`);
+      setLastSyncAt(new Date().toLocaleString("en-US"));
       onSynced?.();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Sync başarısız");
+      toast.error(err instanceof Error ? err.message : "Sync failed");
     } finally {
       setIsSyncing(false);
     }
@@ -196,12 +196,12 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Plug className="h-4 w-4 text-red-500" />
-            Zotero Bağlantısı
+            Zotero Connection
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            Zotero hesabınıza bağlanarak kütüphanenizi ve PDF&apos;lerinizi senkronize edin.
+            Connect your Zotero account to sync your library and PDFs.
           </p>
 
           {/* OAuth button */}
@@ -215,7 +215,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
             ) : (
               <ExternalLink className="h-3.5 w-3.5" />
             )}
-            Zotero ile Bağlan
+            Connect with Zotero
           </Button>
 
           {/* Manual fallback toggle */}
@@ -224,22 +224,21 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
             onClick={() => setShowManual(!showManual)}
             className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors w-full justify-center"
           >
-            Manuel API key ile bağlan
+            Connect with manual API key
             {showManual ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
 
           {showManual && (
             <div className="space-y-2 pt-1 border-t border-border">
               <p className="text-[10px] text-muted-foreground">
-                API anahtarınızı{" "}
-                <span className="font-medium">zotero.org/settings/keys</span>
-                {" "}adresinden alabilirsiniz.
+                Get your API key from{" "}
+                <span className="font-medium">zotero.org/settings/keys</span>.
               </p>
               <div>
                 <Label htmlFor="zoteroUserId" className="text-xs">Zotero User ID</Label>
                 <Input
                   id="zoteroUserId"
-                  placeholder="örn. 12345678"
+                  placeholder="e.g. 12345678"
                   value={zoteroUserId}
                   onChange={(e) => setZoteroUserId(e.target.value)}
                   className="h-8 text-sm"
@@ -250,7 +249,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
                 <Input
                   id="zoteroApiKey"
                   type="password"
-                  placeholder="Zotero API anahtarı"
+                  placeholder="Zotero API key"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   className="h-8 text-sm"
@@ -263,7 +262,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
                 className="w-full gap-2 h-8 text-sm"
               >
                 {isConnecting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Bağlan
+                Connect
               </Button>
             </div>
           )}
@@ -279,7 +278,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Plug className="h-4 w-4 text-emerald-500" />
-            Zotero Bağlı
+            Zotero Connected
           </CardTitle>
           <Button
             variant="ghost"
@@ -288,7 +287,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
             className="text-xs text-red-500 hover:text-red-600 h-7 gap-1"
           >
             <Unplug className="h-3 w-3" />
-            Bağlantıyı Kes
+            Disconnect
           </Button>
         </div>
       </CardHeader>
@@ -298,7 +297,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         ) : collections.length > 0 ? (
           <div>
-            <p className="text-xs font-medium mb-2">Koleksiyonlar</p>
+            <p className="text-xs font-medium mb-2">Collections</p>
             <div className="space-y-1 max-h-40 overflow-y-auto">
               {collections.map((col) => (
                 <label
@@ -317,11 +316,11 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
             </div>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">Koleksiyon bulunamadı</p>
+          <p className="text-xs text-muted-foreground">No collections found</p>
         )}
 
         {lastSyncAt && (
-          <p className="text-[10px] text-muted-foreground">Son sync: {lastSyncAt}</p>
+          <p className="text-[10px] text-muted-foreground">Last sync: {lastSyncAt}</p>
         )}
 
         <Button
@@ -335,11 +334,11 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
           ) : (
             <RefreshCw className="h-3.5 w-3.5" />
           )}
-          {isSyncing ? "Senkronize ediliyor..." : "Senkronize Et"}
+          {isSyncing ? "Syncing..." : "Sync"}
         </Button>
 
         <p className="text-[10px] text-muted-foreground text-center">
-          PDF dosyaları da otomatik indirilir
+          PDF files are also downloaded automatically
         </p>
       </CardContent>
     </Card>

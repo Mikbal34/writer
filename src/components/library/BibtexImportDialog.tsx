@@ -62,7 +62,7 @@ export default function BibtexImportDialog({
 
   async function handleImport() {
     if (!content.trim()) {
-      toast.error("BibTeX içeriği boş");
+      toast.error("BibTeX content is empty");
       return;
     }
 
@@ -75,21 +75,21 @@ export default function BibtexImportDialog({
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Import başarısız" }));
-        throw new Error(err.error ?? "Import başarısız");
+        const err = await res.json().catch(() => ({ error: "Import failed" }));
+        throw new Error(err.error ?? "Import failed");
       }
 
       const data = await res.json();
       setResult(data);
 
       if (data.created > 0) {
-        toast.success(`${data.created} kaynak eklendi.`);
+        toast.success(`${data.created} source${data.created !== 1 ? 's' : ''} added.`);
         onImported();
       } else {
-        toast.info("Yeni kaynak eklenmedi (tümü mevcut).");
+        toast.info("No new sources added (all already exist).");
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Import başarısız");
+      toast.error(err instanceof Error ? err.message : "Import failed");
     } finally {
       setIsImporting(false);
     }
@@ -108,7 +108,7 @@ export default function BibtexImportDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>BibTeX Aktar</DialogTitle>
+          <DialogTitle>Import BibTeX</DialogTitle>
         </DialogHeader>
 
         {/* Drop zone */}
@@ -134,7 +134,7 @@ export default function BibtexImportDialog({
             <div>
               <Upload className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">
-                .bib dosyasını sürükleyin veya tıklayın
+                Drag a .bib file here or click to upload
               </p>
             </div>
           )}
@@ -143,7 +143,7 @@ export default function BibtexImportDialog({
         {/* Paste area */}
         <div>
           <textarea
-            placeholder="Veya BibTeX içeriğini buraya yapıştırın..."
+            placeholder="Or paste BibTeX content here..."
             value={content}
             onChange={(e) => {
               setContent(e.target.value);
@@ -159,8 +159,8 @@ export default function BibtexImportDialog({
           <div className="rounded-md bg-muted p-3 text-sm space-y-1">
             <p className="flex items-center gap-1.5">
               <Check className="h-4 w-4 text-emerald-500" />
-              <strong>{result.created}</strong> eklendi, <strong>{result.skipped}</strong> atlandı
-              (toplam {result.total})
+              <strong>{result.created}</strong> added, <strong>{result.skipped}</strong> skipped
+              (total {result.total})
             </p>
             {result.errors.length > 0 && (
               <div className="text-xs text-amber-600 mt-1 max-h-20 overflow-y-auto">
@@ -175,7 +175,7 @@ export default function BibtexImportDialog({
         {/* Actions */}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => handleClose(false)}>
-            Kapat
+            Close
           </Button>
           <Button
             onClick={handleImport}
@@ -187,7 +187,7 @@ export default function BibtexImportDialog({
             ) : (
               <FileUp className="h-4 w-4" />
             )}
-            {isImporting ? "İçe aktarılıyor..." : "İçe Aktar"}
+            {isImporting ? "Importing..." : "Import"}
           </Button>
         </div>
       </DialogContent>

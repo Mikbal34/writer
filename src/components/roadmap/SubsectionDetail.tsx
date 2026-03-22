@@ -45,11 +45,11 @@ export default function SubsectionDetail({
       {/* What to Write */}
       {whatToWrite && (
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <div className="flex items-center gap-1.5 font-ui text-xs font-medium text-muted-foreground">
             <BookOpen className="h-3 w-3" />
-            Ne Yazilacak
+            What to Write
           </div>
-          <p className="text-sm text-foreground/90 leading-relaxed">
+          <p className="font-body text-sm text-foreground/90">
             {whatToWrite}
           </p>
         </div>
@@ -58,13 +58,13 @@ export default function SubsectionDetail({
       {/* Key Points */}
       {keyPoints.length > 0 && (
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <div className="flex items-center gap-1.5 font-ui text-xs font-medium text-muted-foreground">
             <Target className="h-3 w-3" />
-            Anahtar Noktalar
+            Key Points
           </div>
           <ul className="space-y-0.5">
             {keyPoints.map((point, i) => (
-              <li key={i} className="text-sm text-foreground/90 flex items-start gap-2">
+              <li key={i} className="font-body text-sm text-foreground/90 flex items-start gap-2">
                 <span className="text-muted-foreground mt-1 shrink-0">&#8226;</span>
                 <span>{point}</span>
               </li>
@@ -76,11 +76,11 @@ export default function SubsectionDetail({
       {/* Writing Strategy */}
       {writingStrategy && (
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <div className="flex items-center gap-1.5 font-ui text-xs font-medium text-muted-foreground">
             <ClipboardList className="h-3 w-3" />
-            Yazim Stratejisi
+            Writing Strategy
           </div>
-          <p className="text-sm text-foreground/90 leading-relaxed">
+          <p className="font-body text-sm text-foreground/90">
             {writingStrategy}
           </p>
         </div>
@@ -89,15 +89,15 @@ export default function SubsectionDetail({
       {/* Sources */}
       {sourceMappings.length > 0 && (
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <div className="flex items-center gap-1.5 font-ui text-xs font-medium text-muted-foreground">
             <Library className="h-3 w-3" />
-            Kaynaklar
+            Sources
           </div>
           <Tabs defaultValue={classicalSources.length > 0 ? "classical" : "modern"} className="w-full">
             <TabsList className="h-7 p-0.5">
               {classicalSources.length > 0 && (
                 <TabsTrigger value="classical" className="text-xs px-2.5 h-6">
-                  Klasik ({classicalSources.length})
+                  Classical ({classicalSources.length})
                 </TabsTrigger>
               )}
               {modernSources.length > 0 && (
@@ -138,8 +138,8 @@ function SourceCard({ mapping }: { mapping: SourceMappingWithBibliography }) {
       <CardContent className="p-3 space-y-1.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-sm font-medium truncate">{authorDisplay}</p>
-            <p className="text-xs text-muted-foreground truncate">
+            <p className="font-body text-sm font-semibold truncate">{authorDisplay}</p>
+            <p className="font-body text-xs text-muted-foreground truncate italic">
               {bib.title}
               {bib.year && ` (${bib.year})`}
             </p>
@@ -148,7 +148,7 @@ function SourceCard({ mapping }: { mapping: SourceMappingWithBibliography }) {
             variant={mapping.priority === "primary" ? "default" : "secondary"}
             className="text-[10px] shrink-0"
           >
-            {mapping.priority === "primary" ? "birincil" : "destekleyici"}
+            {mapping.priority === "primary" ? "primary" : "supporting"}
           </Badge>
         </div>
         {mapping.relevance && (
@@ -162,7 +162,7 @@ function SourceCard({ mapping }: { mapping: SourceMappingWithBibliography }) {
         {mapping.howToUse && (
           <div>
             <span className="text-[10px] uppercase text-muted-foreground font-medium">
-              Nasil Kullan:{" "}
+              How to Use:{" "}
             </span>
             <span className="text-xs text-foreground/80">{mapping.howToUse}</span>
           </div>
@@ -170,7 +170,7 @@ function SourceCard({ mapping }: { mapping: SourceMappingWithBibliography }) {
         {mapping.whereToFind && (
           <div>
             <span className="text-[10px] uppercase text-muted-foreground font-medium">
-              Nerede Bul:{" "}
+              Where to Find:{" "}
             </span>
             <span className="text-xs text-foreground/80">{mapping.whereToFind}</span>
           </div>
@@ -178,7 +178,7 @@ function SourceCard({ mapping }: { mapping: SourceMappingWithBibliography }) {
         {mapping.extractionGuide && (
           <div>
             <span className="text-[10px] uppercase text-muted-foreground font-medium">
-              Ne Cikarilacak:{" "}
+              What to Extract:{" "}
             </span>
             <span className="text-xs text-foreground/80">{mapping.extractionGuide}</span>
           </div>

@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     return new Response(buffer, {
       headers: {
         'Content-Type': contentType,
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
         'Content-Length': buffer.length.toString(),
       },
     })

@@ -86,15 +86,15 @@ export default function LibraryPickerDialog({
         }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Bağlama başarısız" }));
-        throw new Error(err.error ?? "Bağlama başarısız");
+        const err = await res.json().catch(() => ({ error: "Linking failed" }));
+        throw new Error(err.error ?? "Linking failed");
       }
       const data = await res.json();
-      toast.success(`${data.linked} kaynak projeye bağlandı.`);
+      toast.success(`${data.linked} source${data.linked !== 1 ? 's' : ''} linked to project.`);
       onLinked();
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Bağlama başarısız");
+      toast.error(err instanceof Error ? err.message : "Linking failed");
     } finally {
       setIsLinking(false);
     }
@@ -104,14 +104,14 @@ export default function LibraryPickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Kütüphaneden Ekle</DialogTitle>
+          <DialogTitle>Add from Library</DialogTitle>
         </DialogHeader>
 
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Kaynak ara..."
+            placeholder="Search sources..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-8 h-9 text-sm"
@@ -126,7 +126,7 @@ export default function LibraryPickerDialog({
             </div>
           ) : entries.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-sm text-muted-foreground">Kaynak bulunamadı</p>
+              <p className="text-sm text-muted-foreground">No sources found</p>
             </div>
           ) : (
             entries.map((entry) => (
@@ -154,7 +154,7 @@ export default function LibraryPickerDialog({
                   {entry.year ?? "—"}
                 </span>
                 <Badge variant="secondary" className="text-[10px] uppercase shrink-0">
-                  {entry.entryType}
+                  {{"kitap":"Book","makale":"Article","nesir":"Prose","ceviri":"Translation","tez":"Thesis","ansiklopedi":"Encyclopedia","web":"Web"}[entry.entryType] ?? entry.entryType}
                 </Badge>
               </label>
             ))
@@ -164,11 +164,11 @@ export default function LibraryPickerDialog({
         {/* Actions */}
         <div className="flex items-center justify-between pt-2">
           <span className="text-xs text-muted-foreground">
-            {selected.size} kaynak seçili
+            {selected.size} selected
           </span>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
-              İptal
+              Cancel
             </Button>
             <Button
               onClick={handleLink}
@@ -180,7 +180,7 @@ export default function LibraryPickerDialog({
               ) : (
                 <Link2 className="h-4 w-4" />
               )}
-              Projeye Bağla ({selected.size})
+              Link to Project ({selected.size})
             </Button>
           </div>
         </div>

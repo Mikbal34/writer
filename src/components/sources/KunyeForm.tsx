@@ -40,12 +40,12 @@ export interface KunyeFormData {
 }
 
 const ENTRY_TYPES: Array<{ value: EntryType; label: string; description: string }> = [
-  { value: "kitap", label: "Kitap", description: "Book / Monograph" },
-  { value: "makale", label: "Makale", description: "Journal Article" },
-  { value: "nesir", label: "Nesir", description: "Prose / Classical Text" },
-  { value: "ceviri", label: "Çeviri", description: "Translated Work" },
-  { value: "tez", label: "Tez", description: "Dissertation / Thesis" },
-  { value: "ansiklopedi", label: "Ansiklopedi", description: "Encyclopedia Entry" },
+  { value: "kitap", label: "Book", description: "Book / Monograph" },
+  { value: "makale", label: "Article", description: "Journal Article" },
+  { value: "nesir", label: "Prose", description: "Prose / Classical Text" },
+  { value: "ceviri", label: "Translation", description: "Translated Work" },
+  { value: "tez", label: "Thesis", description: "Dissertation / Thesis" },
+  { value: "ansiklopedi", label: "Encyclopedia", description: "Encyclopedia Entry" },
   { value: "web", label: "Web", description: "Website / Online Source" },
 ];
 
@@ -166,6 +166,12 @@ export default function KunyeForm({
       const res = await fetch(`/api/bibliography/${bibliographyId}/enrich`, {
         method: "POST",
       });
+      if (res.status === 402) {
+        const errData = await res.json().catch(() => ({}));
+        toast.error(`Insufficient credits (${errData.balance ?? 0} remaining).`);
+        setIsEnriching(false);
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed to enrich" }));
         throw new Error(err.error ?? "Failed to enrich");
@@ -178,7 +184,7 @@ export default function KunyeForm({
           k !== "entryType" && k in EMPTY_FORM
       );
       if (fillable.length === 0) {
-        toast.info("Tüm alanlar zaten dolu, tamamlanacak bir şey yok.");
+        toast.info("All fields are already filled, nothing to complete.");
         return;
       }
       setForm((prev) => {
@@ -190,9 +196,9 @@ export default function KunyeForm({
         }
         return next;
       });
-      toast.success(`${fillable.length} alan AI tarafından dolduruldu.`);
+      toast.success(`${fillable.length} field${fillable.length !== 1 ? 's' : ''} filled by AI.`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "AI ile tamamlama başarısız");
+      toast.error(err instanceof Error ? err.message : "AI completion failed");
     } finally {
       setIsEnriching(false);
     }
@@ -421,7 +427,7 @@ export default function KunyeForm({
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            {isEnriching ? "AI düşünüyor..." : "AI ile Tamamla"}
+            {isEnriching ? "AI thinking..." : "Complete with AI"}
           </Button>
         )}
         <Button

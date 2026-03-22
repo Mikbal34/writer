@@ -74,6 +74,23 @@ export const authOptions: NextAuthOptions = {
       return session
     },
   },
+  events: {
+    async createUser({ user }) {
+      try {
+        await prisma.creditTransaction.create({
+          data: {
+            userId: user.id,
+            amount: 50,
+            balance: 50,
+            type: 'initial_grant',
+            metadata: { reason: 'signup_bonus' },
+          },
+        })
+      } catch (e) {
+        console.error('[auth] Failed to create initial credit grant:', e)
+      }
+    },
+  },
   pages: {
     signIn: '/auth/signin',
   },

@@ -50,9 +50,7 @@ ${ctx.sources
       `- [${s.priority.toUpperCase()}] ${s.authorSurname}${s.authorName ? ', ' + s.authorName : ''}: "${s.title}"` +
       ` (${s.year ?? '?'}${s.publisher ? ', ' + s.publisher : ''})` +
       (s.relevance ? `\n  Relevance: ${s.relevance}` : '') +
-      (s.howToUse ? `\n  How to use: ${s.howToUse}` : '') +
-      (s.whereToFind ? `\n  Where to find: ${s.whereToFind}` : '') +
-      (s.extractionGuide ? `\n  What to extract: ${s.extractionGuide}` : '')
+      (s.howToUse ? `\n  How to use: ${s.howToUse}` : '')
   )
   .join('\n')}
 `
@@ -294,8 +292,6 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       relevance: sm.relevance,
       priority: sm.priority,
       howToUse: sm.howToUse,
-      whereToFind: sm.whereToFind,
-      extractionGuide: sm.extractionGuide,
     }))
 
     // ------------------------------------------------------------------
@@ -382,7 +378,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             data: {
               content: fullResponse,
               wordCount,
-              status: 'completed',
+              status: 'draft',
             },
           })
 

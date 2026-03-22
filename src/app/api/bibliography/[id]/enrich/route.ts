@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { generateJSON } from '@/lib/claude'
+import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
+import { checkCredits, deductCredits } from '@/lib/credits'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -62,7 +63,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
         orderBy: { chunkIndex: 'asc' },
         select: { content: true },
       })
-      const joined = chunks.map((c) => c.content).join('\n')
+      const joined = chunks.map((c: { content: string }) => c.content).join('\n')
       sourceText = joined.slice(0, 8000)
     }
 
@@ -82,31 +83,51 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
       .join('\n')
 
     const prompt = [
-      `Bir bibliyografya kaydının eksik alanlarını doldurman gerekiyor.`,
+      `You need to fill in the missing fields of a bibliography record.`,
       ``,
-      `Kayıt türü (entryType): ${entry.entryType}`,
+      `Entry type (entryType): ${entry.entryType}`,
       ``,
-      `Mevcut dolu alanlar:`,
-      filledEntries || '  (hiçbir alan dolu değil)',
+      `Currently filled fields:`,
+      filledEntries || '  (no fields are filled)',
       ``,
-      `Doldurulması gereken boş alanlar: ${emptyFields.join(', ')}`,
+      `Empty fields to fill: ${emptyFields.join(', ')}`,
       ``,
       sourceText
-        ? `PDF'ten çıkarılmış metin (bu kaynağın içeriği):\n---\n${sourceText}\n---`
-        : `Bu kayda bağlı PDF yok. Mevcut bilgilerden (yazar, başlık vb.) yararlanarak eksik alanları doldur.`,
+        ? `Text extracted from PDF (content of this source):\n---\n${sourceText}\n---`
+        : `No PDF is linked to this record. Use the available information (author, title, etc.) to fill the missing fields.`,
       ``,
-      `Kurallar:`,
-      `- Sadece yukarıda listelenen boş alanlar için değer öner.`,
-      `- Dolu alanları dahil etme.`,
-      `- Emin olmadığın alanları dahil etme (null bırak / JSON'a ekleme).`,
-      `- Yalnızca bir JSON nesnesi döndür: { "suggestions": { "alan": "değer", ... } }`,
-      `- Değerler string olmalı.`,
+      `Rules:`,
+      `- Only suggest values for the empty fields listed above.`,
+      `- Do not include already-filled fields.`,
+      `- Do not include fields you are not confident about (leave as null / do not add to JSON).`,
+      `- Return only a JSON object: { "suggestions": { "field": "value", ... } }`,
+      `- Values must be strings.`,
     ].join('\n')
 
-    const result = await generateJSON<EnrichResult>(
+    // Credit check
+    const credits = await checkCredits(session.user.id, 'bibliography_enrich')
+    if (!credits.allowed) {
+      return NextResponse.json(
+        { error: 'Insufficient credits', balance: credits.balance, cost: credits.estimatedCost },
+        { status: 402 }
+      )
+    }
+
+    const aiResult = await generateJSONWithUsage<EnrichResult>(
       prompt,
-      'Sen bir bibliyografya uzmanısın. Akademik kaynakların künyelerini tamamlamak konusunda uzmansın. Türkçe ve Arapça kaynaklara hakimsin.'
+      'You are a bibliography expert. You specialize in completing bibliographic records for academic sources. You are familiar with Turkish, Arabic, and multilingual sources.',
+      { model: HAIKU }
     )
+
+    await deductCredits(
+      session.user.id,
+      'bibliography_enrich',
+      aiResult.inputTokens,
+      aiResult.outputTokens,
+      { bibliographyId: id }
+    )
+
+    const result = aiResult.data
 
     // Safety: only return suggestions for fields that were actually empty
     const filtered: Partial<Record<EnrichableField, string>> = {}

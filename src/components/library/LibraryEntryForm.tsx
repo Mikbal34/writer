@@ -39,12 +39,12 @@ export interface LibraryFormData {
 }
 
 const ENTRY_TYPES: Array<{ value: EntryType; label: string; description: string }> = [
-  { value: "kitap", label: "Kitap", description: "Book / Monograph" },
-  { value: "makale", label: "Makale", description: "Journal Article" },
-  { value: "nesir", label: "Nesir", description: "Prose / Classical Text" },
-  { value: "ceviri", label: "Çeviri", description: "Translated Work" },
-  { value: "tez", label: "Tez", description: "Dissertation / Thesis" },
-  { value: "ansiklopedi", label: "Ansiklopedi", description: "Encyclopedia Entry" },
+  { value: "kitap", label: "Book", description: "Book / Monograph" },
+  { value: "makale", label: "Article", description: "Journal Article" },
+  { value: "nesir", label: "Prose", description: "Prose / Classical Text" },
+  { value: "ceviri", label: "Translation", description: "Translated Work" },
+  { value: "tez", label: "Thesis", description: "Dissertation / Thesis" },
+  { value: "ansiklopedi", label: "Encyclopedia", description: "Encyclopedia Entry" },
   { value: "web", label: "Web", description: "Website / Online Source" },
 ];
 
@@ -118,11 +118,11 @@ export default function LibraryEntryForm({
     e.preventDefault();
 
     if (!form.authorSurname.trim()) {
-      toast.error("Yazar soyadı gerekli");
+      toast.error("Author surname is required");
       return;
     }
     if (!form.title.trim()) {
-      toast.error("Başlık gerekli");
+      toast.error("Title is required");
       return;
     }
 
@@ -138,14 +138,14 @@ export default function LibraryEntryForm({
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Kaydetme başarısız" }));
-        throw new Error(err.error ?? "Kaydetme başarısız");
+        const err = await res.json().catch(() => ({ error: "Save failed" }));
+        throw new Error(err.error ?? "Save failed");
       }
 
-      toast.success(entryId ? "Kaynak güncellendi." : "Kaynak eklendi.");
+      toast.success(entryId ? "Source updated." : "Source added.");
       onSave?.();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Kaydetme başarısız");
+      toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
       setIsSaving(false);
     }
@@ -159,7 +159,7 @@ export default function LibraryEntryForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      <Field id="entryType" label="Tür" required>
+      <Field id="entryType" label="Type" required>
         <Select
           value={form.entryType}
           onValueChange={(v) => { if (v) update("entryType", v as EntryType); }}
@@ -183,67 +183,67 @@ export default function LibraryEntryForm({
       <Separator />
 
       <div className="grid grid-cols-2 gap-3">
-        <Field id="authorSurname" label="Yazar Soyadı" required>
+        <Field id="authorSurname" label="Author Surname" required>
           <Input
             id="authorSurname"
-            placeholder="örn. İbn Haldûn"
+            placeholder="e.g. Ibn Khaldun"
             value={form.authorSurname}
             onChange={(e) => update("authorSurname", e.target.value)}
           />
         </Field>
-        <Field id="authorName" label="Yazar Adı">
+        <Field id="authorName" label="Author First Name">
           <Input
             id="authorName"
-            placeholder="örn. Abdurrahman"
+            placeholder="e.g. Abdurrahman"
             value={form.authorName}
             onChange={(e) => update("authorName", e.target.value)}
           />
         </Field>
       </div>
 
-      <Field id="title" label="Başlık" required>
+      <Field id="title" label="Title" required>
         <Input
           id="title"
-          placeholder="Eserin tam başlığı"
+          placeholder="Full title of the work"
           value={form.title}
           onChange={(e) => update("title", e.target.value)}
         />
       </Field>
 
-      <Field id="shortTitle" label="Kısa Başlık">
+      <Field id="shortTitle" label="Short Title">
         <Input
           id="shortTitle"
-          placeholder="örn. Mukaddime"
+          placeholder="e.g. Muqaddimah"
           value={form.shortTitle}
           onChange={(e) => update("shortTitle", e.target.value)}
         />
       </Field>
 
       {showEditorField && (
-        <Field id="editor" label="Editör">
+        <Field id="editor" label="Editor">
           <Input id="editor" value={form.editor} onChange={(e) => update("editor", e.target.value)} />
         </Field>
       )}
 
       {showTranslatorField && (
-        <Field id="translator" label="Mütercim">
+        <Field id="translator" label="Translator">
           <Input id="translator" value={form.translator} onChange={(e) => update("translator", e.target.value)} />
         </Field>
       )}
 
       {showJournalFields && (
         <>
-          <Field id="journalName" label="Dergi Adı">
+          <Field id="journalName" label="Journal Name">
             <Input id="journalName" value={form.journalName} onChange={(e) => update("journalName", e.target.value)} />
           </Field>
           <div className="grid grid-cols-3 gap-3">
-            <Field id="journalVolume" label="Cilt">
+            <Field id="journalVolume" label="Volume">
               <Input id="journalVolume" value={form.journalVolume} onChange={(e) => update("journalVolume", e.target.value)} />
             </Field>
-            <Field id="journalIssue" label="Sayı">
+            <Field id="journalIssue" label="Issue">
               <Input id="journalIssue" value={form.journalIssue} onChange={(e) => update("journalIssue", e.target.value)} />
             </Field>
-            <Field id="pageRange" label="Sayfa">
+            <Field id="pageRange" label="Pages">
               <Input id="pageRange" value={form.pageRange} onChange={(e) => update("pageRange", e.target.value)} />
             </Field>
           </div>
@@ -255,23 +255,23 @@ export default function LibraryEntryForm({
 
       {showPublisherFields && (
         <div className="grid grid-cols-2 gap-3">
-          <Field id="publisher" label="Yayınevi">
+          <Field id="publisher" label="Publisher">
             <Input id="publisher" value={form.publisher} onChange={(e) => update("publisher", e.target.value)} />
           </Field>
-          <Field id="publishPlace" label="Yayın Yeri">
+          <Field id="publishPlace" label="Place of Publication">
             <Input id="publishPlace" value={form.publishPlace} onChange={(e) => update("publishPlace", e.target.value)} />
           </Field>
         </div>
       )}
 
       <div className="grid grid-cols-3 gap-3">
-        <Field id="year" label="Yıl">
+        <Field id="year" label="Year">
           <Input id="year" value={form.year} onChange={(e) => update("year", e.target.value)} />
         </Field>
-        <Field id="volume" label="Cilt">
+        <Field id="volume" label="Volume">
           <Input id="volume" value={form.volume} onChange={(e) => update("volume", e.target.value)} />
         </Field>
-        <Field id="edition" label="Baskı">
+        <Field id="edition" label="Edition">
           <Input id="edition" value={form.edition} onChange={(e) => update("edition", e.target.value)} />
         </Field>
       </div>
@@ -286,7 +286,7 @@ export default function LibraryEntryForm({
         {onCancel && (
           <Button type="button" variant="ghost" onClick={onCancel} className="gap-2">
             <X className="h-4 w-4" />
-            İptal
+            Cancel
           </Button>
         )}
         <Button
@@ -295,7 +295,7 @@ export default function LibraryEntryForm({
           className="gap-2"
         >
           {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {isSaving ? "Kaydediliyor..." : "Kaydet"}
+          {isSaving ? "Saving..." : "Save"}
         </Button>
       </div>
     </form>

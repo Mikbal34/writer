@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { generateJSON } from '@/lib/claude'
 import { findOrCreateBibliography } from '@/lib/bibliography'
 import type { BookStructure } from '@/types/project'
 import type { Prisma } from '@prisma/client'
@@ -13,69 +12,6 @@ function normalizePriority(raw?: string): string {
   const lower = raw.toLowerCase()
   if (lower === 'primary' || lower === 'birincil') return 'primary'
   return 'supporting'
-}
-
-// ---------------------------------------------------------------------------
-// Prompt helpers
-// ---------------------------------------------------------------------------
-
-function buildRoadmapSystemPrompt(language: string): string {
-  return `You are an expert academic book planner.
-Generate a book structure (roadmap) as a JSON object. Language: ${language}.
-
-CRITICAL RULES:
-1. Return RAW JSON only. NO markdown code fences. NO \`\`\`json. Just the { } object.
-2. Keep it concise: 4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section.
-3. Each subsection sources: max 1 classical + 1 modern source.
-4. Keep descriptions brief (1-2 sentences max).
-5. For each source, fill in howToUse (how to use the source), whereToFind (which chapter/pages), and extractionGuide (what to extract from the source).
-
-JSON shape:
-{
-  "title": "string",
-  "chapters": [{
-    "id": 1,
-    "title": "string",
-    "purpose": "string",
-    "estimatedPages": 20,
-    "sections": [{
-      "id": "1.1",
-      "title": "string",
-      "keyConcepts": ["a","b"],
-      "subsections": [{
-        "id": "1.1.1",
-        "title": "string",
-        "description": "brief",
-        "whatToWrite": "brief",
-        "keyPoints": ["a","b","c"],
-        "writingStrategy": "brief",
-        "estimatedPages": 4,
-        "sources": {
-          "classical": [{"author":"x","work":"y","relevance":"z","priority":"primary","howToUse":"Direct quote, use as main argument source","whereToFind":"Chapter 3, pp. 45-67","extractionGuide":"Extract the definition and key argument"}],
-          "modern": [{"author":"x","work":"y","relevance":"z","priority":"primary","howToUse":"Supporting analysis","whereToFind":"Ch. 2","extractionGuide":"Extract the modern interpretation"}]
-        }
-      }]
-    }]
-  }]
-}`
-}
-
-function buildRoadmapUserPrompt(project: {
-  title: string
-  topic: string | null
-  purpose: string | null
-  audience: string | null
-  citationFormat: string
-}): string {
-  return `Generate a concise book roadmap (4-6 chapters) for:
-
-Title: ${project.title}
-Topic: ${project.topic ?? 'Not specified'}
-Purpose: ${project.purpose ?? 'Not specified'}
-Audience: ${project.audience ?? 'Not specified'}
-Citation: ${project.citationFormat}
-
-Remember: RAW JSON only, no markdown fences. Keep it compact.`
 }
 
 // ---------------------------------------------------------------------------
@@ -122,48 +58,6 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     }
     console.error('[GET /api/projects/[id]/roadmap]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
-  }
-}
-
-// ---------------------------------------------------------------------------
-// POST /api/projects/[id]/roadmap
-// Generates a BookStructure using Claude and returns it (does NOT save to DB).
-// ---------------------------------------------------------------------------
-export async function POST(_req: NextRequest, ctx: RouteContext) {
-  try {
-    const session = await requireAuth()
-    const { id } = await ctx.params
-
-    const project = await prisma.project.findFirst({
-      where: { id, userId: session.user.id },
-      select: {
-        id: true,
-        title: true,
-        topic: true,
-        purpose: true,
-        audience: true,
-        citationFormat: true,
-        language: true,
-      },
-    })
-
-    if (!project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-    }
-
-    const roadmap = await generateJSON<BookStructure>(
-      buildRoadmapUserPrompt(project),
-      buildRoadmapSystemPrompt(project.language)
-    )
-
-    return NextResponse.json({ roadmap })
-  } catch (err) {
-    if (err instanceof AuthError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error('[POST /api/projects/[id]/roadmap]', errMsg)
-    return NextResponse.json({ error: errMsg }, { status: 500 })
   }
 }
 

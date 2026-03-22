@@ -52,6 +52,12 @@ export default function UploadArea({
     body: formData,
    });
 
+   if (res.status === 402) {
+    const errData = await res.json().catch(() => ({}));
+    toast.error(`Insufficient credits (${errData.balance ?? 0} remaining).`);
+    setUploading((prev) => prev.filter((n) => n !== file.name));
+    return;
+   }
    if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Upload failed" }));
     throw new Error(err.error ?? "Upload failed");

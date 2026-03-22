@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import ChapterCard from "./ChapterCard";
 import type { ChapterWithSections } from "@/types/project";
+import { StaggerItem } from "@/components/shared/Animations";
 
 interface StructureTreeProps {
   projectId: string;
@@ -86,14 +87,15 @@ export default function StructureTree({
 
   return (
     <div className="space-y-3">
-      {localChapters.map((chapter) => (
-        <ChapterCard
-          key={chapter.id}
-          chapter={chapter}
-          onTitleChange={handleChapterTitleChange}
-          onSectionTitleChange={handleSectionTitleChange}
-          onSubsectionTitleChange={handleSubsectionTitleChange}
-        />
+      {localChapters.map((chapter, i) => (
+        <StaggerItem key={chapter.id} index={i} baseDelay={0.1} stagger={0.08}>
+          <ChapterCard
+            chapter={chapter}
+            onTitleChange={handleChapterTitleChange}
+            onSectionTitleChange={handleSectionTitleChange}
+            onSubsectionTitleChange={handleSubsectionTitleChange}
+          />
+        </StaggerItem>
       ))}
     </div>
   );

@@ -125,7 +125,7 @@ function buildDocx(
       }
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: `${sub.chapterNumber}. Bölüm: ${sub.chapterTitle}`, bold: true, size: 32, font: 'Times New Roman', color: '000000' })],
+          children: [new TextRun({ text: `Chapter ${sub.chapterNumber}: ${sub.chapterTitle}`, bold: true, size: 32, font: 'Times New Roman', color: '000000' })],
           heading: HeadingLevel.HEADING_1,
           spacing: { after: 300 },
         })
@@ -190,7 +190,7 @@ function buildDocx(
         new Paragraph({
           children: [
             new TextRun({
-              text: '[Bu alt başlık henüz yazılmamış]',
+              text: '[This subsection has not been written yet]',
               italics: true,
               color: '999999',
               size: 24,
@@ -208,7 +208,7 @@ function buildDocx(
     children.push(new Paragraph({ children: [new PageBreak()] }))
     children.push(
       new Paragraph({
-        text: 'Kaynakça',
+        text: 'Bibliography',
         heading: HeadingLevel.HEADING_1,
         spacing: { after: 300 },
       })
@@ -256,6 +256,23 @@ function buildDocx(
 }
 
 // ---------------------------------------------------------------------------
+// Resolve a Unicode-capable font for PDF generation (platform-aware)
+// ---------------------------------------------------------------------------
+function resolvePdfFont(): string {
+  if (process.env.PDF_FONT_PATH) return process.env.PDF_FONT_PATH
+  const candidates = [
+    '/Library/Fonts/Arial Unicode.ttf',           // macOS
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', // Linux (Debian/Ubuntu)
+    '/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf', // Linux (Fedora/RHEL)
+    'C:\\Windows\\Fonts\\arial.ttf',               // Windows
+  ]
+  for (const p of candidates) {
+    try { require('fs').accessSync(p); return p } catch { /* skip */ }
+  }
+  return '' // fallback: use pdfkit built-in (ASCII only)
+}
+
+// ---------------------------------------------------------------------------
 // Build PDF document
 // ---------------------------------------------------------------------------
 function buildPdf(
@@ -266,8 +283,7 @@ function buildPdf(
   includeBibliography: boolean
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    // Use Arial Unicode for full Turkish character support
-    const FONT = '/Library/Fonts/Arial Unicode.ttf'
+    const FONT = resolvePdfFont()
 
     const doc = new PDFDocument({
       size: 'A4',
@@ -276,7 +292,10 @@ function buildPdf(
       info: { Title: projectTitle },
     })
 
-    doc.registerFont('main', FONT)
+    if (FONT) {
+      doc.registerFont('main', FONT)
+    }
+    const fontName = FONT ? 'main' : 'Helvetica'
 
     const bufferChunks: Buffer[] = []
     doc.on('data', (chunk: Buffer) => bufferChunks.push(chunk))
@@ -288,7 +307,7 @@ function buildPdf(
     let footnoteCounter = 1
 
     // Title page
-    doc.font('main').fontSize(24)
+    doc.font(fontName).fontSize(24)
     doc.text(projectTitle, { align: 'center' })
     doc.addPage()
 
@@ -301,26 +320,26 @@ function buildPdf(
         currentChapter = sub.chapterTitle
         currentSection = ''
         if (doc.y > 100) doc.addPage()
-        doc.font('main').fontSize(18)
-        doc.text(`${sub.chapterNumber}. Bölüm: ${sub.chapterTitle}`, { align: 'left' })
+        doc.font(fontName).fontSize(18)
+        doc.text(`Chapter ${sub.chapterNumber}: ${sub.chapterTitle}`, { align: 'left' })
         doc.moveDown(0.5)
       }
 
       // Section heading
       if (sub.sectionTitle !== currentSection) {
         currentSection = sub.sectionTitle
-        doc.font('main').fontSize(14)
+        doc.font(fontName).fontSize(14)
         doc.text(sub.sectionTitle)
         doc.moveDown(0.3)
       }
 
       // Subsection heading
-      doc.font('main').fontSize(12)
+      doc.font(fontName).fontSize(12)
       doc.text(sub.title)
       doc.moveDown(0.2)
 
       // Content
-      doc.font('main').fontSize(11)
+      doc.font(fontName).fontSize(11)
       if (sub.content) {
         // Replace [fn: ...] with superscript numbers and collect footnotes
         const processed = sub.content.replace(
@@ -343,7 +362,7 @@ function buildPdf(
         }
       } else {
         doc.fillColor('#999999')
-        doc.text('[Bu alt başlık henüz yazılmamış]')
+        doc.text('[This subsection has not been written yet]')
         doc.fillColor('#000000')
       }
 
@@ -353,11 +372,11 @@ function buildPdf(
     // Endnotes section
     if (allFootnotes.length > 0) {
       doc.addPage()
-      doc.font('main').fontSize(18)
-      doc.text('Dipnotlar', { align: 'left' })
+      doc.font(fontName).fontSize(18)
+      doc.text('Endnotes', { align: 'left' })
       doc.moveDown(0.5)
 
-      doc.font('main').fontSize(9)
+      doc.font(fontName).fontSize(9)
       for (const note of allFootnotes) {
         doc.text(note, { lineGap: 2 })
         doc.moveDown(0.1)
@@ -367,14 +386,14 @@ function buildPdf(
     // Bibliography
     if (includeBibliography && bibliography.length > 0) {
       doc.addPage()
-      doc.font('main').fontSize(18)
-      doc.text('Kaynakça', { align: 'left' })
+      doc.font(fontName).fontSize(18)
+      doc.text('Bibliography', { align: 'left' })
       doc.moveDown(0.5)
 
       const formatted = bibliography.map((entry) => formatter.formatBibliographyEntry(entry))
       const sorted = CitationFormatter.sortBibliography(formatted)
 
-      doc.font('main').fontSize(11)
+      doc.font(fontName).fontSize(11)
       for (const item of sorted) {
         doc.text(item.entry, {
           indent: 36,
@@ -499,16 +518,33 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     }
 
     // Save to disk
-    const exportsDir = path.join(process.cwd(), 'exports', projectId)
-    await mkdir(exportsDir, { recursive: true })
-
-    const timestamp = Date.now()
     const ext = fileType === 'pdf' ? 'pdf' : 'docx'
-    const scopeLabel = scope === 'full' ? 'full' : scope === 'chapter' ? `ch` : 'sub'
-    const filename = `${scopeLabel}_${timestamp}.${ext}`
-    const filePath = path.join('exports', projectId, filename)
-    const absolutePath = path.join(process.cwd(), filePath)
 
+    // Build a human-readable filename (ASCII-safe for filesystem, Türkçe transliterated)
+    const trMap: Record<string, string> = { 'ç': 'c', 'Ç': 'C', 'ğ': 'g', 'Ğ': 'G', 'ı': 'i', 'İ': 'I', 'ö': 'o', 'Ö': 'O', 'ş': 's', 'Ş': 'S', 'ü': 'u', 'Ü': 'U' }
+    const sanitize = (s: string) => s
+      .split('').map((c) => trMap[c] ?? c).join('')
+      .replace(/[^a-zA-Z0-9 _-]/g, '')
+      .replace(/\s+/g, '_')
+      .slice(0, 80)
+
+    let fileLabel: string
+    if (scope === 'full') {
+      fileLabel = sanitize(project.title)
+    } else if (scope === 'chapter' && chapterId) {
+      const ch = chapters.find((c) => c.id === chapterId)
+      fileLabel = ch ? sanitize(`${ch.number}_Chapter_${ch.title}`) : 'chapter'
+    } else if (scope === 'subsection' && subsections.length > 0) {
+      fileLabel = sanitize(`${subsections[0].subsectionId}_${subsections[0].title}`)
+    } else {
+      fileLabel = sanitize(project.title)
+    }
+    const filename = `${fileLabel}.${ext}`
+    // Use a short timestamp subfolder to avoid overwriting same-named files
+    const ts = Date.now().toString(36)
+    const filePath = path.join('exports', projectId, ts, filename)
+    const absolutePath = path.join(process.cwd(), filePath)
+    await mkdir(path.dirname(absolutePath), { recursive: true })
     await writeFile(absolutePath, buffer)
 
     // Save to DB
