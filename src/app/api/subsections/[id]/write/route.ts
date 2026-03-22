@@ -292,6 +292,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       relevance: sm.relevance,
       priority: sm.priority,
       howToUse: sm.howToUse,
+      whereToFind: sm.whereToFind ?? null,
+      extractionGuide: sm.extractionGuide ?? null,
     }))
 
     // ------------------------------------------------------------------
