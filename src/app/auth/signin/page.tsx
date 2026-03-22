@@ -39,7 +39,7 @@ export default function SignInPage() {
           <FadeUpLarge delay={0.5}>
             <div className="h-px w-12 bg-[#C9A84C] mb-6" />
             <blockquote className="font-body text-2xl italic text-[#FAF7F0]/90 leading-relaxed mb-4">
-              &ldquo;Bir kitap yazmak, dünyaya bırakabileceğiniz en kalıcı izdir.&rdquo;
+              &ldquo;Writing a book is the most lasting mark you can leave on the world.&rdquo;
             </blockquote>
             <p className="font-ui text-sm text-[#C9A84C]">— Quillon</p>
           </FadeUpLarge>
@@ -123,7 +123,7 @@ export default function SignInPage() {
 
           {/* Terms */}
           <p className="text-center font-ui text-xs mt-3 text-muted-foreground/60">
-            Devam ederek Kullanım Koşulları ve Gizlilik Politikamızı kabul etmiş olursunuz.
+            By continuing, you agree to our Terms of Service and Privacy Policy.
           </p>
         </FadeRight>
       </div>
