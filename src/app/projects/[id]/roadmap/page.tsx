@@ -8,13 +8,11 @@ import {
   Separator as PanelResizeHandle,
 } from "react-resizable-panels";
 import {
-  Save,
   Loader2,
   AlertCircle,
   Bot,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { toast } from "sonner";
 import StructureTree from "@/components/roadmap/StructureTree";
 import RoadmapChat from "@/components/roadmap/RoadmapChat";
 import { Ornament, PageNumber } from "@/components/shared/BookElements";
@@ -27,9 +25,7 @@ export default function RoadmapPage() {
 
   const [chapters, setChapters] = useState<ChapterWithSections[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -62,27 +58,8 @@ export default function RoadmapPage() {
     fetchRoadmap();
   }, [fetchRoadmap]);
 
-  async function handleSave() {
-    setIsSaving(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/roadmap`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roadmap: { chapters } }),
-      });
-      if (!res.ok) throw new Error("Failed to save roadmap");
-      setHasUnsavedChanges(false);
-      toast.success("Roadmap saved.");
-    } catch {
-      toast.error("Failed to save roadmap");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
   function handleChaptersChange(updated: ChapterWithSections[]) {
     setChapters(updated);
-    setHasUnsavedChanges(true);
   }
 
   const roadmapContent = (
@@ -99,22 +76,6 @@ export default function RoadmapPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          {hasUnsavedChanges && (
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex items-center gap-2 px-4 py-2 border border-[#d4c9b5] rounded-sm font-ui text-sm text-ink hover:bg-[#e8dfd0]/30 disabled:opacity-50 transition-colors"
-            >
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              Save Changes
-            </button>
-          )}
-        </div>
       </FadeUp>
 
       {/* Error */}

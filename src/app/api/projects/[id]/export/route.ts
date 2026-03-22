@@ -256,25 +256,126 @@ function buildDocx(
 }
 
 // ---------------------------------------------------------------------------
-// Resolve a Unicode-capable font for PDF generation (platform-aware)
+// Resolve Unicode-capable font family for PDF generation (platform-aware)
+// Returns { regular, bold, italic, boldItalic } paths or empty strings
 // ---------------------------------------------------------------------------
-function resolvePdfFont(): string {
-  if (process.env.PDF_FONT_PATH) return process.env.PDF_FONT_PATH
-  const candidates = [
-    '/Library/Fonts/Arial Unicode.ttf',           // macOS
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', // Linux (Debian/Ubuntu)
-    '/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf', // Linux (Fedora/RHEL)
-    'C:\\Windows\\Fonts\\arial.ttf',               // Windows
-  ]
-  for (const p of candidates) {
-    try { require('fs').accessSync(p); return p } catch { /* skip */ }
+interface PdfFontFamily {
+  regular: string
+  bold: string
+  italic: string
+  boldItalic: string
+}
+
+function resolvePdfFontFamily(): PdfFontFamily {
+  const fs = require('fs')
+  const empty: PdfFontFamily = { regular: '', bold: '', italic: '', boldItalic: '' }
+
+  // Allow override via env var (regular font path; derive variants)
+  if (process.env.PDF_FONT_PATH) {
+    return { regular: process.env.PDF_FONT_PATH, bold: '', italic: '', boldItalic: '' }
   }
-  return '' // fallback: use pdfkit built-in (ASCII only)
+
+  // Times New Roman — best match with DOCX output
+  const tnrFamilies = [
+    {
+      regular: '/System/Library/Fonts/Supplemental/Times New Roman.ttf',
+      bold: '/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf',
+      italic: '/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf',
+      boldItalic: '/System/Library/Fonts/Supplemental/Times New Roman Bold Italic.ttf',
+    },
+    {
+      regular: '/Library/Fonts/Times New Roman.ttf',
+      bold: '/Library/Fonts/Times New Roman Bold.ttf',
+      italic: '/Library/Fonts/Times New Roman Italic.ttf',
+      boldItalic: '/Library/Fonts/Times New Roman Bold Italic.ttf',
+    },
+    {
+      // Windows
+      regular: 'C:\\Windows\\Fonts\\times.ttf',
+      bold: 'C:\\Windows\\Fonts\\timesbd.ttf',
+      italic: 'C:\\Windows\\Fonts\\timesi.ttf',
+      boldItalic: 'C:\\Windows\\Fonts\\timesbi.ttf',
+    },
+  ]
+
+  for (const family of tnrFamilies) {
+    try {
+      fs.accessSync(family.regular)
+      // Regular must exist; variants are optional (fallback to regular)
+      const result: PdfFontFamily = { regular: family.regular, bold: family.regular, italic: family.regular, boldItalic: family.regular }
+      try { fs.accessSync(family.bold); result.bold = family.bold } catch { /* use regular */ }
+      try { fs.accessSync(family.italic); result.italic = family.italic } catch { /* use regular */ }
+      try { fs.accessSync(family.boldItalic); result.boldItalic = family.boldItalic } catch { /* use regular */ }
+      return result
+    } catch { /* try next family */ }
+  }
+
+  // Fallback: any single Unicode-capable font
+  const singleFonts = [
+    '/Library/Fonts/Arial Unicode.ttf',
+    '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf',
+    '/usr/share/fonts/dejavu-serif-fonts/DejaVuSerif.ttf',
+    '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',
+    'C:\\Windows\\Fonts\\arial.ttf',
+  ]
+  for (const p of singleFonts) {
+    try { fs.accessSync(p); return { regular: p, bold: p, italic: p, boldItalic: p } } catch { /* skip */ }
+  }
+
+  return empty // fallback: use pdfkit built-in (ASCII only)
 }
 
 // ---------------------------------------------------------------------------
-// Build PDF document
+// Build PDF document — with proper fonts, italic support, and page footnotes
 // ---------------------------------------------------------------------------
+
+/** Render mixed plain/italic text using *markdown* markers */
+function pdfRichText(
+  doc: InstanceType<typeof PDFDocument>,
+  text: string,
+  fonts: { regular: string; italic: string },
+  options: { fontSize: number; lineGap?: number; indent?: number; align?: string },
+) {
+  const parts = text.split(/(\*[^*]+\*)/g).filter(Boolean)
+  const x = (doc as any).x as number
+  const startX = x + (options.indent ?? 0)
+  const width = (doc.page.width - doc.page.margins.left - doc.page.margins.right) - (options.indent ?? 0)
+
+  // If no italic markers, render as plain text (faster path)
+  if (parts.length === 1 && !parts[0].startsWith('*')) {
+    doc.font(fonts.regular).fontSize(options.fontSize)
+    doc.text(text, startX, undefined, { width, align: options.align as any, lineGap: options.lineGap })
+    return
+  }
+
+  // Mixed italic/regular — use doc.text continuation
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
+    const isItalic = part.startsWith('*') && part.endsWith('*')
+    const content = isItalic ? part.slice(1, -1) : part
+    const font = isItalic ? fonts.italic : fonts.regular
+
+    doc.font(font).fontSize(options.fontSize)
+
+    if (i === 0) {
+      doc.text(content, startX, undefined, {
+        width,
+        align: options.align as any,
+        lineGap: options.lineGap,
+        continued: i < parts.length - 1,
+      })
+    } else {
+      doc.text(content, {
+        width,
+        align: options.align as any,
+        lineGap: options.lineGap,
+        continued: i < parts.length - 1,
+      })
+    }
+  }
+}
+
 function buildPdf(
   projectTitle: string,
   subsections: SubsectionData[],
@@ -283,7 +384,8 @@ function buildPdf(
   includeBibliography: boolean
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const FONT = resolvePdfFont()
+    const fontFamily = resolvePdfFontFamily()
+    const hasCustomFont = !!fontFamily.regular
 
     const doc = new PDFDocument({
       size: 'A4',
@@ -292,22 +394,82 @@ function buildPdf(
       info: { Title: projectTitle },
     })
 
-    if (FONT) {
-      doc.registerFont('main', FONT)
+    // Register font variants
+    if (hasCustomFont) {
+      doc.registerFont('main', fontFamily.regular)
+      doc.registerFont('main-bold', fontFamily.bold)
+      doc.registerFont('main-italic', fontFamily.italic)
+      doc.registerFont('main-bolditalic', fontFamily.boldItalic)
     }
-    const fontName = FONT ? 'main' : 'Helvetica'
+    const fonts = {
+      regular: hasCustomFont ? 'main' : 'Helvetica',
+      bold: hasCustomFont ? 'main-bold' : 'Helvetica-Bold',
+      italic: hasCustomFont ? 'main-italic' : 'Helvetica-Oblique',
+      boldItalic: hasCustomFont ? 'main-bolditalic' : 'Helvetica-BoldOblique',
+    }
 
     const bufferChunks: Buffer[] = []
     doc.on('data', (chunk: Buffer) => bufferChunks.push(chunk))
     doc.on('end', () => resolve(Buffer.concat(bufferChunks)))
     doc.on('error', reject)
 
-    // Collect all footnotes as endnotes
-    const allFootnotes: string[] = []
-    let footnoteCounter = 1
+    // ---- Page-bottom footnote tracking ----
+    const PAGE_HEIGHT = 841.89 // A4
+    const MARGIN_BOTTOM = 72
+    const MARGIN_LEFT = 72
+    const CONTENT_BOTTOM = PAGE_HEIGHT - MARGIN_BOTTOM
+    const FOOTNOTE_FONT_SIZE = 8.5
+    const FOOTNOTE_LINE_GAP = 1.5
+    const FOOTNOTE_SEPARATOR_HEIGHT = 15 // space for the separator line + padding
+    const CONTENT_WIDTH = 595.28 - 72 - 72 // A4 width minus margins
 
-    // Title page
-    doc.font(fontName).fontSize(24)
+    // Per-page footnote storage
+    const pageFootnotes: Map<number, Array<{ num: number; text: string }>> = new Map()
+    // How much space is reserved for footnotes on each page (grows from bottom up)
+    const pageFootnoteSpace: Map<number, number> = new Map()
+    let globalFootnoteCounter = 1
+
+    function getCurrentPageIndex(): number {
+      const range = doc.bufferedPageRange()
+      return range.start + range.count - 1
+    }
+
+    /** Get the Y coordinate below which content should not go on current page */
+    function getContentFloor(): number {
+      const pageIdx = getCurrentPageIndex()
+      const reserved = pageFootnoteSpace.get(pageIdx) ?? 0
+      return CONTENT_BOTTOM - reserved
+    }
+
+    /** Reserve footnote space on the current page and record footnote */
+    function addPageFootnote(num: number, text: string): void {
+      const pageIdx = getCurrentPageIndex()
+      // Calculate height this footnote will need
+      doc.font(fonts.regular).fontSize(FOOTNOTE_FONT_SIZE)
+      const fnHeight = doc.heightOfString(`${num}. ${text}`, {
+        width: CONTENT_WIDTH,
+        lineGap: FOOTNOTE_LINE_GAP,
+      }) + 3 // padding between footnotes
+
+      const currentReserved = pageFootnoteSpace.get(pageIdx) ?? 0
+      const isFirstOnPage = currentReserved === 0
+      const extraHeight = isFirstOnPage ? FOOTNOTE_SEPARATOR_HEIGHT : 0
+
+      pageFootnoteSpace.set(pageIdx, currentReserved + fnHeight + extraHeight)
+
+      if (!pageFootnotes.has(pageIdx)) pageFootnotes.set(pageIdx, [])
+      pageFootnotes.get(pageIdx)!.push({ num, text })
+    }
+
+    /** Check if adding text would overflow into footnote area; if so, add page */
+    function ensureSpace(neededHeight: number): void {
+      if (doc.y + neededHeight > getContentFloor()) {
+        doc.addPage()
+      }
+    }
+
+    // ---- Title page ----
+    doc.font(fonts.bold).fontSize(24)
     doc.text(projectTitle, { align: 'center' })
     doc.addPage()
 
@@ -320,7 +482,7 @@ function buildPdf(
         currentChapter = sub.chapterTitle
         currentSection = ''
         if (doc.y > 100) doc.addPage()
-        doc.font(fontName).fontSize(18)
+        doc.font(fonts.bold).fontSize(18)
         doc.text(`Chapter ${sub.chapterNumber}: ${sub.chapterTitle}`, { align: 'left' })
         doc.moveDown(0.5)
       }
@@ -328,40 +490,62 @@ function buildPdf(
       // Section heading
       if (sub.sectionTitle !== currentSection) {
         currentSection = sub.sectionTitle
-        doc.font(fontName).fontSize(14)
+        doc.font(fonts.bold).fontSize(14)
+        ensureSpace(30)
         doc.text(sub.sectionTitle)
         doc.moveDown(0.3)
       }
 
       // Subsection heading
-      doc.font(fontName).fontSize(12)
+      doc.font(fonts.bold).fontSize(12)
+      ensureSpace(25)
       doc.text(sub.title)
       doc.moveDown(0.2)
 
       // Content
-      doc.font(fontName).fontSize(11)
       if (sub.content) {
-        // Replace [fn: ...] with superscript numbers and collect footnotes
-        const processed = sub.content.replace(
-          /\[fn:\s*([^\]]+)\]/g,
-          (_match: string, fnText: string) => {
-            const num = footnoteCounter++
-            allFootnotes.push(`${num}. ${fnText.trim()}`)
-            return `[${num}]`
-          }
-        )
+        const paragraphs = sub.content.split('\n\n').filter((p: string) => p.trim())
 
-        const paragraphs = processed.split('\n\n').filter((p: string) => p.trim())
         for (const para of paragraphs) {
-          doc.text(para.trim(), {
-            align: 'justify',
-            indent: 36,
+          // Extract footnotes from this paragraph
+          const blocks = parseContent(para)
+          let plainText = ''
+          const paraFootnotes: Array<{ pos: number; text: string; num: number }> = []
+
+          for (const block of blocks) {
+            if (block.text) plainText += block.text
+            if (block.footnote) {
+              const num = globalFootnoteCounter++
+              paraFootnotes.push({ pos: plainText.length, text: block.footnote, num })
+              plainText += `[${num}]`
+            }
+          }
+
+          // Register footnotes on this page (reserve space at bottom)
+          for (const fn of paraFootnotes) {
+            addPageFootnote(fn.num, fn.text)
+          }
+
+          // Check if paragraph fits; if not, new page
+          doc.font(fonts.regular).fontSize(11)
+          const paraHeight = doc.heightOfString(plainText.trim(), {
+            width: CONTENT_WIDTH - 36,
             lineGap: 4,
+          })
+          ensureSpace(paraHeight + 10)
+
+          // Render paragraph with italic support
+          pdfRichText(doc, plainText.trim(), { regular: fonts.regular, italic: fonts.italic }, {
+            fontSize: 11,
+            lineGap: 4,
+            indent: 36,
+            align: 'justify',
           })
           doc.moveDown(0.3)
         }
       } else {
         doc.fillColor('#999999')
+        doc.font(fonts.italic).fontSize(11)
         doc.text('[This subsection has not been written yet]')
         doc.fillColor('#000000')
       }
@@ -369,31 +553,17 @@ function buildPdf(
       doc.moveDown(0.3)
     }
 
-    // Endnotes section
-    if (allFootnotes.length > 0) {
-      doc.addPage()
-      doc.font(fontName).fontSize(18)
-      doc.text('Endnotes', { align: 'left' })
-      doc.moveDown(0.5)
-
-      doc.font(fontName).fontSize(9)
-      for (const note of allFootnotes) {
-        doc.text(note, { lineGap: 2 })
-        doc.moveDown(0.1)
-      }
-    }
-
     // Bibliography
     if (includeBibliography && bibliography.length > 0) {
       doc.addPage()
-      doc.font(fontName).fontSize(18)
+      doc.font(fonts.bold).fontSize(18)
       doc.text('Bibliography', { align: 'left' })
       doc.moveDown(0.5)
 
       const formatted = bibliography.map((entry) => formatter.formatBibliographyEntry(entry))
       const sorted = CitationFormatter.sortBibliography(formatted)
 
-      doc.font(fontName).fontSize(11)
+      doc.font(fonts.regular).fontSize(11)
       for (const item of sorted) {
         doc.text(item.entry, {
           indent: 36,
@@ -402,6 +572,44 @@ function buildPdf(
         doc.moveDown(0.2)
       }
     }
+
+    // ---- Render page-bottom footnotes (second pass via bufferPages) ----
+    pageFootnotes.forEach((notes, pageIdx) => {
+      doc.switchToPage(pageIdx)
+
+      // Calculate total footnote block height
+      doc.font(fonts.regular).fontSize(FOOTNOTE_FONT_SIZE)
+      let totalHeight = FOOTNOTE_SEPARATOR_HEIGHT
+      for (const note of notes) {
+        totalHeight += doc.heightOfString(`${note.num}. ${note.text}`, {
+          width: CONTENT_WIDTH,
+          lineGap: FOOTNOTE_LINE_GAP,
+        }) + 3
+      }
+
+      let y = CONTENT_BOTTOM - totalHeight
+
+      // Draw separator line
+      doc.save()
+      doc.strokeColor('#000000').lineWidth(0.5)
+      doc.moveTo(MARGIN_LEFT, y).lineTo(MARGIN_LEFT + 120, y).stroke()
+      doc.restore()
+      y += FOOTNOTE_SEPARATOR_HEIGHT - 5
+
+      // Render each footnote
+      doc.font(fonts.regular).fontSize(FOOTNOTE_FONT_SIZE)
+      for (const note of notes) {
+        const fnText = `${note.num}. ${note.text}`
+        doc.text(fnText, MARGIN_LEFT, y, {
+          width: CONTENT_WIDTH,
+          lineGap: FOOTNOTE_LINE_GAP,
+        })
+        y += doc.heightOfString(fnText, {
+          width: CONTENT_WIDTH,
+          lineGap: FOOTNOTE_LINE_GAP,
+        }) + 3
+      }
+    })
 
     doc.end()
   })
