@@ -269,13 +269,13 @@ interface PdfFontFamily {
 function resolvePdfFontFamily(): PdfFontFamily {
   const fs = require('fs')
 
-  // Priority 1: Bundled Noto Serif (always available, Unicode/Turkish support)
+  // Priority 1: Bundled DejaVu Serif (always available, full Unicode/Turkish support)
   const bundledDir = path.join(process.cwd(), 'public', 'fonts')
   const bundled: PdfFontFamily = {
-    regular: path.join(bundledDir, 'NotoSerif-Regular.ttf'),
-    bold: path.join(bundledDir, 'NotoSerif-Bold.ttf'),
-    italic: path.join(bundledDir, 'NotoSerif-Italic.ttf'),
-    boldItalic: path.join(bundledDir, 'NotoSerif-BoldItalic.ttf'),
+    regular: path.join(bundledDir, 'DejaVuSerif.ttf'),
+    bold: path.join(bundledDir, 'DejaVuSerif-Bold.ttf'),
+    italic: path.join(bundledDir, 'DejaVuSerif-Italic.ttf'),
+    boldItalic: path.join(bundledDir, 'DejaVuSerif-BoldItalic.ttf'),
   }
   try {
     fs.accessSync(bundled.regular)
