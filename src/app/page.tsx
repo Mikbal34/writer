@@ -23,8 +23,7 @@ import { FadeUp, FadeUpLarge, FadeIn, ScrollFadeUp, ScrollFadeIn, AnimatedBar } 
 
 const TEXTURE_URL =
   "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp";
-const HERO_URL =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/hero-landing-V9FtUjiUc3qbRwK6G95Ujs.webp";
+const HERO_URL = "/images/hero-landing.png";
 
 const BOOK_COLORS = [
   { color: "#2D5016", accent: "#4a7a2e", spine: "#1e3a0e" },
