@@ -25,10 +25,14 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
               include: {
                 subsections: {
                   orderBy: { sortOrder: 'asc' },
-                  include: {
-                    sourceMappings: {
-                      include: { bibliography: true },
-                    },
+                  select: {
+                    id: true,
+                    subsectionId: true,
+                    title: true,
+                    status: true,
+                    wordCount: true,
+                    sortOrder: true,
+                    sectionId: true,
                   },
                 },
               },
@@ -36,14 +40,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
           },
         },
         sources: {
-          include: {
-            bibliography: {
-              select: { id: true, title: true, authorSurname: true, entryType: true },
-            },
-          },
+          select: { id: true, filename: true, fileType: true, totalPages: true, processed: true },
         },
-        bibliography: {
-          orderBy: { authorSurname: 'asc' },
+        _count: {
+          select: { bibliography: true },
         },
       },
     })

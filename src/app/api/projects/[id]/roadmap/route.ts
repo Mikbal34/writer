@@ -34,10 +34,18 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
               include: {
                 subsections: {
                   orderBy: { sortOrder: 'asc' },
-                  include: {
-                    sourceMappings: {
-                      include: { bibliography: true },
-                    },
+                  select: {
+                    id: true,
+                    subsectionId: true,
+                    title: true,
+                    description: true,
+                    keyPoints: true,
+                    writingStrategy: true,
+                    estimatedPages: true,
+                    status: true,
+                    wordCount: true,
+                    sortOrder: true,
+                    sectionId: true,
                   },
                 },
               },

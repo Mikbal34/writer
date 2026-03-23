@@ -130,7 +130,7 @@ export default function SourcesPage() {
     const interval = setInterval(() => {
       fetchSources();
       fetchBibliography();
-    }, 3000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [sources, fetchSources, fetchBibliography]);
 
