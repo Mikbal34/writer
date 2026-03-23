@@ -36,7 +36,7 @@ export default function SignInPage() {
             <blockquote className="font-body text-2xl italic text-[#FAF7F0]/90 leading-relaxed mb-4">
               &ldquo;Writing a book is the most lasting mark you can leave on the world.&rdquo;
             </blockquote>
-            <p className="font-ui text-sm text-[#C9A84C]">— Quillon</p>
+            <p className="font-ui text-sm text-[#C9A84C]">— Quilpen</p>
           </FadeUpLarge>
         </div>
       </div>
@@ -46,8 +46,8 @@ export default function SignInPage() {
         <FadeRight delay={0.2} className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-8 lg:hidden">
-            <img src="/images/quillon-icon.png" alt="Quillon" className="w-8 h-8" />
-            <span className="font-display text-lg font-bold text-ink">Quillon</span>
+            <img src="/images/quilpen-icon.png" alt="Quilpen" className="w-8 h-8" />
+            <span className="font-display text-lg font-bold text-ink">Quilpen</span>
           </div>
 
           {/* Card */}
@@ -65,7 +65,7 @@ export default function SignInPage() {
 
             {/* Icon */}
             <div className="flex justify-center mb-5">
-              <img src="/images/quillon-logo-monogram.png" alt="Quillon" className="h-14 w-14" />
+              <img src="/images/quilpen-logo-monogram.png" alt="Quilpen" className="h-14 w-14" />
             </div>
 
             <h1 className="font-display text-3xl font-bold text-ink mb-2 text-center">

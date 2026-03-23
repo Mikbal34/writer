@@ -431,7 +431,7 @@ export default function RoadmapChat({
      )}
      {!isLoadingHistory && messages.length === 0 && (
       <div className="text-center py-12 text-muted-foreground">
-       <img src="/images/quillon-icon.png" alt="Quillon" className="h-12 w-12 mx-auto mb-3 opacity-60 rounded-lg" />
+       <img src="/images/quilpen-icon.png" alt="Quilpen" className="h-12 w-12 mx-auto mb-3 opacity-60 rounded-lg" />
        <p className="font-body text-sm">Send a message to make changes to the roadmap.</p>
        <p className="font-body text-xs mt-1 opacity-70">
         Example: &quot;Change the writing strategy of 1.1.1&quot;
@@ -444,7 +444,7 @@ export default function RoadmapChat({
         {msg.role === "user" ? (
          <User className="h-7 w-7 shrink-0 text-[#8a7a65]" />
         ) : (
-         <img src="/images/quillon-icon.png" alt="Q" className="h-7 w-7 shrink-0 rounded-lg" />
+         <img src="/images/quilpen-icon.png" alt="Q" className="h-7 w-7 shrink-0 rounded-lg" />
         )}
         <div className="flex-1 min-w-0">
          <div className="font-body text-sm prose-chat break-words">

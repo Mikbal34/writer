@@ -44,7 +44,7 @@ function Navbar() {
     <nav className="bg-[#1A0F05]/95 backdrop-blur-md border-b border-[#C9A84C]/20 sticky top-0 z-20">
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
-          <img src="/images/quillon-logo-horizontal.png" alt="Quillon" className="h-20 animate-logo-in" style={{ filter: "brightness(0) invert(1)" }} />
+          <img src="/images/quilpen-logo-horizontal.png" alt="Quilpen" className="h-20 animate-logo-in" style={{ filter: "brightness(0) invert(1)" }} />
         </Link>
 
         <div className="flex items-center gap-3">

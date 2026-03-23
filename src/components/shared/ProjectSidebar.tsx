@@ -110,7 +110,7 @@ export default function ProjectSidebar({
           </span>
         </Link>
         <div className="mt-3 flex items-center gap-2.5">
-          <img src="/images/quillon-icon.png" alt="Quillon" className="w-9 h-9 rounded-lg" />
+          <img src="/images/quilpen-icon.png" alt="Quilpen" className="w-9 h-9 rounded-lg" />
           <div>
             <p className="font-display text-sm font-semibold text-ink leading-tight line-clamp-2">
               {projectTitle}

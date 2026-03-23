@@ -24,11 +24,11 @@ const sourceSans = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: "Quillon — Forge Your Words",
+  title: "Quilpen — Forge Your Words",
   description:
-    "Quillon is an AI-powered book writing assistant. Plan, research, write, and export your book.",
+    "Quilpen is an AI-powered book writing assistant. Plan, research, write, and export your book.",
   icons: {
-    icon: "/images/quillon-icon.png",
+    icon: "/images/quilpen-icon.png",
   },
 };
 
