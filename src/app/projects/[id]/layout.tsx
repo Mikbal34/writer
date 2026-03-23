@@ -29,18 +29,11 @@ export default async function ProjectLayout({
       id,
       userId: session.user.id as string,
     },
-    include: {
-      chapters: {
-        include: {
-          sections: {
-            include: {
-              subsections: {
-                select: { status: true, wordCount: true },
-              },
-            },
-          },
-        },
-      },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      projectType: true,
     },
   });
 
@@ -48,16 +41,17 @@ export default async function ProjectLayout({
     notFound();
   }
 
-  const allSubsections = project.chapters.flatMap((c) =>
-    c.sections.flatMap((s) => s.subsections)
-  );
-  const completedSubsections = allSubsections.filter(
-    (s) => s.status === "completed"
-  ).length;
+  // Lightweight aggregate instead of fetching all chapters/sections/subsections
+  const [totalCount, completedCount] = await Promise.all([
+    prisma.subsection.count({
+      where: { section: { chapter: { projectId: id } } },
+    }),
+    prisma.subsection.count({
+      where: { section: { chapter: { projectId: id } }, status: "completed" },
+    }),
+  ]);
   const completionPct =
-    allSubsections.length > 0
-      ? Math.round((completedSubsections / allSubsections.length) * 100)
-      : 0;
+    totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   return (
     <div
@@ -65,7 +59,7 @@ export default async function ProjectLayout({
       style={{
         backgroundImage: `url(${TEXTURE_URL})`,
         backgroundSize: "cover",
-        backgroundAttachment: "fixed",
+        backgroundAttachment: "scroll",
       }}
     >
       <div className="flex-1 flex items-start justify-center p-4 md:p-6 lg:p-8">

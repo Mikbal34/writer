@@ -139,13 +139,17 @@ export function AnimatedBar({
   );
 }
 
-/** Staggered list item */
+/** Staggered list item — capped at 8 items to avoid animation queue buildup */
 export function StaggerItem({ children, className, index, baseDelay = 0.1, stagger = 0.08, ...props }: AnimateProps & { index: number; baseDelay?: number; stagger?: number }) {
+  // Skip animation for items beyond index 8 — render instantly
+  if (index > 8) {
+    return <div className={className}>{children}</div>;
+  }
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: baseDelay + index * stagger, duration: 0.4 }}
+      transition={{ delay: baseDelay + index * stagger, duration: 0.3 }}
       className={className}
       {...props}
     >
