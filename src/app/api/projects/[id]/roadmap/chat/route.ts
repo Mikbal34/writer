@@ -889,9 +889,11 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             )
           )
 
-          // Persist chat messages to DB
+          // Persist chat messages to DB — strip completed AND partial command tags
           const strippedContent = result.fullText
             .replace(/<roadmap_commands>[\s\S]*?<\/roadmap_commands>/g, '')
+            .replace(/<roadmap_commands>[\s\S]*$/g, '')
+            .replace(/<roadmap_c[^>]*$/g, '')
             .trim()
           try {
             await prisma.roadmapChatMessage.createMany({

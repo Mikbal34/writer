@@ -29,8 +29,18 @@ interface StyleChatProps {
 }
 
 function stripStyleTags(text: string): string {
+  // Remove completed tags
   let result = text.replace(/<style_profile>[\s\S]*?<\/style_profile>/g, "");
-  result = result.replace(/<style_profile>[\s\S]*$/g, "");
+  // Remove open but unclosed tag (streaming in progress)
+  const openTagIndex = result.indexOf("<style_profile>");
+  if (openTagIndex !== -1) {
+    result = result.slice(0, openTagIndex);
+  }
+  // Catch partial opening tags being streamed char by char (e.g. "<style_p")
+  const partialMatch = result.match(/<style_p[^>]*$/);
+  if (partialMatch && partialMatch.index !== undefined) {
+    result = result.slice(0, partialMatch.index);
+  }
   return result.trim();
 }
 
