@@ -1,7 +1,7 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import Link from "next/link";
+
 import { ArrowRight } from "lucide-react";
 import { FadeUpLarge, FadeRight } from "@/components/shared/Animations";
 
@@ -29,12 +29,7 @@ export default function SignInPage() {
         <div className="absolute inset-0 bg-gradient-to-r from-[#1a0f05]/20 to-[#1a0f05]/60" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#1a0f05]/70 via-transparent to-transparent" />
 
-        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 w-fit">
-            <img src="/images/quillon-logo-horizontal.png" alt="Quillon" className="h-12 brightness-0 invert" />
-          </Link>
-
+        <div className="relative z-10 flex flex-col justify-end p-12 w-full">
           {/* Bottom quote */}
           <FadeUpLarge delay={0.5}>
             <div className="h-px w-12 bg-[#C9A84C] mb-6" />

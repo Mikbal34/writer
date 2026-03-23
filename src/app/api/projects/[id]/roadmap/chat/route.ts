@@ -251,10 +251,19 @@ async function handleToolCallFn(
 // ---------------------------------------------------------------------------
 // System prompt — creation mode vs modification mode
 // ---------------------------------------------------------------------------
+export type SourceDensity = 'low' | 'normal' | 'high'
+
+const SOURCE_DENSITY_INSTRUCTIONS: Record<SourceDensity, string> = {
+  low: 'Add at most 1 source per subsection. Only use the most essential primary source for each subsection.',
+  normal: 'Add 2-3 sources per subsection. Balance between primary and supporting sources.',
+  high: 'Add 4-5 sources per subsection. Include both classical and modern sources, primary and supporting.',
+}
+
 function buildSystemPrompt(
   roadmapIndex: ReturnType<typeof buildRoadmapIndex> | null,
   project: { title: string; topic: string | null; purpose: string | null; audience: string | null; language: string | null; citationFormat: string | null },
-  conversationSummary?: string | null
+  conversationSummary?: string | null,
+  sourceDensity?: SourceDensity
 ): SystemPromptPart[] {
   const isCreationMode = !roadmapIndex || roadmapIndex.length === 0
 
@@ -321,6 +330,8 @@ Your tasks:
    - Do they prefer a specific academic tradition or school of thought?
 4. After gathering source information (or if the user says "you decide"), use get_library_entries to check available sources, then create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section).
 5. When creating the roadmap, add sources to EVERY subsection (using add_source commands). Use sources from the library first; suggest your own for any gaps.
+
+SOURCE DENSITY: ${SOURCE_DENSITY_INSTRUCTIONS[sourceDensity ?? 'normal']}
 6. Use update_project command to update project information.
 
 PAGE ESTIMATION RULES:
@@ -755,6 +766,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const body = await req.json()
     const messages = (body.messages ?? []) as ChatMessage[]
     const sessionId = (body.sessionId ?? '') as string
+    const sourceDensity = (body.sourceDensity ?? 'normal') as SourceDensity
     const userContent = messages.length > 0 ? messages[messages.length - 1].content : ''
 
     // Fetch current roadmap structure with source data
@@ -800,10 +812,13 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const { messages: compressedMessages, summary: conversationSummary } =
       await compressHistory(messages)
 
-    const systemPrompt = buildSystemPrompt(roadmapIndex, project, conversationSummary)
+    const systemPrompt = buildSystemPrompt(roadmapIndex, project, conversationSummary, sourceDensity)
 
-    // Credit check
-    const credits = await checkCredits(session.user.id, 'roadmap_chat')
+    // Credit check — use density-aware cost for creation mode
+    const creditOperation = isCreationMode
+      ? `roadmap_chat_create_${sourceDensity}`
+      : 'roadmap_chat'
+    const credits = await checkCredits(session.user.id, creditOperation)
     if (!credits.allowed) {
       return new Response(
         JSON.stringify({ error: 'Insufficient credits', balance: credits.balance, cost: credits.estimatedCost }),

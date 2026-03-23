@@ -50,7 +50,7 @@ model User {
   libraryEntries LibraryEntry[]
   libraryTags    LibraryTag[]
   zoteroConnection ZoteroConnection?
-  creditBalance       Int                 @default(500)
+  creditBalance       Int                 @default(1500)
   creditTransactions  CreditTransaction[]
   styleProfiles       UserStyleProfile[]
   createdAt     DateTime  @default(now())

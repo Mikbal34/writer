@@ -535,10 +535,10 @@ const PRICING_PLANS = [
     name: "Free",
     tagline: "Try it out",
     price: 0,
-    credits: 500,
+    credits: 1500,
     popular: false,
     features: [
-      "~10 pages of AI writing",
+      "Full roadmap + ~4-8 sections of writing",
       "Full roadmap planning",
       "Source library access",
       "DOCX & PDF export",

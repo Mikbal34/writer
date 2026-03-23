@@ -172,7 +172,7 @@ export default function RoadmapPage() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="chat" className="flex-1 min-h-0 mt-0">
-            <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} />
+            <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} hasRoadmap={chapters.length > 0} />
           </TabsContent>
           <TabsContent value="roadmap" className="flex-1 min-h-0 overflow-y-auto mt-0">
             {roadmapContent}
@@ -190,7 +190,7 @@ export default function RoadmapPage() {
         defaultLayout={{ chat: 40, roadmap: 60 }}
       >
         <Panel id="chat" minSize="20%" maxSize="60%">
-          <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} />
+          <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} hasRoadmap={chapters.length > 0} />
         </Panel>
         <PanelResizeHandle
           style={{ width: 6, flexShrink: 0 }}
