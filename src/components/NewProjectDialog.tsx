@@ -222,7 +222,11 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
                 <Label>Writing Style Profile</Label>
                 <Select value={styleProfileId} onValueChange={(v) => v && setStyleProfileId(v)}>
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue placeholder="No style profile">
+                      {styleProfileId === "none"
+                        ? "No style profile"
+                        : styleProfiles.find((p) => p.id === styleProfileId)?.name ?? styleProfileId}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No style profile</SelectItem>
