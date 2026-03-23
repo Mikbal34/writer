@@ -104,7 +104,8 @@ export default function RoadmapChat({
  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
  // Show source density selector only in creation mode for academic projects
- const isCreationMode = !hasRoadmap && messages.length === 0;
+ // Wait for history to load before deciding — prevents flash on existing projects
+ const isCreationMode = !isLoadingHistory && !hasRoadmap && messages.length === 0;
  const showDensitySelector = isCreationMode && needsSources;
 
  // Fetch credit balance for density warning
