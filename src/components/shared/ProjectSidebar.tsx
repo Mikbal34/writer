@@ -14,7 +14,6 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import CreditBalance from "@/components/shared/CreditBalance";
 
@@ -147,8 +146,7 @@ export default function ProjectSidebar({
                 )}
               >
                 {isActive && (
-                  <motion.div
-                    layoutId="navIndicator"
+                  <div
                     className="absolute left-0 top-0 bottom-0 w-[2px] bg-forest hidden lg:block"
                   />
                 )}
