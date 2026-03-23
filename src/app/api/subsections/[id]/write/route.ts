@@ -220,6 +220,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
                 project: {
                   select: {
                     id: true,
+                    projectType: true,
                     citationFormat: true,
                     styleProfile: true,
                     writingGuidelines: true,
@@ -277,9 +278,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     }
 
     // ------------------------------------------------------------------
-    // 3. Build source mapping info
+    // 3. Build source mapping info (skip for non-academic)
     // ------------------------------------------------------------------
-    const sources: SourceMappingInfo[] = subsection.sourceMappings.map((sm) => ({
+    const needsSources = project.projectType === 'ACADEMIC'
+    const sources: SourceMappingInfo[] = !needsSources ? [] : subsection.sourceMappings.map((sm) => ({
       bibliographyId: sm.bibliographyId,
       authorSurname: sm.bibliography.authorSurname,
       authorName: sm.bibliography.authorName,
@@ -297,9 +299,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     }))
 
     // ------------------------------------------------------------------
-    // 4. RAG chunk retrieval
+    // 4. RAG chunk retrieval (skip for non-academic)
     // ------------------------------------------------------------------
-    const ragChunks = await fetchRagChunks(project.id, subsection)
+    const ragChunks = needsSources ? await fetchRagChunks(project.id, subsection) : []
 
     // ------------------------------------------------------------------
     // 5. Assemble writing context

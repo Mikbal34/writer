@@ -24,6 +24,7 @@ export default function RoadmapPage() {
   const projectId = params.id as string;
 
   const [chapters, setChapters] = useState<ChapterWithSections[]>([]);
+  const [projectType, setProjectType] = useState<string>("ACADEMIC");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +48,7 @@ export default function RoadmapPage() {
       if (!res.ok) throw new Error("Failed to load roadmap");
       const data = await res.json();
       setChapters(data.chapters ?? []);
+      if (data.projectType) setProjectType(data.projectType);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load roadmap");
     } finally {
@@ -172,7 +174,7 @@ export default function RoadmapPage() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="chat" className="flex-1 min-h-0 mt-0">
-            <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} hasRoadmap={chapters.length > 0} />
+            <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} hasRoadmap={chapters.length > 0} projectType={projectType} />
           </TabsContent>
           <TabsContent value="roadmap" className="flex-1 min-h-0 overflow-y-auto mt-0">
             {roadmapContent}
@@ -190,7 +192,7 @@ export default function RoadmapPage() {
         defaultLayout={{ chat: 40, roadmap: 60 }}
       >
         <Panel id="chat" minSize="20%" maxSize="60%">
-          <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} hasRoadmap={chapters.length > 0} />
+          <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} hasRoadmap={chapters.length > 0} projectType={projectType} />
         </Panel>
         <PanelResizeHandle
           style={{ width: 6, flexShrink: 0 }}

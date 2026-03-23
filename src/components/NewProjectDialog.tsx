@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Loader2, BookOpen } from "lucide-react";
+import { Plus, Loader2, BookOpen, GraduationCap, BookText, Feather } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +23,14 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
+type ProjectType = "ACADEMIC" | "BOOK" | "STORY";
 type CitationFormat = "ISNAD" | "APA" | "CHICAGO" | "MLA" | "HARVARD" | "VANCOUVER" | "IEEE" | "AMA" | "TURABIAN";
+
+const PROJECT_TYPES: { value: ProjectType; label: string; desc: string; icon: typeof GraduationCap }[] = [
+  { value: "ACADEMIC", label: "Academic", desc: "Research, thesis, articles with sources", icon: GraduationCap },
+  { value: "BOOK", label: "Book", desc: "Non-fiction, essays, guides", icon: BookText },
+  { value: "STORY", label: "Story", desc: "Fiction, novels, tales", icon: Feather },
+];
 
 const LANGUAGES = [
   { value: "en", label: "English" },
@@ -71,6 +78,7 @@ interface StyleProfileOption {
 export default function NewProjectDialog({ variant = "default" }: NewProjectDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [projectType, setProjectType] = useState<ProjectType>("ACADEMIC");
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState("en");
   const [citationFormat, setCitationFormat] = useState<CitationFormat>("ISNAD");
@@ -89,7 +97,10 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
       .catch(() => setStyleProfiles([]));
   }, [open]);
 
+  const needsSources = projectType === "ACADEMIC";
+
   function resetForm() {
+    setProjectType("ACADEMIC");
     setTitle("");
     setLanguage("en");
     setCitationFormat("ISNAD");
@@ -110,7 +121,8 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
         body: JSON.stringify({
           title: title.trim(),
           language,
-          citationFormat,
+          projectType,
+          ...(needsSources && { citationFormat }),
           ...(styleProfileId !== "none" && { styleProfileId }),
         }),
       });
@@ -169,8 +181,34 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {/* Project Type */}
             <div className="space-y-2">
-              <Label htmlFor="book-title">Book Title *</Label>
+              <Label>Project Type</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {PROJECT_TYPES.map((pt) => {
+                  const Icon = pt.icon;
+                  return (
+                    <button
+                      key={pt.value}
+                      type="button"
+                      onClick={() => setProjectType(pt.value)}
+                      className={`rounded-md border px-3 py-2.5 text-left transition-colors ${
+                        projectType === pt.value
+                          ? "border-foreground/30 bg-muted shadow-sm"
+                          : "border-border hover:bg-muted/50"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4 mb-1 text-muted-foreground" />
+                      <span className="font-ui text-xs font-medium block">{pt.label}</span>
+                      <span className="font-body text-[10px] text-muted-foreground block">{pt.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="book-title">Title *</Label>
               <Input
                 id="book-title"
                 value={title}
@@ -183,7 +221,7 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className={`grid ${needsSources ? "grid-cols-2" : "grid-cols-1"} gap-4`}>
               <div className="space-y-2">
                 <Label>Language</Label>
                 <Select value={language} onValueChange={(v) => v && setLanguage(v)}>
@@ -200,21 +238,23 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label>Citation Format</Label>
-                <Select value={citationFormat} onValueChange={(v) => v && setCitationFormat(v as CitationFormat)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CITATION_FORMATS.map((fmt) => (
-                      <SelectItem key={fmt.value} value={fmt.value}>
-                        {fmt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {needsSources && (
+                <div className="space-y-2">
+                  <Label>Citation Format</Label>
+                  <Select value={citationFormat} onValueChange={(v) => v && setCitationFormat(v as CitationFormat)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CITATION_FORMATS.map((fmt) => (
+                        <SelectItem key={fmt.value} value={fmt.value}>
+                          {fmt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             {styleProfiles.length > 0 && (

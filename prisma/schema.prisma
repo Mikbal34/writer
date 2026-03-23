@@ -105,6 +105,12 @@ enum ProjectStatus {
   completed
 }
 
+enum ProjectType {
+  ACADEMIC
+  BOOK
+  STORY
+}
+
 enum CitationFormat {
   ISNAD
   APA
@@ -126,6 +132,7 @@ model Project {
   purpose          String?        @db.Text
   audience         String?
   language         String         @default("en")
+  projectType      ProjectType    @default(ACADEMIC)
   citationFormat   CitationFormat @default(ISNAD)
   styleProfile     Json?
   writingGuidelines Json?

@@ -36,6 +36,7 @@ interface RoadmapChatProps {
  projectId: string;
  onRoadmapUpdate: () => void;
  hasRoadmap?: boolean;
+ projectType?: string;
  className?: string;
 }
 
@@ -85,8 +86,10 @@ export default function RoadmapChat({
  projectId,
  onRoadmapUpdate,
  hasRoadmap = false,
+ projectType = "ACADEMIC",
  className,
 }: RoadmapChatProps) {
+ const needsSources = projectType === "ACADEMIC";
  const [messages, setMessages] = useState<Message[]>([]);
  const [sessions, setSessions] = useState<ChatSession[]>([]);
  const [input, setInput] = useState("");
@@ -100,17 +103,18 @@ export default function RoadmapChat({
  const scrollRef = useRef<HTMLDivElement>(null);
  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
- // Show source density selector only in creation mode (no roadmap yet)
+ // Show source density selector only in creation mode for academic projects
  const isCreationMode = !hasRoadmap && messages.length === 0;
+ const showDensitySelector = isCreationMode && needsSources;
 
  // Fetch credit balance for density warning
  useEffect(() => {
-  if (!isCreationMode) return;
+  if (!showDensitySelector) return;
   fetch("/api/credits")
    .then((r) => r.ok ? r.json() : null)
    .then((d) => d && setCreditBalance(d.balance))
    .catch(() => {});
- }, [isCreationMode]);
+ }, [showDensitySelector]);
 
  const selectedDensityCredits = { low: 600, normal: 1000, high: 1400 }[sourceDensity];
  const remainingAfterRoadmap = creditBalance != null ? creditBalance - selectedDensityCredits : null;
@@ -471,8 +475,8 @@ export default function RoadmapChat({
     </div>
    </ScrollArea>
 
-   {/* Source density selector — shown only in creation mode */}
-   {isCreationMode && (
+   {/* Source density selector — shown only in creation mode for academic projects */}
+   {showDensitySelector && (
     <div className="border-t px-4 py-2.5 shrink-0 bg-muted/30">
      <div className="flex items-center gap-2 mb-2">
       <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />

@@ -83,6 +83,7 @@ export default async function ProjectLayout({
                 projectId={project.id}
                 projectTitle={project.title}
                 projectStatus={project.status}
+                projectType={project.projectType}
                 completionPct={completionPct}
               />
               <main className="flex-1 flex flex-col overflow-y-auto min-h-0">

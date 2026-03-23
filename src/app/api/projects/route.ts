@@ -3,6 +3,7 @@ import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
 type CitationFormat = 'ISNAD' | 'APA' | 'CHICAGO' | 'MLA' | 'HARVARD' | 'VANCOUVER' | 'IEEE' | 'AMA' | 'TURABIAN'
+type ProjectType = 'ACADEMIC' | 'BOOK' | 'STORY'
 
 // GET /api/projects
 // Returns all projects belonging to the authenticated user, with chapter count
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
       audience,
       citationFormat,
       language,
+      projectType,
       styleProfileId,
     } = body as {
       title: string
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
       audience?: string
       citationFormat?: CitationFormat
       language?: string
+      projectType?: ProjectType
       styleProfileId?: string
     }
 
@@ -82,6 +85,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const validTypes: ProjectType[] = ['ACADEMIC', 'BOOK', 'STORY']
+    const resolvedType = projectType && validTypes.includes(projectType) ? projectType : 'ACADEMIC'
+
     const project = await prisma.project.create({
       data: {
         userId,
@@ -90,7 +96,8 @@ export async function POST(req: NextRequest) {
         topic: topic ?? null,
         purpose: purpose ?? null,
         audience: audience ?? null,
-        citationFormat: citationFormat ?? 'ISNAD',
+        projectType: resolvedType,
+        citationFormat: resolvedType === 'ACADEMIC' ? (citationFormat ?? 'ISNAD') : 'ISNAD',
         language: language ?? 'en',
         status: 'roadmap',
         ...(styleProfile && { styleProfile }),

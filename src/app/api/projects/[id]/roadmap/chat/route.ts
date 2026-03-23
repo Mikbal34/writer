@@ -96,9 +96,11 @@ function buildRoadmapIndex(chapters: ChapterInput[]) {
 // ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
-function buildTools(isCreationMode: boolean): ToolDefinition[] {
-  const tools: ToolDefinition[] = [
-    {
+function buildTools(isCreationMode: boolean, needsSources: boolean): ToolDefinition[] {
+  const tools: ToolDefinition[] = []
+
+  if (needsSources) {
+    tools.push({
       name: 'get_library_entries',
       description: 'Search the user\'s source library. Use this to find existing sources before suggesting new ones. Call without query to list recent entries.',
       input_schema: {
@@ -109,13 +111,13 @@ function buildTools(isCreationMode: boolean): ToolDefinition[] {
         },
         required: [],
       },
-    },
-  ]
+    })
+  }
 
   if (!isCreationMode) {
     tools.push({
       name: 'get_chapter_detail',
-      description: 'Get full details of a specific chapter including all sections, subsections, and their source mappings. Use the chapter dbId from the roadmap index.',
+      description: `Get full details of a specific chapter including all sections, subsections${needsSources ? ', and their source mappings' : ''}. Use the chapter dbId from the roadmap index.`,
       input_schema: {
         type: 'object' as const,
         properties: {
@@ -261,13 +263,25 @@ const SOURCE_DENSITY_INSTRUCTIONS: Record<SourceDensity, string> = {
 
 function buildSystemPrompt(
   roadmapIndex: ReturnType<typeof buildRoadmapIndex> | null,
-  project: { title: string; topic: string | null; purpose: string | null; audience: string | null; language: string | null; citationFormat: string | null },
+  project: { title: string; topic: string | null; purpose: string | null; audience: string | null; language: string | null; citationFormat: string | null; projectType: string },
   conversationSummary?: string | null,
   sourceDensity?: SourceDensity
 ): SystemPromptPart[] {
+  const needsSources = project.projectType === 'ACADEMIC'
   const isCreationMode = !roadmapIndex || roadmapIndex.length === 0
 
   // --- STATIC PART (cacheable — same across all requests) ---
+  const sourceCommandDocs = needsSources ? `
+- {"action": "update_source", "sourceMappingDbId": "...", "fields": {"howToUse?": "...", "whereToFind?": "...", "extractionGuide?": "...", "relevance?": "...", "priority?": "primary|supporting"}}
+- {"action": "add_source", "subsectionDbId": "...", "source": {"author": "Surname, Name", "work": "Work Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}}
+- {"action": "remove_source", "sourceMappingDbId": "..."}` : ''
+
+  const sourceRules = needsSources ? `
+
+SOURCE RULES:
+- In add_source commands, ALL of the following fields MUST be filled, none can be left empty: relevance, howToUse, whereToFind, extractionGuide. If information is missing, write your best estimate.
+- When adding sources, PREFER sources from the user's library first. Use get_library_entries tool to search the library before suggesting your own sources.` : ''
+
   const commandDocs = `
 Available commands:
 - {"action": "update_subsection", "subsectionDbId": "...", "fields": {"title?": "...", "description?": "...", "whatToWrite?": "...", "keyPoints?": [...], "writingStrategy?": "...", "estimatedPages?": N}}
@@ -279,15 +293,15 @@ Available commands:
 - {"action": "update_chapter", "chapterDbId": "...", "fields": {"title?": "...", "purpose?": "...", "estimatedPages?": N}}
 - {"action": "add_chapter", "chapter": {"number": N, "title": "...", "purpose": "...", "estimatedPages": N}, "tempId": "__temp_ch_1", "sections": [{"sectionId": "1.1", "title": "...", "keyConcepts": [...], "tempId": "__temp_sec_1_1", "subsections": [{"subsectionId": "1.1.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N}]}]}
 - {"action": "remove_chapter", "chapterDbId": "..."}
-- {"action": "move_section", "sectionDbId": "...", "targetChapterDbId": "..."}
-- {"action": "update_source", "sourceMappingDbId": "...", "fields": {"howToUse?": "...", "whereToFind?": "...", "extractionGuide?": "...", "relevance?": "...", "priority?": "primary|supporting"}}
-- {"action": "add_source", "subsectionDbId": "...", "source": {"author": "Surname, Name", "work": "Work Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}}
-- {"action": "remove_source", "sourceMappingDbId": "..."}
-- {"action": "update_project", "fields": {"topic?": "...", "purpose?": "...", "audience?": "..."}}
+- {"action": "move_section", "sectionDbId": "...", "targetChapterDbId": "..."}${sourceCommandDocs}
+- {"action": "update_project", "fields": {"topic?": "...", "purpose?": "...", "audience?": "..."}}${sourceRules}`
 
-SOURCE RULES:
-- In add_source commands, ALL of the following fields MUST be filled, none can be left empty: relevance, howToUse, whereToFind, extractionGuide. If information is missing, write your best estimate.
-- When adding sources, PREFER sources from the user's library first. Use get_library_entries tool to search the library before suggesting your own sources.`
+  const toolsSection = needsSources
+    ? `TOOLS:
+- Use get_library_entries to search the user's source library before adding sources. Always check the library first.
+${isCreationMode ? '' : '- Use get_chapter_detail to retrieve full details of a specific chapter when you need to modify it. Only fetch chapters you need.\n'}`
+    : isCreationMode ? '' : `TOOLS:
+- Use get_chapter_detail to retrieve full details of a specific chapter when you need to modify it. Only fetch chapters you need.\n`
 
   const commonRules = `RULES:
 1. First, briefly and clearly explain what you will do (in the project's language).
@@ -306,23 +320,17 @@ ${commandDocs}
 IMPORTANT:
 - If the user is just asking questions or requesting information, do not add commands.
 - If multiple changes are requested, combine them all in a single commands array.
-- When adding sources, use author format "Surname, Name".
-
-TOOLS:
-- Use get_library_entries to search the user's source library before adding sources. Always check the library first.
-${isCreationMode ? '' : '- Use get_chapter_detail to retrieve full details of a specific chapter when you need to modify it. Only fetch chapters you need.\n'}
+${needsSources ? '- When adding sources, use author format "Surname, Name".\n' : ''}
+${toolsSection}
 FORMAT RULES:
 - NEVER use emoji. Never. Not in headings, text, or lists.
-- Use markdown formatting for lists, tables, and structural information (tables, headings, bullet points).
-- Use markdown tables for source lists and comparisons (| heading | heading | format).`
+- Use markdown formatting for lists, tables, and structural information (tables, headings, bullet points).${needsSources ? '\n- Use markdown tables for source lists and comparisons (| heading | heading | format).' : ''}`
+
+  const projectTypeLabel = project.projectType === 'STORY' ? 'story/fiction' : project.projectType === 'BOOK' ? 'book' : 'academic book'
 
   let staticPart: string
   if (isCreationMode) {
-    staticPart = `You are an academic book planning assistant. The user has created a new book project with no roadmap yet.
-
-Your tasks:
-1. If topic, purpose, or target audience are not specified, ask the user questions about the book.
-2. Ask the user about desired book length (total pages). This is important for distributing content proportionally.
+    const sourceSteps = needsSources ? `
 3. After gathering enough information about the book's content and structure, BEFORE creating the roadmap, ask the user about sources:
    - Do they have specific sources (books, articles, authors) they plan to use?
    - What are their source preferences? (classical vs modern, primary vs secondary)
@@ -332,10 +340,19 @@ Your tasks:
 5. When creating the roadmap, add sources to EVERY subsection (using add_source commands). Use sources from the library first; suggest your own for any gaps.
 
 SOURCE DENSITY: ${SOURCE_DENSITY_INSTRUCTIONS[sourceDensity ?? 'normal']}
-6. Use update_project command to update project information.
+6. Use update_project command to update project information.` : `
+3. After gathering enough information, create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section). Do NOT add any sources.
+4. Use update_project command to update project information.`
+
+    staticPart = `You are a ${projectTypeLabel} planning assistant. The user has created a new project with no roadmap yet.
+
+Your tasks:
+1. If topic, purpose, or target audience are not specified, ask the user questions about the ${projectTypeLabel}.
+2. Ask the user about desired length (total pages). This is important for distributing content proportionally.
+${sourceSteps}
 
 PAGE ESTIMATION RULES:
-- 1 academic page = approximately ${getFormatSettings(project.citationFormat).wordsPerPage} words (based on ${project.citationFormat ?? 'ISNAD'} format settings).
+- 1 page = approximately ${getFormatSettings(project.citationFormat).wordsPerPage} words.
 - Distribute the user's target page count proportionally across chapters and subsections.
 - Each subsection should typically be 2-5 pages.
 - The total of all subsection estimatedPages should roughly equal the user's target page count.
@@ -343,7 +360,7 @@ PAGE ESTIMATION RULES:
 
 ${commonRules}`
   } else {
-    staticPart = `You are an academic book planning assistant. The user wants to make changes to the existing roadmap.
+    staticPart = `You are a ${projectTypeLabel} planning assistant. The user wants to make changes to the existing roadmap.
 
 Your task: Understand the user's request, use get_chapter_detail to fetch the relevant chapter(s), then generate the commands to apply the changes.
 
@@ -753,7 +770,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
-      select: { id: true, title: true, topic: true, purpose: true, audience: true, language: true, citationFormat: true },
+      select: { id: true, title: true, topic: true, purpose: true, audience: true, language: true, citationFormat: true, projectType: true },
     })
 
     if (!project) {
@@ -805,8 +822,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     })
 
     const isCreationMode = chapters.length === 0
+    const needsSources = project.projectType === 'ACADEMIC'
     const roadmapIndex = isCreationMode ? null : buildRoadmapIndex(chapters)
-    const tools = buildTools(isCreationMode)
+    const tools = buildTools(isCreationMode, needsSources)
 
     // Compress conversation history if too long
     const { messages: compressedMessages, summary: conversationSummary } =
@@ -816,7 +834,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     // Credit check — use density-aware cost for creation mode
     const creditOperation = isCreationMode
-      ? `roadmap_chat_create_${sourceDensity}`
+      ? (needsSources ? `roadmap_chat_create_${sourceDensity}` : 'roadmap_chat_create_no_sources')
       : 'roadmap_chat'
     const credits = await checkCredits(session.user.id, creditOperation)
     if (!credits.allowed) {

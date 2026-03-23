@@ -30,6 +30,7 @@ interface ProjectSidebarProps {
   projectId: string;
   projectTitle: string;
   projectStatus: string;
+  projectType?: string;
   completionPct?: number;
 }
 
@@ -51,12 +52,14 @@ export default function ProjectSidebar({
   projectId,
   projectTitle,
   projectStatus,
+  projectType = "ACADEMIC",
   completionPct = 0,
 }: ProjectSidebarProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const needsSources = projectType === "ACADEMIC";
 
-  const navItems: NavItem[] = [
+  const allNavItems: NavItem[] = [
     {
       label: "Dashboard",
       href: `/projects/${projectId}`,
@@ -89,6 +92,10 @@ export default function ProjectSidebar({
       statusKey: "completed",
     },
   ];
+
+  const navItems = needsSources
+    ? allNavItems
+    : allNavItems.filter((item) => item.statusKey !== "sources");
 
   const sidebarContent = (
     <div className="flex flex-col h-full">

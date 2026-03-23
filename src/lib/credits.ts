@@ -27,6 +27,7 @@ export const ESTIMATED_COSTS: Record<string, number> = {
   roadmap_chat_create_low: 600,
   roadmap_chat_create_normal: 1000,
   roadmap_chat_create_high: 1400,
+  roadmap_chat_create_no_sources: 400,
   style_analyze: 5,
   style_interview: 5,
   bibliography_enrich: 3,

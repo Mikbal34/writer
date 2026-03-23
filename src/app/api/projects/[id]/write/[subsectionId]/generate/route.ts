@@ -91,7 +91,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
     // Verify project ownership
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
-      select: { id: true },
+      select: { id: true, projectType: true },
     })
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
@@ -112,8 +112,9 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
     const writingCtx = await buildSessionContext(subsectionId)
     const { systemPromptParts, userPrompt } = getWritingPrompt(writingCtx)
 
-    // RAG chunks
-    const ragChunks = await fetchRagChunks(projectId, subsection)
+    // RAG chunks — skip for non-academic projects
+    const needsSources = project.projectType === 'ACADEMIC'
+    const ragChunks = needsSources ? await fetchRagChunks(projectId, subsection) : []
     const ragBlock =
       ragChunks.length > 0
         ? `\n\nRELEVANT SOURCE EXCERPTS:\n${ragChunks
