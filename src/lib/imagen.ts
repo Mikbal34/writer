@@ -11,7 +11,7 @@ export interface GenerateImageOptions {
 }
 
 export interface GeneratedImage {
-  imageData: Buffer
+  imageData: Uint8Array
   mimeType: string
 }
 
@@ -35,7 +35,7 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
   }
 
   return response.generatedImages.map((img) => ({
-    imageData: Buffer.from(img.image!.imageBytes as string, 'base64'),
+    imageData: Uint8Array.from(Buffer.from(img.image!.imageBytes as string, 'base64')),
     mimeType: img.image!.mimeType ?? 'image/png',
   }))
 }

@@ -162,7 +162,7 @@ async function handleToolCallFn(
         projectId,
         chapterId: chapterId ?? null,
         subsectionId: subsectionId ?? null,
-        imageData: generated.imageData,
+        imageData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer>,
         prompt,
         style: artStyle,
         aspectRatio: aspectRatio ?? '4:3',
@@ -200,7 +200,7 @@ async function handleToolCallFn(
 
     await prisma.projectImage.update({
       where: { id: imageId },
-      data: { imageData: generated.imageData, prompt, style: artStyle },
+      data: { imageData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer>, prompt, style: artStyle },
     })
 
     return JSON.stringify({
@@ -233,7 +233,7 @@ async function handleToolCallFn(
 
     await prisma.character.update({
       where: { id: characterId },
-      data: { referenceData: generated.imageData },
+      data: { referenceData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer> },
     })
 
     return JSON.stringify({ success: true, characterId })

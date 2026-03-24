@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Map,
   Library,
+  Eye,
   PenLine,
   Download,
   ChevronLeft,
@@ -85,6 +86,12 @@ export default function ProjectSidebar({
       statusKey: "writing",
     },
     {
+      label: "Preview",
+      href: `/projects/${projectId}/preview`,
+      icon: <Eye className="w-4 h-4" />,
+      statusKey: "writing",
+    },
+    {
       label: "Export",
       href: `/projects/${projectId}/export`,
       icon: <Download className="w-4 h-4" />,
@@ -92,9 +99,9 @@ export default function ProjectSidebar({
     },
   ];
 
-  const navItems = needsSources
-    ? allNavItems
-    : allNavItems.filter((item) => item.statusKey !== "sources");
+  const navItems = allNavItems
+    .filter((item) => needsSources || item.statusKey !== "sources")
+    .filter((item) => needsSources ? item.label !== "Preview" : true);
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
