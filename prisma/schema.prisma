@@ -138,14 +138,17 @@ model Project {
   writingGuidelines Json?
   status           ProjectStatus  @default(onboarding)
 
-  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chapters     Chapter[]
-  sources      Source[]
-  bibliography Bibliography[]
-  outputs      Output[]
-  chatMessages RoadmapChatMessage[]
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapters          Chapter[]
+  sources           Source[]
+  bibliography      Bibliography[]
+  outputs           Output[]
+  chatMessages      RoadmapChatMessage[]
+  characters        Character[]
+  projectImages     ProjectImage[]
+  illustrationChats IllustrationChatMessage[]
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
 }
 
 // ==================== ROADMAP CHAT ====================
@@ -176,8 +179,9 @@ model Chapter {
   estimatedPages Int?
   sortOrder      Int
 
-  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sections Section[]
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sections      Section[]
+  projectImages ProjectImage[]
 
   @@unique([projectId, number])
 }
@@ -223,6 +227,7 @@ model Subsection {
   sourceMappings  SourceMapping[]
   writingSessions WritingSession[]
   outputs         Output[]
+  projectImages   ProjectImage[]
 
   @@unique([sectionId, subsectionId])
 }
@@ -455,4 +460,54 @@ model CreditTransaction {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+}
+
+// ==================== ILLUSTRATIONS ====================
+
+model Character {
+  id            String   @id @default(cuid())
+  projectId     String
+  name          String
+  description   String?  @db.Text
+  visualTraits  String?  @db.Text
+  referenceData Bytes?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model ProjectImage {
+  id           String      @id @default(cuid())
+  projectId    String
+  chapterId    String?
+  subsectionId String?
+  imageData    Bytes
+  prompt       String      @db.Text
+  style        String?
+  aspectRatio  String      @default("4:3")
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  chapter    Chapter?    @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  subsection Subsection? @relation(fields: [subsectionId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([chapterId])
+}
+
+model IllustrationChatMessage {
+  id        String   @id @default(cuid())
+  projectId String
+  sessionId String
+  role      String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sessionId, createdAt])
 }
