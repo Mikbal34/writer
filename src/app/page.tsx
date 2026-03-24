@@ -119,7 +119,7 @@ export default async function HomePage() {
       >
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <img src="/images/quilpen-logo-horizontal.png" alt="Quilpen" className="h-20 animate-logo-in"  />
+            <img src="/images/quilpen-logo-horizontal.png" alt="Quilpen" className="h-20 animate-logo-in" style={{ filter: "brightness(0) invert(1)" }} />
           </div>
 
           <div className="flex items-center gap-1">
@@ -598,7 +598,7 @@ function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 bg-[#1a0f05]/60 backdrop-blur-md border-b border-[#C9A84C]/15">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <img src="/images/quilpen-logo-horizontal.png" alt="Quilpen" className="h-20 animate-logo-in"  />
+            <img src="/images/quilpen-logo-horizontal.png" alt="Quilpen" className="h-20 animate-logo-in" style={{ filter: "brightness(0) invert(1)" }} />
           </Link>
           <div className="flex items-center gap-6">
             <Link
