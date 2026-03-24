@@ -33,8 +33,8 @@ export const ESTIMATED_COSTS: Record<string, number> = {
   bibliography_enrich: 3,
   source_upload_extract: 5,
   preview_chat: 10,
-  generate_image: 15,
-  generate_character_ref: 15,
+  generate_image: 160,
+  generate_character_ref: 160,
 }
 
 export class InsufficientCreditsError extends Error {
