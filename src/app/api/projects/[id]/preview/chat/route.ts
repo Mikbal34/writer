@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { streamChatWithTools, type ChatMessage, type SystemPromptPart, type ToolDefinition } from '@/lib/claude'
+import { streamChatWithTools, HAIKU, type ChatMessage, type SystemPromptPart, type ToolDefinition } from '@/lib/claude'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 import { generateImage, buildImagePrompt } from '@/lib/imagen'
@@ -401,7 +401,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             },
             (toolName) => {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ step: 'thinking', tool: toolName })}\n\n`))
-            }
+            },
+            { model: HAIKU }
           )
 
           const { newBalance, creditsUsed } = await deductCredits(
@@ -409,7 +410,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             'preview_chat',
             result.inputTokens,
             result.outputTokens,
-            'sonnet',
+            'haiku',
             { projectId }
           )
 

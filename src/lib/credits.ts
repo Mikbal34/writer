@@ -32,7 +32,7 @@ export const ESTIMATED_COSTS: Record<string, number> = {
   style_interview: 5,
   bibliography_enrich: 3,
   source_upload_extract: 5,
-  preview_chat: 100,
+  preview_chat: 10,
   generate_image: 15,
   generate_character_ref: 15,
 }
