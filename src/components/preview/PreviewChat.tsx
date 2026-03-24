@@ -189,9 +189,10 @@ export default function PreviewChat({
             }
 
             if (parsed.error) {
+              const detail = parsed.detail ? `: ${parsed.detail}` : "";
               setMessages((prev) => {
                 const updated = [...prev];
-                updated[assistantIndex] = { role: "assistant", content: "An error occurred. Please try again." };
+                updated[assistantIndex] = { role: "assistant", content: `An error occurred${detail}. Please try again.` };
                 return updated;
               });
             }

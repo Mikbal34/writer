@@ -432,8 +432,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
         } catch (streamErr) {
-          console.error('[preview/chat] Stream error:', streamErr)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Stream failed' })}\n\n`))
+          const errMsg = streamErr instanceof Error ? streamErr.message : String(streamErr)
+          console.error('[preview/chat] Stream error:', errMsg, streamErr)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Stream failed', detail: errMsg })}\n\n`))
         } finally {
           controller.close()
         }
@@ -454,8 +455,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         headers: { 'Content-Type': 'application/json' },
       })
     }
-    console.error('[POST /api/projects/[id]/preview/chat]', err)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    console.error('[POST /api/projects/[id]/preview/chat]', errMsg, err)
+    return new Response(JSON.stringify({ error: 'Internal server error', detail: errMsg }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     })
