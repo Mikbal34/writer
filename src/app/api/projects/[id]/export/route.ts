@@ -366,9 +366,9 @@ function pdfRichText(
   options: { fontSize: number; lineGap?: number; indent?: number; align?: string },
 ) {
   const parts = text.split(/(\*[^*]+\*)/g).filter(Boolean)
-  const x = (doc as any).x as number
-  const startX = x + (options.indent ?? 0)
-  const width = (doc.page.width - doc.page.margins.left - doc.page.margins.right) - (options.indent ?? 0)
+  const leftMargin = doc.page.margins.left
+  const startX = leftMargin + (options.indent ?? 0)
+  const width = (doc.page.width - leftMargin - doc.page.margins.right) - (options.indent ?? 0)
 
   // If no italic markers, render as plain text (faster path)
   if (parts.length === 1 && !parts[0].startsWith('*')) {
