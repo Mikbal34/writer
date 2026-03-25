@@ -149,6 +149,18 @@ async function handleToolCallFn(
       }
     }
 
+    // Validate IDs exist before using them
+    let validChapterId: string | null = null
+    let validSubsectionId: string | null = null
+    if (chapterId) {
+      const ch = await prisma.chapter.findFirst({ where: { id: chapterId, projectId }, select: { id: true } })
+      if (ch) validChapterId = ch.id
+    }
+    if (subsectionId) {
+      const sub = await prisma.subsection.findFirst({ where: { id: subsectionId, section: { chapter: { projectId } } }, select: { id: true } })
+      if (sub) validSubsectionId = sub.id
+    }
+
     const prompt = buildImagePrompt(sceneDescription, characterTraits, artStyle ?? undefined)
     const [generated] = await generateImage({
       prompt,
@@ -160,8 +172,8 @@ async function handleToolCallFn(
     const image = await prisma.projectImage.create({
       data: {
         projectId,
-        chapterId: chapterId ?? null,
-        subsectionId: subsectionId ?? null,
+        chapterId: validChapterId,
+        subsectionId: validSubsectionId,
         imageData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer>,
         prompt,
         style: artStyle,
