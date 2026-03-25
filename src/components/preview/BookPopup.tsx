@@ -117,7 +117,7 @@ export default function BookPopup({ pages, open, onClose }: BookPopupProps) {
       </Button>
 
       {/* Book spread */}
-      <div className="w-full max-w-5xl aspect-[16/10] flex rounded-sm overflow-hidden shadow-2xl">
+      <div className="w-full max-w-7xl h-[85vh] flex rounded-sm overflow-hidden shadow-2xl">
         {/* Left page */}
         <div className="flex-1 border-r border-[#d4c9b5]/30 flex">
           {renderPage(leftPage, "left")}

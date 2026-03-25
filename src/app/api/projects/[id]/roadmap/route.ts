@@ -43,6 +43,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
                     writingStrategy: true,
                     estimatedPages: true,
                     status: true,
+                    content: true,
                     wordCount: true,
                     sortOrder: true,
                     sectionId: true,

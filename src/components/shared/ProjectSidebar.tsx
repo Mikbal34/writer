@@ -86,7 +86,7 @@ export default function ProjectSidebar({
       statusKey: "writing",
     },
     {
-      label: "Preview",
+      label: "Art & Design",
       href: `/projects/${projectId}/preview`,
       icon: <Eye className="w-4 h-4" />,
       statusKey: "writing",
@@ -101,7 +101,7 @@ export default function ProjectSidebar({
 
   const navItems = allNavItems
     .filter((item) => needsSources || item.statusKey !== "sources")
-    .filter((item) => needsSources ? item.label !== "Preview" : true);
+    .filter((item) => needsSources ? item.label !== "Art & Design" : true);
 
   const sidebarContent = (
     <div className="flex flex-col h-full">

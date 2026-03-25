@@ -26,12 +26,13 @@ import {
   SpineShadow,
 } from "@/components/shared/BookElements";
 import { FadeUp, FadeIn, FadeRight, StaggerItem } from "@/components/shared/Animations";
+import BookPopup from "@/components/preview/BookPopup";
 
 interface ChapterOption {
   id: string;
   number: number;
   title: string;
-  subsections: Array<{ id: string; title: string; subsectionId: string }>;
+  subsections: Array<{ id: string; title: string; subsectionId: string; content?: string | null }>;
 }
 
 interface OutputFile {
@@ -69,6 +70,9 @@ export default function ExportPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadingDriveId, setUploadingDriveId] = useState<string | null>(null);
+  const [bookPreviewOpen, setBookPreviewOpen] = useState(false);
+  const [projectTypeState, setProjectTypeState] = useState<string>("ACADEMIC");
+  const [previewImages, setPreviewImages] = useState<Array<{ id: string; url: string; chapterId: string | null }>>([]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -83,8 +87,10 @@ export default function ExportPage() {
           id: string;
           number: number;
           title: string;
-          sections?: Array<{ subsections: Array<{ id: string; title: string; subsectionId: string }> }>;
+          sections?: Array<{ subsections: Array<{ id: string; title: string; subsectionId: string; content?: string | null }> }>;
         };
+        const projectType = data.projectType ?? "ACADEMIC";
+        setProjectTypeState(projectType);
         const chaps: ChapterOption[] = (data.chapters ?? []).map(
           (ch: RawChapter) => ({
             id: ch.id,
@@ -95,6 +101,21 @@ export default function ExportPage() {
         );
         setChapters(chaps);
         setSelectedChapterId((prev) => prev || (chaps.length > 0 ? chaps[0].id : ""));
+
+        // Fetch images for non-academic projects
+        if (projectType !== "ACADEMIC") {
+          try {
+            const imgRes = await fetch(`/api/projects/${projectId}/preview/images`);
+            if (imgRes.ok) {
+              const imgData = await imgRes.json();
+              setPreviewImages(imgData.map((img: { id: string; chapterId: string | null }) => ({
+                id: img.id,
+                url: `/api/projects/${projectId}/preview/images/${img.id}`,
+                chapterId: img.chapterId,
+              })));
+            }
+          } catch { /* ignore */ }
+        }
       }
 
       if (outRes.ok) {
@@ -371,6 +392,18 @@ export default function ExportPage() {
               ? `Generating ${fileType.toUpperCase()}...`
               : `Generate ${fileType.toUpperCase()}`}
           </button>
+
+          {/* Book Preview button */}
+          {chapters.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setBookPreviewOpen(true)}
+              className="w-full mt-3 border border-[#d4c9b5] text-[#5C4A32] font-ui text-sm uppercase tracking-widest rounded-sm px-4 py-3 flex items-center justify-center gap-2 transition-opacity hover:bg-[#e8dfd0]/30"
+            >
+              <BookOpen className="h-4 w-4" />
+              Book Preview
+            </button>
+          )}
         </FadeUp>
 
         <div className="flex-1" />
@@ -492,6 +525,50 @@ export default function ExportPage() {
         <div className="flex-1" />
         <PageNumber number="viii" />
       </div>
+
+      {/* Book Preview Popup */}
+      {(() => {
+        const bookPages: Array<{
+          type: "chapter-cover" | "content" | "image";
+          chapterTitle?: string;
+          chapterNumber?: number;
+          text?: string;
+          imageUrl?: string;
+          imageCaption?: string;
+        }> = [];
+
+        for (const ch of chapters) {
+          bookPages.push({ type: "chapter-cover", chapterNumber: ch.number, chapterTitle: ch.title });
+
+          // Chapter images (Story/Book)
+          const chapterImgs = previewImages.filter((img) => img.chapterId === ch.id);
+          for (const img of chapterImgs) {
+            bookPages.push({ type: "image", imageUrl: img.url });
+          }
+
+          // Subsection content
+          for (const sub of ch.subsections) {
+            if (sub.content) {
+              bookPages.push({ type: "content", text: sub.content });
+            } else if (projectTypeState === "ACADEMIC") {
+              bookPages.push({ type: "content", text: `[${sub.subsectionId} ${sub.title}]\n\n[Content not yet written]\n\n[Figure/Table placeholder]` });
+            }
+          }
+
+          // Unlinked images after content
+          if (chapterImgs.length === 0 && projectTypeState !== "ACADEMIC") {
+            const unlinked = previewImages.filter((img) => !img.chapterId);
+            // Only add unlinked once (for first chapter)
+            if (ch === chapters[0] && unlinked.length > 0) {
+              for (const img of unlinked) {
+                bookPages.push({ type: "image", imageUrl: img.url });
+              }
+            }
+          }
+        }
+
+        return <BookPopup pages={bookPages} open={bookPreviewOpen} onClose={() => setBookPreviewOpen(false)} />;
+      })()}
     </div>
   );
 }
