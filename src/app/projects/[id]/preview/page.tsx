@@ -112,15 +112,18 @@ export default function PreviewPage() {
 
   // Group images by chapter for book view
   const imagesByChapter = new Map<number, SceneImage[]>();
+  const unlinkedImages: SceneImage[] = [];
   for (const img of images) {
     if (img.chapter) {
       const num = img.chapter.number;
       if (!imagesByChapter.has(num)) imagesByChapter.set(num, []);
       imagesByChapter.get(num)!.push(img);
+    } else {
+      unlinkedImages.push(img);
     }
   }
 
-  // Build simple book from images
+  // Build book from chapter-linked images
   for (const [chNum, chImages] of Array.from(imagesByChapter.entries()).sort((a, b) => a[0] - b[0])) {
     const firstImg = chImages[0];
     bookPages.push({
@@ -133,6 +136,22 @@ export default function PreviewPage() {
         type: "image",
         imageUrl: img.url,
         imageCaption: img.subsection ? `${img.subsection.subsectionId} ${img.subsection.title}` : undefined,
+      });
+    }
+  }
+
+  // Add unlinked images as a gallery
+  if (unlinkedImages.length > 0) {
+    bookPages.push({
+      type: "chapter-cover",
+      chapterNumber: 0,
+      chapterTitle: "Illustrations",
+    });
+    for (const img of unlinkedImages) {
+      bookPages.push({
+        type: "image",
+        imageUrl: img.url,
+        imageCaption: img.prompt.slice(0, 80),
       });
     }
   }
