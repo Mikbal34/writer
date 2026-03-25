@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -57,7 +57,25 @@ export default function ProjectSidebar({
 }: ProjectSidebarProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [activeOps, setActiveOps] = useState(0);
   const needsSources = projectType === "ACADEMIC";
+
+  // Poll for active operations
+  const checkActiveOps = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/active-operations`);
+      if (res.ok) {
+        const data = await res.json();
+        setActiveOps(data.writing?.length ?? 0);
+      }
+    } catch { /* ignore */ }
+  }, [projectId]);
+
+  useEffect(() => {
+    checkActiveOps();
+    const interval = setInterval(checkActiveOps, 10000);
+    return () => clearInterval(interval);
+  }, [checkActiveOps]);
 
   const allNavItems: NavItem[] = [
     {
@@ -159,7 +177,13 @@ export default function ProjectSidebar({
                 )}
                 <span>{item.icon}</span>
                 <span>{item.label}</span>
-                {sectionStatus === "done" && (
+                {item.label === "Write" && activeOps > 0 && (
+                  <span className="ml-auto flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="font-ui text-[10px] text-amber-600">{activeOps}</span>
+                  </span>
+                )}
+                {item.label !== "Write" && sectionStatus === "done" && (
                   <span className="w-1.5 h-1.5 rounded-full bg-forest ml-auto" />
                 )}
                 {sectionStatus === "active" && item.badge && (

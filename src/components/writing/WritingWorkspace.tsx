@@ -132,9 +132,19 @@ export default function WritingWorkspace({
  const [isStreaming, setIsStreaming] = useState(false);
  const [currentContent, setCurrentContent] = useState("");
 
+ const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+ const stopPolling = useCallback(() => {
+  if (pollingRef.current) {
+   clearInterval(pollingRef.current);
+   pollingRef.current = null;
+  }
+ }, []);
+
  const fetchContext = useCallback(
   async (subsectionId: string) => {
    setIsLoadingContext(true);
+   stopPolling();
    try {
     const res = await fetch(
      `/api/projects/${projectId}/write/${subsectionId}`
@@ -144,14 +154,45 @@ export default function WritingWorkspace({
     setContext(data);
     setCurrentContent(data.subsection.content ?? "");
     setStreamingContent("");
+
+    // If subsection is in_progress, start polling for completion
+    if (data.subsection.status === "in_progress") {
+     setIsStreaming(true);
+     setStreamingContent(data.subsection.content ?? "Writing in progress...");
+     pollingRef.current = setInterval(async () => {
+      try {
+       const pollRes = await fetch(`/api/projects/${projectId}/write/${subsectionId}`);
+       if (!pollRes.ok) return;
+       const pollData = await pollRes.json();
+       if (pollData.subsection.status !== "in_progress") {
+        // Operation completed while we were away
+        setContext(pollData);
+        setCurrentContent(pollData.subsection.content ?? "");
+        setStreamingContent("");
+        setIsStreaming(false);
+        stopPolling();
+        if (pollData.subsection.status === "completed" || pollData.subsection.status === "draft") {
+         toast.success("Writing completed!");
+        }
+       } else if (pollData.subsection.content) {
+        setStreamingContent(pollData.subsection.content);
+       }
+      } catch { /* ignore */ }
+     }, 3000);
+    }
    } catch {
     toast.error("Failed to load writing context");
    } finally {
     setIsLoadingContext(false);
    }
   },
-  [projectId]
+  [projectId, stopPolling]
  );
+
+ // Cleanup polling on unmount
+ useEffect(() => {
+  return () => stopPolling();
+ }, [stopPolling]);
 
  useEffect(() => {
   const sid = searchParams.get("subsection");
