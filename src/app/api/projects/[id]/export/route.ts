@@ -98,6 +98,7 @@ interface SubsectionData {
   sectionTitle: string
   chapterTitle: string
   chapterNumber: number
+  chapterId: string
 }
 
 function buildDocx(
@@ -404,13 +405,20 @@ function pdfRichText(
   }
 }
 
+interface ProjectImageData {
+  imageData: Buffer
+  chapterId: string | null
+  subsectionId: string | null
+}
+
 function buildPdf(
   projectTitle: string,
   subsections: SubsectionData[],
   bibliography: BibliographyEntry[],
   formatter: CitationFormatter,
   includeBibliography: boolean,
-  language?: string | null
+  language?: string | null,
+  images?: ProjectImageData[]
 ): Promise<Buffer> {
   const labels = getLabels(language)
   return new Promise((resolve, reject) => {
@@ -522,6 +530,24 @@ function buildPdf(
         doc.font(fonts.bold).fontSize(18)
         doc.text(`${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, { align: 'left' })
         doc.moveDown(0.5)
+
+        // Insert chapter images if available
+        if (images && images.length > 0) {
+          const chapterImages = images.filter((img) => img.chapterId === sub.chapterId)
+          for (const img of chapterImages) {
+            try {
+              ensureSpace(300)
+              const imgWidth = Math.min(CONTENT_WIDTH, 400)
+              const imgX = MARGIN_LEFT + (CONTENT_WIDTH - imgWidth) / 2
+              doc.image(img.imageData, imgX, doc.y, { width: imgWidth })
+              doc.moveDown(1)
+              // Move Y past the image
+              doc.y = doc.y + 10
+            } catch (imgErr) {
+              console.error('[export] Failed to embed image:', imgErr)
+            }
+          }
+        }
       }
 
       // Section heading
@@ -678,7 +704,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Verify project ownership
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
-      select: { id: true, title: true, citationFormat: true, language: true },
+      select: { id: true, title: true, citationFormat: true, language: true, projectType: true },
     })
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
@@ -721,6 +747,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             sectionTitle: sec.title,
             chapterTitle: ch.title,
             chapterNumber: ch.number,
+            chapterId: ch.id,
           })
         }
       }
@@ -741,6 +768,21 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Get citation formatter
     const formatter = getCitationFormatter(project.citationFormat as CitationFormat)
 
+    // Fetch project images for non-academic projects
+    let projectImages: ProjectImageData[] = []
+    if (project.projectType !== 'ACADEMIC') {
+      const imgs = await prisma.projectImage.findMany({
+        where: { projectId },
+        select: { imageData: true, chapterId: true, subsectionId: true },
+        orderBy: { sortOrder: 'asc' },
+      })
+      projectImages = imgs.map((img) => ({
+        imageData: Buffer.from(img.imageData),
+        chapterId: img.chapterId,
+        subsectionId: img.subsectionId,
+      }))
+    }
+
     // Build file
     let buffer: Buffer
     if (fileType === 'pdf') {
@@ -750,7 +792,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         bibliography as unknown as BibliographyEntry[],
         formatter,
         includeBibliography,
-        project.language
+        project.language,
+        projectImages
       )
     } else {
       const doc = buildDocx(
