@@ -70,6 +70,7 @@ export default function ExportPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadingDriveId, setUploadingDriveId] = useState<string | null>(null);
+  const [includeIllustrations, setIncludeIllustrations] = useState(true);
   const [bookPreviewOpen, setBookPreviewOpen] = useState(false);
   const [projectTypeState, setProjectTypeState] = useState<string>("ACADEMIC");
   const [previewImages, setPreviewImages] = useState<Array<{ id: string; url: string; chapterId: string | null }>>([]);
@@ -166,6 +167,7 @@ export default function ExportPage() {
       const body: Record<string, unknown> = {
         scope,
         includeBibliography,
+        includeIllustrations: projectTypeState !== "ACADEMIC" && includeIllustrations,
         fileType,
       };
 
@@ -375,6 +377,31 @@ export default function ExportPage() {
               )}
             </button>
           </div>
+
+          {/* Illustrations toggle — only for non-academic */}
+          {projectTypeState !== "ACADEMIC" && previewImages.length > 0 && (
+            <div className="border-t border-[#d4c9b5]/40 pt-4 mb-6">
+              <button
+                type="button"
+                onClick={() => setIncludeIllustrations((v) => !v)}
+                className="flex items-center justify-between w-full group"
+              >
+                <div className="text-left">
+                  <span className="font-ui text-xs uppercase tracking-widest text-[#5C4A32] block">
+                    Include Illustrations
+                  </span>
+                  <span className="font-body text-xs text-[#8a7a65] mt-0.5 block">
+                    Adds AI-generated images as full pages in the PDF
+                  </span>
+                </div>
+                {includeIllustrations ? (
+                  <ToggleRight className="h-6 w-6 text-[#2C5F2E] shrink-0 ml-3" />
+                ) : (
+                  <ToggleLeft className="h-6 w-6 text-[#8a7a65] shrink-0 ml-3" />
+                )}
+              </button>
+            </div>
+          )}
 
           {/* Generate button */}
           <button

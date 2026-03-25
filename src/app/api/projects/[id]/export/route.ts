@@ -531,21 +531,27 @@ function buildPdf(
         doc.text(`${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, { align: 'left' })
         doc.moveDown(0.5)
 
-        // Insert chapter images if available
+        // Insert chapter images as full pages
         if (images && images.length > 0) {
           const chapterImages = images.filter((img) => img.chapterId === sub.chapterId)
           for (const img of chapterImages) {
             try {
-              ensureSpace(300)
-              const imgWidth = Math.min(CONTENT_WIDTH, 400)
-              const imgX = MARGIN_LEFT + (CONTENT_WIDTH - imgWidth) / 2
-              doc.image(img.imageData, imgX, doc.y, { width: imgWidth })
-              doc.moveDown(1)
-              // Move Y past the image
-              doc.y = doc.y + 10
+              doc.addPage()
+              // Center image on page, maximize within margins
+              const maxW = CONTENT_WIDTH
+              const maxH = PAGE_HEIGHT - 72 - 72 // margins top + bottom
+              doc.image(img.imageData, MARGIN_LEFT, 72, {
+                fit: [maxW, maxH],
+                align: 'center',
+                valign: 'center',
+              })
             } catch (imgErr) {
               console.error('[export] Failed to embed image:', imgErr)
             }
+          }
+          // Start text on a fresh page after images
+          if (chapterImages.length > 0) {
+            doc.addPage()
           }
         }
       }
@@ -692,12 +698,14 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       chapterId,
       subsectionId,
       includeBibliography = true,
+      includeIllustrations = false,
       fileType = 'docx',
     } = body as {
       scope?: 'full' | 'chapter' | 'subsection'
       chapterId?: string
       subsectionId?: string
       includeBibliography?: boolean
+      includeIllustrations?: boolean
       fileType?: 'docx' | 'pdf'
     }
 
@@ -768,9 +776,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Get citation formatter
     const formatter = getCitationFormatter(project.citationFormat as CitationFormat)
 
-    // Fetch project images for non-academic projects
+    // Fetch project images if requested
     let projectImages: ProjectImageData[] = []
-    if (project.projectType !== 'ACADEMIC') {
+    if (includeIllustrations && project.projectType !== 'ACADEMIC') {
       const imgs = await prisma.projectImage.findMany({
         where: { projectId },
         select: { imageData: true, chapterId: true, subsectionId: true },
