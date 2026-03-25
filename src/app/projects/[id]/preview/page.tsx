@@ -2,13 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { BookOpen, Users, ImageIcon, Palette } from "lucide-react";
+import { Users, ImageIcon, Palette } from "lucide-react";
 import PreviewChat from "@/components/preview/PreviewChat";
 import CharacterPanel from "@/components/preview/CharacterPanel";
 import ScenePanel from "@/components/preview/ScenePanel";
 import StylePanel from "@/components/preview/StylePanel";
-import BookPopup from "@/components/preview/BookPopup";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 type Tab = "characters" | "scenes" | "style";
@@ -40,7 +38,6 @@ export default function PreviewPage() {
   const [artStyle, setArtStyle] = useState<string | null>(null);
   const [isLoadingChars, setIsLoadingChars] = useState(true);
   const [isLoadingImages, setIsLoadingImages] = useState(true);
-  const [bookOpen, setBookOpen] = useState(false);
 
   const fetchCharacters = useCallback(async () => {
     try {
@@ -100,62 +97,6 @@ export default function PreviewPage() {
     toast.info(`Art style set to "${style}". Use the chat to apply it.`);
   }
 
-  // Build book pages for popup
-  const bookPages: Array<{
-    type: "chapter-cover" | "content" | "image";
-    chapterTitle?: string;
-    chapterNumber?: number;
-    text?: string;
-    imageUrl?: string;
-    imageCaption?: string;
-  }> = [];
-
-  // Group images by chapter for book view
-  const imagesByChapter = new Map<number, SceneImage[]>();
-  const unlinkedImages: SceneImage[] = [];
-  for (const img of images) {
-    if (img.chapter) {
-      const num = img.chapter.number;
-      if (!imagesByChapter.has(num)) imagesByChapter.set(num, []);
-      imagesByChapter.get(num)!.push(img);
-    } else {
-      unlinkedImages.push(img);
-    }
-  }
-
-  // Build book from chapter-linked images
-  for (const [chNum, chImages] of Array.from(imagesByChapter.entries()).sort((a, b) => a[0] - b[0])) {
-    const firstImg = chImages[0];
-    bookPages.push({
-      type: "chapter-cover",
-      chapterNumber: chNum,
-      chapterTitle: firstImg?.chapter?.title ?? `Chapter ${chNum}`,
-    });
-    for (const img of chImages) {
-      bookPages.push({
-        type: "image",
-        imageUrl: img.url,
-        imageCaption: img.subsection ? `${img.subsection.subsectionId} ${img.subsection.title}` : undefined,
-      });
-    }
-  }
-
-  // Add unlinked images as a gallery
-  if (unlinkedImages.length > 0) {
-    bookPages.push({
-      type: "chapter-cover",
-      chapterNumber: 0,
-      chapterTitle: "Illustrations",
-    });
-    for (const img of unlinkedImages) {
-      bookPages.push({
-        type: "image",
-        imageUrl: img.url,
-        imageCaption: img.prompt.slice(0, 80),
-      });
-    }
-  }
-
   const tabs: { key: Tab; label: string; icon: typeof Users }[] = [
     { key: "characters", label: "Characters", icon: Users },
     { key: "scenes", label: "Scenes", icon: ImageIcon },
@@ -203,17 +144,6 @@ export default function PreviewPage() {
             })}
           </div>
 
-          {images.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBookOpen(true)}
-              className="h-7 font-ui text-xs gap-1.5"
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-              Book Preview
-            </Button>
-          )}
         </div>
 
         {/* Tab content */}
@@ -230,8 +160,6 @@ export default function PreviewPage() {
         </div>
       </div>
 
-      {/* Full-screen book popup */}
-      <BookPopup pages={bookPages} open={bookOpen} onClose={() => setBookOpen(false)} />
     </div>
   );
 }
