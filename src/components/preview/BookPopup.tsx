@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -22,7 +23,7 @@ interface BookPopupProps {
 export default function BookPopup({ pages, open, onClose }: BookPopupProps) {
   const [currentSpread, setCurrentSpread] = useState(0);
 
-  if (!open || pages.length === 0) return null;
+  if (!open || pages.length === 0 || typeof document === "undefined") return null;
 
   // Build spreads (2 pages per spread)
   const spreads: [BookPage | null, BookPage | null][] = [];
@@ -82,8 +83,8 @@ export default function BookPopup({ pages, open, onClose }: BookPopupProps) {
     );
   }
 
-  return (
-    <div className="fixed inset-0 z-50 bg-[#1A0F05]/90 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] bg-[#1A0F05]/90 flex items-center justify-center p-4">
       {/* Close button */}
       <Button
         variant="ghost"
@@ -133,6 +134,7 @@ export default function BookPopup({ pages, open, onClose }: BookPopupProps) {
       <p className="absolute bottom-4 font-ui text-xs text-white/50">
         {currentSpread + 1} / {spreads.length}
       </p>
-    </div>
+    </div>,
+    document.body
   );
 }
