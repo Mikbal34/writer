@@ -260,7 +260,7 @@ async function handleToolCallFn(
 function buildSystemPrompt(
   project: { title: string; language: string | null; projectType: string },
   characters: Array<{ name: string; description: string | null; visualTraits: string | null }>,
-  chapters: Array<{ number: number; title: string; sections: Array<{ title: string; subsections: Array<{ subsectionId: string; title: string }> }> }>,
+  chapters: Array<{ id: string; number: number; title: string; sections: Array<{ title: string; subsections: Array<{ id: string; subsectionId: string; title: string }> }> }>,
   artStyle: string | null,
   conversationSummary: string | null
 ): SystemPromptPart[] {
@@ -269,7 +269,7 @@ function buildSystemPrompt(
     : '\n\nNo characters created yet.'
 
   const chapterList = chapters.map((ch) =>
-    `Ch ${ch.number}: ${ch.title}\n${ch.sections.map((s) => `  ${s.title}\n${s.subsections.map((sub) => `    ${sub.subsectionId} ${sub.title}`).join('\n')}`).join('\n')}`
+    `Ch ${ch.number} [dbId: ${ch.id}]: ${ch.title}\n${ch.sections.map((s) => `  ${s.title}\n${s.subsections.map((sub) => `    ${sub.subsectionId} [dbId: ${sub.id}] ${sub.title}`).join('\n')}`).join('\n')}`
   ).join('\n')
 
   const summarySection = conversationSummary
@@ -304,7 +304,7 @@ RULES:
 TOOLS:
 - Use create_character to establish characters before generating scenes
 - Use generate_character_portrait to create a reference portrait after creating a character
-- Use generate_scene_image to create illustrations (attach to chapters via chapterId)
+- Use generate_scene_image to create illustrations. ALWAYS attach to a chapter using its dbId from the book structure below. Use the [dbId: ...] values, not chapter numbers.
 - Use set_art_style to set the global style before generating images
 - Use regenerate_image if the user wants to change an existing image`
 
