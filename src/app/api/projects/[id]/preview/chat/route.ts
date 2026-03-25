@@ -89,6 +89,18 @@ function buildTools(): ToolDefinition[] {
         required: ['characterId'],
       },
     },
+    {
+      name: 'generate_book_cover',
+      description: 'Generate a book cover illustration. Creates a vertical cover image with the book title and visual elements.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          coverDescription: { type: 'string', description: 'Detailed description for the cover illustration (English). Include visual elements, mood, colors, composition.' },
+          includeTitle: { type: 'boolean', description: 'Whether to include the book title text in the image (default: false, title added separately)' },
+        },
+        required: ['coverDescription'],
+      },
+    },
   ]
 }
 
@@ -251,6 +263,33 @@ async function handleToolCallFn(
     return JSON.stringify({ success: true, characterId })
   }
 
+  if (toolName === 'generate_book_cover') {
+    const { coverDescription } = toolInput as { coverDescription: string }
+    const prompt = `Book cover illustration: ${coverDescription}. ${artStyle ? `Art style: ${artStyle}.` : ''} Vertical composition, professional book cover quality, centered focal point, dramatic lighting.`
+    const [generated] = await generateImage({ prompt, aspectRatio: '3:4', numberOfImages: 1 })
+
+    // Save as a special project image with no chapter (cover)
+    const image = await prisma.projectImage.create({
+      data: {
+        projectId,
+        chapterId: null,
+        subsectionId: null,
+        imageData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer>,
+        prompt,
+        style: artStyle ?? 'cover',
+        aspectRatio: '3:4',
+        sortOrder: -1, // covers sort before chapter images
+      },
+    })
+
+    return JSON.stringify({
+      success: true,
+      imageId: image.id,
+      url: `/api/projects/${projectId}/preview/images/${image.id}`,
+      type: 'book_cover',
+    })
+  }
+
   return JSON.stringify({ error: `Unknown tool: ${toolName}` })
 }
 
@@ -306,7 +345,8 @@ TOOLS:
 - Use generate_character_portrait to create a reference portrait after creating a character
 - Use generate_scene_image to create illustrations. ALWAYS attach to a chapter using its dbId from the book structure below. Use the [dbId: ...] values, not chapter numbers.
 - Use set_art_style to set the global style before generating images
-- Use regenerate_image if the user wants to change an existing image`
+- Use regenerate_image if the user wants to change an existing image
+- Use generate_book_cover to create a book cover illustration (3:4 vertical ratio)`
 
   const dynamicPart = `Respond in ${project.language === 'tr' ? 'Turkish' : project.language === 'en' ? 'English' : project.language ?? 'English'}.
 

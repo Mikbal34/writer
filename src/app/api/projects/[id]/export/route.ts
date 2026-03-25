@@ -409,6 +409,7 @@ interface ProjectImageData {
   imageData: Buffer
   chapterId: string | null
   subsectionId: string | null
+  sortOrder: number
 }
 
 function buildPdf(
@@ -513,9 +514,20 @@ function buildPdf(
       }
     }
 
-    // ---- Title page ----
-    doc.font(fonts.bold).fontSize(24)
-    doc.text(projectTitle, { align: 'center' })
+    // ---- Cover / Title page ----
+    const coverImage = images?.find((img) => img.sortOrder === -1)
+    if (coverImage) {
+      try {
+        doc.image(coverImage.imageData, 0, 0, { width: 595.28, height: PAGE_HEIGHT })
+      } catch {
+        // Fallback to text title if cover image fails
+        doc.font(fonts.bold).fontSize(24)
+        doc.text(projectTitle, { align: 'center' })
+      }
+    } else {
+      doc.font(fonts.bold).fontSize(24)
+      doc.text(projectTitle, { align: 'center' })
+    }
     doc.addPage()
 
     let currentChapter = ''
@@ -781,13 +793,14 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     if (includeIllustrations && project.projectType !== 'ACADEMIC') {
       const imgs = await prisma.projectImage.findMany({
         where: { projectId },
-        select: { imageData: true, chapterId: true, subsectionId: true },
+        select: { imageData: true, chapterId: true, subsectionId: true, sortOrder: true },
         orderBy: { sortOrder: 'asc' },
       })
       projectImages = imgs.map((img) => ({
         imageData: Buffer.from(img.imageData),
         chapterId: img.chapterId,
         subsectionId: img.subsectionId,
+        sortOrder: img.sortOrder,
       }))
     }
 

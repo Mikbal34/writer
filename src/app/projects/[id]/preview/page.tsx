@@ -24,6 +24,7 @@ interface SceneImage {
   prompt: string;
   style: string | null;
   url: string;
+  sortOrder: number;
   chapter: { number: number; title: string } | null;
   subsection: { subsectionId: string; title: string } | null;
 }
@@ -35,6 +36,7 @@ export default function PreviewPage() {
   const [activeTab, setActiveTab] = useState<Tab>("characters");
   const [characters, setCharacters] = useState<Character[]>([]);
   const [images, setImages] = useState<SceneImage[]>([]);
+  const [chapters, setChapters] = useState<Array<{ id: string; number: number; title: string }>>([]);
   const [artStyle, setArtStyle] = useState<string | null>(null);
   const [isLoadingChars, setIsLoadingChars] = useState(true);
   const [isLoadingImages, setIsLoadingImages] = useState(true);
@@ -69,11 +71,19 @@ export default function PreviewPage() {
 
   const fetchProject = useCallback(async () => {
     try {
-      const res = await fetch(`/api/projects/${projectId}`);
-      if (res.ok) {
-        const data = await res.json();
+      const [projRes, roadmapRes] = await Promise.all([
+        fetch(`/api/projects/${projectId}`),
+        fetch(`/api/projects/${projectId}/roadmap`),
+      ]);
+      if (projRes.ok) {
+        const data = await projRes.json();
         const guidelines = data.writingGuidelines as Record<string, unknown> | null;
         if (guidelines?.artStyle) setArtStyle(guidelines.artStyle as string);
+      }
+      if (roadmapRes.ok) {
+        const data = await roadmapRes.json();
+        type RawCh = { id: string; number: number; title: string };
+        setChapters((data.chapters ?? []).map((ch: RawCh) => ({ id: ch.id, number: ch.number, title: ch.title })));
       }
     } catch {
       // ignore
@@ -152,7 +162,7 @@ export default function PreviewPage() {
             <CharacterPanel characters={characters} isLoading={isLoadingChars} />
           )}
           {activeTab === "scenes" && (
-            <ScenePanel images={images} isLoading={isLoadingImages} />
+            <ScenePanel images={images} chapters={chapters} projectId={projectId} isLoading={isLoadingImages} onUpdate={handleUpdate} />
           )}
           {activeTab === "style" && (
             <StylePanel currentStyle={artStyle} onStyleSelect={handleStyleSelect} />
