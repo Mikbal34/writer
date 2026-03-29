@@ -3,7 +3,7 @@ import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
 type CitationFormat = 'ISNAD' | 'APA' | 'CHICAGO' | 'MLA'
-type ProjectStatus = 'onboarding' | 'roadmap' | 'sources' | 'writing' | 'completed'
+type ProjectStatus = 'roadmap' | 'sources' | 'writing' | 'completed'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -91,6 +91,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       status,
       styleProfile,
       writingGuidelines,
+      bookDesign,
     } = body as {
       title?: string
       description?: string
@@ -102,6 +103,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       status?: ProjectStatus
       styleProfile?: Record<string, unknown>
       writingGuidelines?: Record<string, unknown>
+      bookDesign?: Record<string, unknown>
     }
 
     const validFormats: CitationFormat[] = ['ISNAD', 'APA', 'CHICAGO', 'MLA']
@@ -109,7 +111,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Invalid citationFormat' }, { status: 400 })
     }
 
-    const validStatuses: ProjectStatus[] = ['onboarding', 'roadmap', 'sources', 'writing', 'completed']
+    const validStatuses: ProjectStatus[] = ['roadmap', 'sources', 'writing', 'completed']
     if (status && !validStatuses.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
@@ -128,6 +130,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         // Prisma Json fields require casting through unknown
         ...(styleProfile !== undefined && { styleProfile: styleProfile as unknown as object }),
         ...(writingGuidelines !== undefined && { writingGuidelines: writingGuidelines as unknown as object }),
+        ...(bookDesign !== undefined && { bookDesign: bookDesign as unknown as object }),
       },
     })
 

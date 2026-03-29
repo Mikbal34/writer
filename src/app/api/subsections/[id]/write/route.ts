@@ -18,20 +18,29 @@ type RouteContext = { params: Promise<{ id: string }> }
 function buildSystemPrompt(ctx: WritingContext): string {
   const style = ctx.styleProfile
   const lang = ctx.citationFormat
+  const isAcademic = ctx.projectType === 'ACADEMIC'
+  const isStory = ctx.projectType === 'STORY'
 
   const styleInstructions = style
     ? `
 STYLE PROFILE:
 - Sentence length: ${style.sentenceLength ?? 'varied'}
-- Tone: ${style.tone ?? 'formal'}
-- Terminology density: ${style.terminologyDensity ?? 'medium'}
+- Tone: ${style.tone ?? (isStory ? 'varied' : 'formal')}
 - Voice preference: ${style.voicePreference ?? 'mixed'}
-- Paragraph structure: ${style.paragraphStructure ?? 'topic-sentence-first'}
-- Formality (1-10): ${style.formality ?? 7}
-- Uses first person: ${style.usesFirstPerson ? 'yes' : 'no'}
-- Citation style: ${style.citationStyle ?? 'inline-footnote'}
 - Paragraph length: ${style.paragraphLength ?? 'medium'}
-- Rhetorical approach: ${style.rhetoricalApproach ?? 'analytical'}
+${isAcademic ? `- Terminology density: ${style.terminologyDensity ?? 'medium'}` : ''}
+${isAcademic ? `- Paragraph structure: ${style.paragraphStructure ?? 'topic-sentence-first'}` : ''}
+${isAcademic ? `- Formality (1-10): ${style.formality ?? 7}` : ''}
+${isAcademic ? `- Uses first person: ${style.usesFirstPerson ? 'yes' : 'no'}` : ''}
+${isAcademic ? `- Citation style: ${style.citationStyle ?? 'inline-footnote'}` : ''}
+${isAcademic ? `- Rhetorical approach: ${style.rhetoricalApproach ?? 'analytical'}` : ''}
+${style.narrativePOV ? `- Point of view: ${style.narrativePOV.replace(/_/g, ' ')}` : ''}
+${style.genre ? `- Genre: ${style.genre}` : ''}
+${style.dialogueStyle ? `- Dialogue style: ${style.dialogueStyle.replace(/_/g, ' ')}` : ''}
+${style.pacing ? `- Pacing: ${style.pacing}` : ''}
+${style.moodAtmosphere ? `- Mood/Atmosphere: ${style.moodAtmosphere}` : ''}
+${style.targetAgeGroup ? `- Target audience: ${style.targetAgeGroup.replace(/_/g, ' ')}` : ''}
+${style.narrativeStyle ? `- Narrative style: ${style.narrativeStyle}` : ''}
 ${style.additionalNotes ? `- Notes: ${style.additionalNotes}` : ''}
 `
     : ''
@@ -41,7 +50,7 @@ ${style.additionalNotes ? `- Notes: ${style.additionalNotes}` : ''}
     : ''
 
   const sourcesBlock =
-    ctx.sources.length > 0
+    isAcademic && ctx.sources.length > 0
       ? `
 AVAILABLE SOURCES FOR THIS SUBSECTION:
 ${ctx.sources
@@ -56,11 +65,7 @@ ${ctx.sources
 `
       : ''
 
-  return `You are an expert academic writer tasked with writing a specific subsection of a scholarly book.
-
-CITATION FORMAT: ${lang}
-
-BOOK CONTEXT:
+  const bookContext = `BOOK CONTEXT:
 - Chapter: ${ctx.chapter.title} (Chapter ${ctx.chapter.number})
 - Section: ${ctx.section.title} (${ctx.section.sectionId})
 - Subsection: ${ctx.subsection.title} (${ctx.subsection.subsectionId})
@@ -69,7 +74,48 @@ ${ctx.nextSubsection ? `- Next subsection: "${ctx.nextSubsection.title}" (${ctx.
 ${ctx.position.sectionFirst ? '- This is the FIRST subsection of its section.' : ''}
 ${ctx.position.sectionLast ? '- This is the LAST subsection of its section.' : ''}
 ${ctx.position.chapterFirst ? '- This is the FIRST subsection of the chapter.' : ''}
-${ctx.position.chapterLast ? '- This is the LAST subsection of the chapter.' : ''}
+${ctx.position.chapterLast ? '- This is the LAST subsection of the chapter.' : ''}`
+
+  if (isStory) {
+    return `You are an expert fiction writer and storytelling craftsman. Your task is to write compelling, immersive narrative prose for the specified subsection.
+
+${bookContext}
+${styleInstructions}${guidelinesBlock}
+INSTRUCTIONS:
+- Write ONLY the content for this specific subsection.
+- Do not include headings/titles (they are rendered separately).
+- Write vivid, engaging prose with strong sensory details.
+- Develop characters through actions, dialogue, and internal thoughts.
+- Show, don't tell — convey emotions through behavior, not labels.
+- Maintain consistent voice and point of view throughout.
+- Ensure smooth transitions with the surrounding subsections.
+- Do NOT include academic footnotes, citations, or references.
+- Estimated length: ${ctx.subsection.estimatedPages ?? 1} page(s).`
+  }
+
+  if (ctx.projectType === 'BOOK') {
+    return `You are an expert non-fiction writer and communicator. Your task is to write clear, engaging, and informative prose for the specified subsection.
+
+${bookContext}
+${styleInstructions}${guidelinesBlock}
+INSTRUCTIONS:
+- Write ONLY the content for this specific subsection.
+- Do not include headings/titles (they are rendered separately).
+- Write in an accessible, engaging tone — informative but not academic.
+- Use concrete examples and anecdotes to illustrate points.
+- Define technical terms naturally within context.
+- Maintain a conversational yet authoritative voice.
+- Ensure smooth transitions with the surrounding subsections.
+- Do NOT include academic footnotes, citations, or references.
+- Estimated length: ${ctx.subsection.estimatedPages ?? 1} page(s).`
+  }
+
+  // ACADEMIC (original)
+  return `You are an expert academic writer tasked with writing a specific subsection of a scholarly book.
+
+CITATION FORMAT: ${lang}
+
+${bookContext}
 ${styleInstructions}${guidelinesBlock}${sourcesBlock}
 INSTRUCTIONS:
 - Write ONLY the content for this specific subsection.
@@ -91,7 +137,19 @@ function buildUserPrompt(ctx: WritingContext, ragChunks: RagChunk[]): string {
           .join('\n\n')}`
       : ''
 
-  return `Write the academic content for the following subsection:
+  const writeVerb = ctx.projectType === 'STORY'
+    ? 'Write the narrative content'
+    : ctx.projectType === 'BOOK'
+    ? 'Write the content'
+    : 'Write the academic content'
+
+  const defaultStrategy = ctx.projectType === 'STORY'
+    ? 'Narrative storytelling with scene-setting and character development'
+    : ctx.projectType === 'BOOK'
+    ? 'Clear, engaging exposition'
+    : 'Standard academic exposition'
+
+  return `${writeVerb} for the following subsection:
 
 SUBSECTION: ${ctx.subsection.title} (${ctx.subsection.subsectionId})
 DESCRIPTION: ${ctx.subsection.description ?? 'See key points below'}
@@ -100,7 +158,7 @@ WHAT TO WRITE: ${ctx.subsection.whatToWrite ?? 'Develop the topic based on the k
 KEY POINTS TO COVER:
 ${(ctx.subsection.keyPoints ?? []).map((p, i) => `${i + 1}. ${p}`).join('\n')}
 
-WRITING STRATEGY: ${ctx.subsection.writingStrategy ?? 'Standard academic exposition'}${ragBlock}
+WRITING STRATEGY: ${ctx.subsection.writingStrategy ?? defaultStrategy}${ragBlock}
 
 Write the full subsection content now:`
 }
@@ -317,6 +375,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       nextSubsection: toPrevNext(nextRaw),
       sources,
       citationFormat: project.citationFormat,
+      projectType: project.projectType,
       styleProfile: project.styleProfile as Partial<StyleProfile> | null,
       writingGuidelines: project.writingGuidelines
         ? typeof project.writingGuidelines === 'string'

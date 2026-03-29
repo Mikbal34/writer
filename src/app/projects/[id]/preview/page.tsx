@@ -29,6 +29,20 @@ interface SceneImage {
   subsection: { subsectionId: string; title: string } | null;
 }
 
+interface SubsectionData {
+  id: string;
+  subsectionId: string;
+  title: string;
+  content: string | null;
+}
+
+interface ChapterData {
+  id: string;
+  number: number;
+  title: string;
+  subsections: SubsectionData[];
+}
+
 export default function PreviewPage() {
   const params = useParams();
   const projectId = params.id as string;
@@ -36,7 +50,8 @@ export default function PreviewPage() {
   const [activeTab, setActiveTab] = useState<Tab>("characters");
   const [characters, setCharacters] = useState<Character[]>([]);
   const [images, setImages] = useState<SceneImage[]>([]);
-  const [chapters, setChapters] = useState<Array<{ id: string; number: number; title: string }>>([]);
+  const [chapters, setChapters] = useState<ChapterData[]>([]);
+  const [projectTitle, setProjectTitle] = useState<string>("Untitled Book");
   const [artStyle, setArtStyle] = useState<string | null>(null);
   const [isLoadingChars, setIsLoadingChars] = useState(true);
   const [isLoadingImages, setIsLoadingImages] = useState(true);
@@ -75,15 +90,49 @@ export default function PreviewPage() {
         fetch(`/api/projects/${projectId}`),
         fetch(`/api/projects/${projectId}/roadmap`),
       ]);
+
       if (projRes.ok) {
         const data = await projRes.json();
+        if (data.title) setProjectTitle(data.title);
         const guidelines = data.writingGuidelines as Record<string, unknown> | null;
         if (guidelines?.artStyle) setArtStyle(guidelines.artStyle as string);
       }
+
       if (roadmapRes.ok) {
         const data = await roadmapRes.json();
-        type RawCh = { id: string; number: number; title: string };
-        setChapters((data.chapters ?? []).map((ch: RawCh) => ({ id: ch.id, number: ch.number, title: ch.title })));
+
+        type RawSub = { id: string; subsectionId: string; title: string; content?: string | null };
+        type RawSec = { subsections?: RawSub[] };
+        type RawCh = {
+          id: string;
+          number: number;
+          title: string;
+          sections?: RawSec[];
+        };
+
+        const rawChapters: RawCh[] = data.chapters ?? [];
+
+        const builtChapters: ChapterData[] = rawChapters.map((ch) => {
+          const flatSubs: SubsectionData[] = [];
+          for (const sec of ch.sections ?? []) {
+            for (const sub of sec.subsections ?? []) {
+              flatSubs.push({
+                id: sub.id,
+                subsectionId: sub.subsectionId,
+                title: sub.title,
+                content: sub.content ?? null,
+              });
+            }
+          }
+          return {
+            id: ch.id,
+            number: ch.number,
+            title: ch.title,
+            subsections: flatSubs,
+          };
+        });
+
+        setChapters(builtChapters);
       }
     } catch {
       // ignore
@@ -107,6 +156,13 @@ export default function PreviewPage() {
     toast.info(`Art style set to "${style}". Use the chat to apply it.`);
   }
 
+  // Flat chapters list for ScenePanel
+  const chaptersList = chapters.map((ch) => ({
+    id: ch.id,
+    number: ch.number,
+    title: ch.title,
+  }));
+
   const tabs: { key: Tab; label: string; icon: typeof Users }[] = [
     { key: "characters", label: "Characters", icon: Users },
     { key: "scenes", label: "Scenes", icon: ImageIcon },
@@ -122,8 +178,8 @@ export default function PreviewPage() {
 
       {/* Right: Panels */}
       <div className="flex-1 flex flex-col h-full min-w-0">
-        {/* Tab bar + Book preview button */}
-        <div className="px-4 py-2.5 border-b border-[#d4c9b5]/40 shrink-0 flex items-center justify-between">
+        {/* Tab bar */}
+        <div className="px-4 py-2.5 border-b border-[#d4c9b5]/40 shrink-0 flex items-center">
           <div className="flex gap-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -153,7 +209,6 @@ export default function PreviewPage() {
               );
             })}
           </div>
-
         </div>
 
         {/* Tab content */}
@@ -162,7 +217,13 @@ export default function PreviewPage() {
             <CharacterPanel characters={characters} isLoading={isLoadingChars} />
           )}
           {activeTab === "scenes" && (
-            <ScenePanel images={images} chapters={chapters} projectId={projectId} isLoading={isLoadingImages} onUpdate={handleUpdate} />
+            <ScenePanel
+              images={images}
+              chapters={chaptersList}
+              projectId={projectId}
+              isLoading={isLoadingImages}
+              onUpdate={handleUpdate}
+            />
           )}
           {activeTab === "style" && (
             <StylePanel currentStyle={artStyle} onStyleSelect={handleStyleSelect} />

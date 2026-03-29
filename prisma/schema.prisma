@@ -136,6 +136,7 @@ model Project {
   citationFormat   CitationFormat @default(ISNAD)
   styleProfile     Json?
   writingGuidelines Json?
+  bookDesign       Json?
   status           ProjectStatus  @default(onboarding)
 
   user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -488,6 +489,11 @@ model ProjectImage {
   prompt       String      @db.Text
   style        String?
   aspectRatio  String      @default("4:3")
+  layout       String      @default("float_right")
+  position     String      @default("after")
+  widthPercent Int         @default(50)
+  posX         Float       @default(0)
+  posY         Float       @default(0)
   sortOrder    Int         @default(0)
   createdAt    DateTime    @default(now())
 

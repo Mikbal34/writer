@@ -1,6 +1,45 @@
 import { GoogleGenAI } from '@google/genai'
+import { createClaudeClient, HAIKU } from '@/lib/claude'
 
 const genai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! })
+
+/**
+ * Sanitize a prompt so it passes Imagen's safety filter while preserving
+ * the artistic intent as closely as possible.
+ */
+async function sanitizePromptForImagen(prompt: string): Promise<string> {
+  const claude = createClaudeClient()
+  const response = await claude.messages.create({
+    model: HAIKU,
+    max_tokens: 1024,
+    messages: [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+    system: [
+      'You are an image prompt rewriter. Your job is to take an illustration prompt and rewrite it so it will pass Google Imagen safety filter, while keeping the scene as close to the original as possible.',
+      '',
+      'RULES:',
+      '- Remove or replace: nudity, nakedness, explicit body descriptions, sexual/sensual language, violence, gore',
+      '- Replace naked/nude with clothed alternatives (e.g. wearing a loose shirt, draped in elegant clothing)',
+      '- Replace sensual/erotic/intimate with elegant/romantic/tender',
+      '- Replace explicit body descriptions with tasteful alternatives (e.g. muscular torso to athletic build)',
+      '- Keep: setting, lighting, mood (softened), character positions, clothing style, colors, composition',
+      '- Keep: character visual traits (face, hair, eyes, expression) - these are safe',
+      '- The rewritten prompt must still be in English',
+      '- Output ONLY the rewritten prompt, nothing else - no explanation, no prefix',
+    ].join('\n'),
+  })
+
+  const text = response.content[0]
+  if (text.type === 'text') {
+    console.log('[imagen] Sanitized prompt:', text.text.slice(0, 200))
+    return text.text.trim()
+  }
+  return prompt
+}
 
 export type AspectRatio = '1:1' | '3:4' | '4:3' | '9:16' | '16:9'
 
@@ -21,16 +60,37 @@ export interface GeneratedImage {
 export async function generateImage(options: GenerateImageOptions): Promise<GeneratedImage[]> {
   const { prompt, aspectRatio = '4:3', numberOfImages = 1 } = options
 
-  const response = await genai.models.generateImages({
-    model: 'imagen-4.0-generate-001',
-    prompt,
-    config: {
-      numberOfImages,
-      aspectRatio,
-    },
-  })
+  console.log('[imagen] Original prompt:', prompt.slice(0, 200))
+  const safePrompt = await sanitizePromptForImagen(prompt)
+  console.log('[imagen] Safe prompt:', safePrompt.slice(0, 200))
+  console.log('[imagen] Config:', JSON.stringify({ numberOfImages, aspectRatio }))
+
+  let response
+  try {
+    response = await genai.models.generateImages({
+      model: 'imagen-4.0-generate-001',
+      prompt: safePrompt,
+      config: {
+        numberOfImages,
+        aspectRatio,
+      },
+    })
+  } catch (apiErr: unknown) {
+    const errMsg = apiErr instanceof Error ? apiErr.message : String(apiErr)
+    if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('quota')) {
+      console.error('[imagen] Quota exceeded:', errMsg)
+      throw new Error('Image generation is temporarily unavailable due to high demand. Please try again later.')
+    }
+    throw apiErr
+  }
+
+  console.log('[imagen] Response generatedImages count:', response.generatedImages?.length ?? 0)
+  console.log('[imagen] Full response keys:', Object.keys(response))
+  if ((response as any).filters) console.log('[imagen] Filters:', JSON.stringify((response as any).filters))
+  if ((response as any).safetyAttributes) console.log('[imagen] Safety:', JSON.stringify((response as any).safetyAttributes))
 
   if (!response.generatedImages || response.generatedImages.length === 0) {
+    console.error('[imagen] BLOCKED — no images returned for prompt:', prompt.slice(0, 200))
     throw new Error('No images generated')
   }
 

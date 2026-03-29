@@ -52,6 +52,11 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     if ('chapterId' in body) data.chapterId = body.chapterId ?? null
     if ('subsectionId' in body) data.subsectionId = body.subsectionId ?? null
     if ('sortOrder' in body) data.sortOrder = body.sortOrder
+    if ('layout' in body) data.layout = body.layout
+    if ('position' in body) data.position = body.position
+    if ('widthPercent' in body) data.widthPercent = body.widthPercent
+    if ('posX' in body) data.posX = body.posX
+    if ('posY' in body) data.posY = body.posY
 
     await prisma.projectImage.update({
       where: { id: imageId },

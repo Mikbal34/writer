@@ -3,7 +3,7 @@ import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { streamChatWithTools, HAIKU, type ChatMessage, type SystemPromptPart, type ToolDefinition } from '@/lib/claude'
 import { compressHistory } from '@/lib/conversation'
-import { checkCredits, deductCredits } from '@/lib/credits'
+import { checkCredits, deductCredits, checkImageCredits, deductImageCredits } from '@/lib/credits'
 import { generateImage, buildImagePrompt } from '@/lib/imagen'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -41,17 +41,17 @@ function buildTools(): ToolDefinition[] {
     },
     {
       name: 'generate_scene_image',
-      description: 'Generate an illustration for a specific chapter or subsection. The image will use character visual traits for consistency.',
+      description: 'Generate an illustration for a specific chapter or subsection. The image will use character visual traits for consistency. REQUIRES chapterId — every scene image must be linked to a chapter.',
       input_schema: {
         type: 'object' as const,
         properties: {
           sceneDescription: { type: 'string', description: 'Detailed scene description for image generation (English). Include setting, lighting, mood, character actions.' },
-          chapterId: { type: 'string', description: 'Chapter database ID to attach the image to (optional)' },
-          subsectionId: { type: 'string', description: 'Subsection database ID to attach the image to (optional)' },
+          chapterId: { type: 'string', description: 'Chapter database ID (REQUIRED). Use the [dbId: ...] value from the book structure.' },
+          subsectionId: { type: 'string', description: 'Subsection database ID to attach the image to' },
           characterNames: { type: 'array', items: { type: 'string' }, description: 'Names of characters appearing in this scene' },
           aspectRatio: { type: 'string', enum: ['1:1', '3:4', '4:3', '16:9'], description: 'Image aspect ratio (default: 4:3)' },
         },
-        required: ['sceneDescription'],
+        required: ['sceneDescription', 'chapterId'],
       },
     },
     {
@@ -111,10 +111,25 @@ async function handleToolCallFn(
   toolName: string,
   toolInput: Record<string, unknown>,
   projectId: string,
-  artStyle: string | null
+  artStyle: string | null,
+  userId: string
 ): Promise<string> {
   if (toolName === 'create_character') {
     const { name, description, visualTraits } = toolInput as { name: string; description: string; visualTraits: string }
+
+    // Check for existing character with the same name — update instead of duplicating
+    const existing = await prisma.character.findFirst({
+      where: { projectId, name },
+    })
+
+    if (existing) {
+      const character = await prisma.character.update({
+        where: { id: existing.id },
+        data: { description, visualTraits },
+      })
+      return JSON.stringify({ success: true, characterId: character.id, name: character.name, updated: true })
+    }
+
     const count = await prisma.character.count({ where: { projectId } })
     const character = await prisma.character.create({
       data: {
@@ -149,6 +164,11 @@ async function handleToolCallFn(
       aspectRatio?: string
     }
 
+    // Require chapterId — images must be linked to the book structure
+    if (!chapterId) {
+      return JSON.stringify({ error: 'chapterId is required. Every scene image must be linked to a chapter. Use the dbId from the book structure.' })
+    }
+
     // Fetch character visual traits for consistency
     const characterTraits: string[] = []
     if (characterNames && characterNames.length > 0) {
@@ -167,38 +187,59 @@ async function handleToolCallFn(
     if (chapterId) {
       const ch = await prisma.chapter.findFirst({ where: { id: chapterId, projectId }, select: { id: true } })
       if (ch) validChapterId = ch.id
+      else return JSON.stringify({ error: `Chapter with id "${chapterId}" not found in this project. Use get_chapter_detail or check the book structure for valid dbIds.` })
     }
     if (subsectionId) {
       const sub = await prisma.subsection.findFirst({ where: { id: subsectionId, section: { chapter: { projectId } } }, select: { id: true } })
       if (sub) validSubsectionId = sub.id
     }
 
+    // Check credits before generating
+    const creditCheck = await checkImageCredits(userId)
+    if (!creditCheck.allowed) {
+      return JSON.stringify({ error: `Insufficient credits for image generation. Required: 150, balance: ${creditCheck.balance}. The user needs more credits to generate images.` })
+    }
+
     const prompt = buildImagePrompt(sceneDescription, characterTraits, artStyle ?? undefined)
-    const [generated] = await generateImage({
-      prompt,
-      aspectRatio: (aspectRatio as '4:3') ?? '4:3',
-      numberOfImages: 1,
-    })
 
-    const count = await prisma.projectImage.count({ where: { projectId } })
-    const image = await prisma.projectImage.create({
-      data: {
-        projectId,
-        chapterId: validChapterId,
-        subsectionId: validSubsectionId,
-        imageData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer>,
+    try {
+      const [generated] = await generateImage({
         prompt,
-        style: artStyle,
-        aspectRatio: aspectRatio ?? '4:3',
-        sortOrder: count,
-      },
-    })
+        aspectRatio: (aspectRatio as '4:3') ?? '4:3',
+        numberOfImages: 1,
+      })
 
-    return JSON.stringify({
-      success: true,
-      imageId: image.id,
-      url: `/api/projects/${projectId}/preview/images/${image.id}`,
-    })
+      const count = await prisma.projectImage.count({ where: { projectId } })
+      const image = await prisma.projectImage.create({
+        data: {
+          projectId,
+          chapterId: validChapterId,
+          subsectionId: validSubsectionId,
+          imageData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer>,
+          prompt,
+          style: artStyle,
+          aspectRatio: aspectRatio ?? '4:3',
+          sortOrder: count,
+        },
+      })
+
+      // Deduct credits only on success
+      const { newBalance, creditsUsed } = await deductImageCredits(userId, 'generate_image', { projectId })
+
+      return JSON.stringify({
+        success: true,
+        imageId: image.id,
+        url: `/api/projects/${projectId}/preview/images/${image.id}`,
+        creditsUsed,
+        newBalance,
+      })
+    } catch (imgErr) {
+      const errMsg = imgErr instanceof Error ? imgErr.message : String(imgErr)
+      console.error('[preview/chat] Scene image generation failed:', errMsg)
+      return JSON.stringify({
+        error: `Image generation failed: ${errMsg}. The scene was not saved. No credits were charged. You can retry with the same or modified description.`,
+      })
+    }
   }
 
   if (toolName === 'regenerate_image') {
@@ -219,19 +260,35 @@ async function handleToolCallFn(
       }
     }
 
+    // Check credits before regenerating
+    const creditCheck = await checkImageCredits(userId)
+    if (!creditCheck.allowed) {
+      return JSON.stringify({ error: `Insufficient credits for image regeneration. Required: 150, balance: ${creditCheck.balance}.` })
+    }
+
     const prompt = buildImagePrompt(newSceneDescription, characterTraits, artStyle ?? undefined)
-    const [generated] = await generateImage({ prompt, numberOfImages: 1 })
 
-    await prisma.projectImage.update({
-      where: { id: imageId },
-      data: { imageData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer>, prompt, style: artStyle },
-    })
+    try {
+      const [generated] = await generateImage({ prompt, numberOfImages: 1 })
 
-    return JSON.stringify({
-      success: true,
-      imageId,
-      url: `/api/projects/${projectId}/preview/images/${imageId}`,
-    })
+      await prisma.projectImage.update({
+        where: { id: imageId },
+        data: { imageData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer>, prompt, style: artStyle },
+      })
+
+      const { newBalance, creditsUsed } = await deductImageCredits(userId, 'regenerate_image', { projectId })
+
+      return JSON.stringify({
+        success: true,
+        imageId,
+        url: `/api/projects/${projectId}/preview/images/${imageId}`,
+        creditsUsed,
+        newBalance,
+      })
+    } catch (imgErr) {
+      const errMsg = imgErr instanceof Error ? imgErr.message : String(imgErr)
+      return JSON.stringify({ error: `Regeneration failed: ${errMsg}. No credits were charged. The original image is unchanged. You can retry.` })
+    }
   }
 
   if (toolName === 'set_art_style') {
@@ -250,44 +307,77 @@ async function handleToolCallFn(
       where: { id: characterId },
       select: { name: true, visualTraits: true },
     })
-    if (!character) return JSON.stringify({ error: 'Character not found' })
+    if (!character) return JSON.stringify({ error: `Character with id "${characterId}" not found. Use the correct dbId from the characters list.` })
+
+    // Check credits before generating
+    const creditCheck = await checkImageCredits(userId)
+    if (!creditCheck.allowed) {
+      return JSON.stringify({ error: `Insufficient credits for portrait generation. Required: 150, balance: ${creditCheck.balance}.` })
+    }
 
     const prompt = `Character portrait: ${character.visualTraits ?? character.name}. ${artStyle ? `Art style: ${artStyle}.` : ''} Bust portrait, centered, detailed face, book illustration quality.`
-    const [generated] = await generateImage({ prompt, aspectRatio: '1:1', numberOfImages: 1 })
 
-    await prisma.character.update({
-      where: { id: characterId },
-      data: { referenceData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer> },
-    })
+    try {
+      const [generated] = await generateImage({ prompt, aspectRatio: '1:1', numberOfImages: 1 })
 
-    return JSON.stringify({ success: true, characterId })
+      await prisma.character.update({
+        where: { id: characterId },
+        data: { referenceData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer> },
+      })
+
+      const { newBalance, creditsUsed } = await deductImageCredits(userId, 'generate_portrait', { projectId })
+
+      return JSON.stringify({ success: true, characterId, name: character.name, creditsUsed, newBalance })
+    } catch (imgErr) {
+      const errMsg = imgErr instanceof Error ? imgErr.message : String(imgErr)
+      console.error(`[preview/chat] Portrait generation failed for ${character.name}:`, errMsg)
+      return JSON.stringify({
+        error: `Portrait generation failed for "${character.name}": ${errMsg}. No credits were charged. The character still exists (id: ${characterId}). You can retry later. Do NOT create a new character.`,
+      })
+    }
   }
 
   if (toolName === 'generate_book_cover') {
     const { coverDescription } = toolInput as { coverDescription: string }
+    // Check credits before generating
+    const creditCheck = await checkImageCredits(userId)
+    if (!creditCheck.allowed) {
+      return JSON.stringify({ error: `Insufficient credits for cover generation. Required: 150, balance: ${creditCheck.balance}.` })
+    }
+
     const prompt = `Book cover illustration: ${coverDescription}. ${artStyle ? `Art style: ${artStyle}.` : ''} Vertical composition, professional book cover quality, centered focal point, dramatic lighting.`
-    const [generated] = await generateImage({ prompt, aspectRatio: '3:4', numberOfImages: 1 })
 
-    // Save as a special project image with no chapter (cover)
-    const image = await prisma.projectImage.create({
-      data: {
-        projectId,
-        chapterId: null,
-        subsectionId: null,
-        imageData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer>,
-        prompt,
-        style: artStyle ?? 'cover',
-        aspectRatio: '3:4',
-        sortOrder: -1, // covers sort before chapter images
-      },
-    })
+    try {
+      const [generated] = await generateImage({ prompt, aspectRatio: '3:4', numberOfImages: 1 })
 
-    return JSON.stringify({
-      success: true,
-      imageId: image.id,
-      url: `/api/projects/${projectId}/preview/images/${image.id}`,
-      type: 'book_cover',
-    })
+      // Save as a special project image with no chapter (cover)
+      const image = await prisma.projectImage.create({
+        data: {
+          projectId,
+          chapterId: null,
+          subsectionId: null,
+          imageData: new Uint8Array(generated.imageData.buffer) as Uint8Array<ArrayBuffer>,
+          prompt,
+          style: artStyle ?? 'cover',
+          aspectRatio: '3:4',
+          sortOrder: -1, // covers sort before chapter images
+        },
+      })
+
+      const { newBalance, creditsUsed } = await deductImageCredits(userId, 'generate_cover', { projectId })
+
+      return JSON.stringify({
+        success: true,
+        imageId: image.id,
+        url: `/api/projects/${projectId}/preview/images/${image.id}`,
+        type: 'book_cover',
+        creditsUsed,
+        newBalance,
+      })
+    } catch (imgErr) {
+      const errMsg = imgErr instanceof Error ? imgErr.message : String(imgErr)
+      return JSON.stringify({ error: `Book cover generation failed: ${errMsg}. No credits were charged. You can retry.` })
+    }
   }
 
   return JSON.stringify({ error: `Unknown tool: ${toolName}` })
@@ -348,7 +438,9 @@ TOOLS:
 - Use regenerate_image if the user wants to change an existing image
 - Use generate_book_cover to create a book cover illustration (3:4 vertical ratio)`
 
-  const dynamicPart = `Respond in ${project.language === 'tr' ? 'Turkish' : project.language === 'en' ? 'English' : project.language ?? 'English'}.
+  const langNames: Record<string, string> = { en: "English", tr: "Turkish", ar: "Arabic", fa: "Persian", ur: "Urdu", de: "German", fr: "French", es: "Spanish", pt: "Portuguese", it: "Italian", ru: "Russian", zh: "Chinese", ja: "Japanese", ko: "Korean", hi: "Hindi", he: "Hebrew", pl: "Polish", nl: "Dutch", sv: "Swedish", th: "Thai", vi: "Vietnamese", id: "Indonesian", ms: "Malay", bn: "Bengali", sw: "Swahili", uk: "Ukrainian", el: "Greek", cs: "Czech", ro: "Romanian", hu: "Hungarian", da: "Danish", no: "Norwegian", fi: "Finnish" };
+  const langName = langNames[project.language ?? "en"] ?? project.language ?? "English";
+  const dynamicPart = `Respond in ${langName}.
 
 Project: "${project.title}" (${project.projectType})
 ${artStyle ? `Current art style: ${artStyle}` : 'No art style set yet — ask the user or suggest one.'}
@@ -369,10 +461,11 @@ ${chapterList || 'No chapters yet.'}${summarySection}`
 export async function POST(req: NextRequest, ctx: RouteContext) {
   try {
     const session = await requireAuth()
+    const userId = session.user.id
     const { id: projectId } = await ctx.params
 
     const project = await prisma.project.findFirst({
-      where: { id: projectId, userId: session.user.id },
+      where: { id: projectId, userId },
       select: {
         id: true,
         title: true,
@@ -447,7 +540,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             compressedMessages,
             systemPrompt,
             tools,
-            (toolName, toolInput) => handleToolCallFn(toolName, toolInput, projectId, artStyle),
+            (toolName, toolInput) => handleToolCallFn(toolName, toolInput, projectId, artStyle, userId),
             (chunk) => {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`))
             },

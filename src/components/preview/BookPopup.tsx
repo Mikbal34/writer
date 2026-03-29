@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { renderInlineMarkdown } from "@/lib/render-markdown";
 
 interface BookPage {
   type: "chapter-cover" | "content" | "image";
@@ -71,10 +72,13 @@ export default function BookPopup({ pages, open, onClose }: BookPopupProps) {
     }
 
     // Content page
+    const paragraphs = (page.text ?? "").split(/\n\n+/);
     return (
       <div className="flex-1 bg-[#FAF7F0] p-6 md:p-10 overflow-y-auto">
-        <div className="font-body text-sm leading-[1.8] text-[#2D1F0E] whitespace-pre-wrap">
-          {page.text}
+        <div className="font-body text-sm leading-[1.8] text-[#2D1F0E] space-y-4">
+          {paragraphs.map((para, idx) => (
+            <p key={idx}>{renderInlineMarkdown(para)}</p>
+          ))}
         </div>
         <p className="font-ui text-[10px] text-muted-foreground text-center mt-6 tracking-widest">
           -- {currentSpread * 2 + (side === "left" ? 1 : 2)} --

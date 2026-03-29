@@ -21,7 +21,6 @@ interface ProjectPageProps {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  onboarding: "Onboarding",
   roadmap: "Building Roadmap",
   sources: "Adding Sources",
   writing: "Writing",

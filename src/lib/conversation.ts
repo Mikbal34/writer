@@ -12,13 +12,13 @@ const SUMMARY_PROMPT_SYSTEM =
  */
 export async function compressHistory(
   messages: ChatMessage[],
-  maxMessages: number = 12
+  maxMessages: number = 6
 ): Promise<{ messages: ChatMessage[]; summary: string | null }> {
   if (messages.length <= maxMessages) {
     return { messages, summary: null }
   }
 
-  const keepRecent = 8
+  const keepRecent = 4
   const firstMessage = messages[0]
   const recentMessages = messages.slice(-keepRecent)
   const middleMessages = messages.slice(1, messages.length - keepRecent)

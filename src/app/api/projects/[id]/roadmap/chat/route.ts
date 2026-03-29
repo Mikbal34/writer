@@ -294,7 +294,7 @@ Available commands:
 - {"action": "add_chapter", "chapter": {"number": N, "title": "...", "purpose": "...", "estimatedPages": N}, "tempId": "__temp_ch_1", "sections": [{"sectionId": "1.1", "title": "...", "keyConcepts": [...], "tempId": "__temp_sec_1_1", "subsections": [{"subsectionId": "1.1.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N}]}]}
 - {"action": "remove_chapter", "chapterDbId": "..."}
 - {"action": "move_section", "sectionDbId": "...", "targetChapterDbId": "..."}${sourceCommandDocs}
-- {"action": "update_project", "fields": {"topic?": "...", "purpose?": "...", "audience?": "..."}}${sourceRules}`
+- {"action": "update_project", "fields": {"topic?": "...", "purpose?": "...", "audience?": "...", "styleProfile?": {"narrativePOV?": "...", "genre?": "...", "dialogueStyle?": "...", "pacing?": "...", "moodAtmosphere?": "...", "targetAgeGroup?": "...", "narrativeStyle?": "...", "tone?": "..."}}}${sourceRules}`
 
   const toolsSection = needsSources
     ? `TOOLS:
@@ -330,6 +330,33 @@ FORMAT RULES:
 
   let staticPart: string
   if (isCreationMode) {
+    const storyWritingPrefsStep = project.projectType === 'STORY' ? `
+3. BEFORE creating the roadmap, ask the user about their writing preferences for the story:
+   - **Point of view (POV):** First person, third person limited, third person omniscient, or second person?
+   - **Genre:** What genre? (romance, sci-fi, mystery, thriller, fantasy, historical fiction, horror, literary fiction, etc.)
+   - **Dialogue style:** Sparse (mostly narrative), moderate (balanced), or dialogue-heavy?
+   - **Pacing:** Slow/atmospheric, moderate, or fast-paced/action-driven?
+   - **Mood/Atmosphere:** What overall mood? (dark, lighthearted, tense, melancholic, romantic, mysterious, etc.)
+   - **Target audience:** Children, young adult, or adult?
+   - **Narrative style:** Descriptive, minimalist, stream of consciousness, epistolary, etc.?
+   Ask these naturally in conversation — you do not need to ask all at once. If the user says "you decide" or gives a short answer, make reasonable choices based on the story's concept.
+4. After gathering writing preferences, SAVE them using this update_project command with the styleProfile field. Example:
+   {"action": "update_project", "fields": {"styleProfile": {"narrativePOV": "third_person_limited", "genre": "romantic thriller", "dialogueStyle": "dialogue_heavy", "pacing": "fast", "moodAtmosphere": "tense and mysterious", "targetAgeGroup": "adult", "narrativeStyle": "descriptive"}}}
+5. Then create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section). Do NOT add any academic sources.
+6. Use update_project to set topic/purpose/audience if not already specified.` : ''
+
+    const bookWritingPrefsStep = project.projectType === 'BOOK' ? `
+3. BEFORE creating the roadmap, ask the user about their writing preferences:
+   - **Tone:** Serious/professional, conversational, inspirational, or humorous?
+   - **Target reader:** Expert, general reader, or student?
+   - **Writing approach:** How-to/practical, anecdotal/story-driven, case studies, data-driven, or mixed?
+   - **Pacing:** Detailed/thorough or concise/to-the-point?
+   Ask these naturally in conversation.
+4. After gathering preferences, SAVE them using update_project with styleProfile. Example:
+   {"action": "update_project", "fields": {"styleProfile": {"tone": "conversational", "targetAgeGroup": "adult", "pacing": "moderate", "narrativeStyle": "anecdotal"}}}
+5. Then create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section). Do NOT add any academic sources.
+6. Use update_project to set topic/purpose/audience if not already specified.` : ''
+
     const sourceSteps = needsSources ? `
 3. After gathering enough information about the book's content and structure, BEFORE creating the roadmap, ask the user about sources:
    - Do they have specific sources (books, articles, authors) they plan to use?
@@ -340,7 +367,7 @@ FORMAT RULES:
 5. When creating the roadmap, add sources to EVERY subsection (using add_source commands). Use sources from the library first; suggest your own for any gaps.
 
 SOURCE DENSITY: ${SOURCE_DENSITY_INSTRUCTIONS[sourceDensity ?? 'normal']}
-6. Use update_project command to update project information.` : `
+6. Use update_project command to update project information.` : storyWritingPrefsStep || bookWritingPrefsStep || `
 3. After gathering enough information, create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section). Do NOT add any sources.
 4. Use update_project command to update project information.`
 
@@ -745,12 +772,25 @@ async function applyCommands(
       case 'update_project': {
         const fields = cmd.fields as Record<string, unknown> | undefined
         if (!fields) break
+
+        // If styleProfile is provided, merge with existing profile
+        let styleProfileUpdate: object | undefined
+        if (fields.styleProfile !== undefined) {
+          const existing = await tx.project.findUnique({
+            where: { id: projectId },
+            select: { styleProfile: true },
+          })
+          const existingProfile = (existing?.styleProfile as Record<string, unknown>) ?? {}
+          styleProfileUpdate = { ...existingProfile, ...(fields.styleProfile as Record<string, unknown>) }
+        }
+
         await tx.project.update({
           where: { id: projectId },
           data: {
             ...(fields.topic !== undefined && { topic: fields.topic as string }),
             ...(fields.purpose !== undefined && { purpose: fields.purpose as string }),
             ...(fields.audience !== undefined && { audience: fields.audience as string }),
+            ...(styleProfileUpdate !== undefined && { styleProfile: styleProfileUpdate }),
           },
         })
         break
@@ -826,9 +866,17 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const roadmapIndex = isCreationMode ? null : buildRoadmapIndex(chapters)
     const tools = buildTools(isCreationMode, needsSources)
 
+    // Trim long assistant messages before compression to reduce token usage
+    const trimmedMessages = (messages as Array<{ role: 'user' | 'assistant'; content: string }>).map((m) => ({
+      role: m.role,
+      content: m.role === 'assistant' && m.content.length > 800
+        ? m.content.slice(0, 800) + '\n[...truncated]'
+        : m.content,
+    }))
+
     // Compress conversation history if too long
     const { messages: compressedMessages, summary: conversationSummary } =
-      await compressHistory(messages)
+      await compressHistory(trimmedMessages)
 
     const systemPrompt = buildSystemPrompt(roadmapIndex, project, conversationSummary, sourceDensity)
 

@@ -62,11 +62,6 @@ export default function CharacterPanel({ characters, isLoading }: CharacterPanel
             </div>
           </div>
 
-          {char.visualTraits && (
-            <p className="font-ui text-[10px] text-muted-foreground/70 mt-2 italic line-clamp-2">
-              Visual: {char.visualTraits}
-            </p>
-          )}
         </div>
       ))}
     </div>

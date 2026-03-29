@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   Menu,
   X,
+  Paintbrush,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CreditBalance from "@/components/shared/CreditBalance";
@@ -34,7 +35,7 @@ interface ProjectSidebarProps {
   completionPct?: number;
 }
 
-const STATUS_ORDER = ["onboarding", "roadmap", "sources", "writing", "completed"];
+const STATUS_ORDER = ["roadmap", "sources", "writing", "completed"];
 
 function getSectionStatus(
   sectionKey: string,
@@ -82,7 +83,7 @@ export default function ProjectSidebar({
       label: "Dashboard",
       href: `/projects/${projectId}`,
       icon: <LayoutDashboard className="w-4 h-4" />,
-      statusKey: "onboarding",
+      statusKey: "roadmap",
     },
     {
       label: "Roadmap",
@@ -104,9 +105,15 @@ export default function ProjectSidebar({
       statusKey: "writing",
     },
     {
-      label: "Art & Design",
+      label: "Art",
       href: `/projects/${projectId}/preview`,
       icon: <Eye className="w-4 h-4" />,
+      statusKey: "writing",
+    },
+    {
+      label: "Design",
+      href: `/projects/${projectId}/design`,
+      icon: <Paintbrush className="w-4 h-4" />,
       statusKey: "writing",
     },
     {
@@ -119,7 +126,7 @@ export default function ProjectSidebar({
 
   const navItems = allNavItems
     .filter((item) => needsSources || item.statusKey !== "sources")
-    .filter((item) => needsSources ? item.label !== "Art & Design" : true);
+    .filter((item) => needsSources ? item.label !== "Art" && item.label !== "Design" : true);
 
   const sidebarContent = (
     <div className="flex flex-col h-full">

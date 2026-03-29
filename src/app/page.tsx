@@ -35,7 +35,6 @@ const BOOK_COLORS = [
 ];
 
 const STATUS_LABELS: Record<string, string> = {
-  onboarding: "Onboarding",
   roadmap: "Roadmap",
   sources: "Sources",
   writing: "Writing",
@@ -44,7 +43,6 @@ const STATUS_LABELS: Record<string, string> = {
 
 function getStatusProgress(status: string): number {
   const map: Record<string, number> = {
-    onboarding: 10,
     roadmap: 30,
     sources: 50,
     writing: 70,

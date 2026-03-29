@@ -6,6 +6,7 @@ import type {
   SourceMapping,
   Bibliography,
   CitationFormat,
+  ProjectType,
 } from '@prisma/client'
 
 // ==================== STYLE PROFILE ====================
@@ -37,6 +38,23 @@ export interface StyleProfile {
   rhetoricalApproach: 'argumentative' | 'descriptive' | 'analytical' | 'comparative'
   /** Additional style notes captured from sample analysis */
   additionalNotes?: string
+
+  // ---- Narrative / Creative Writing Fields (STORY & BOOK) ----
+
+  /** Narrative point of view */
+  narrativePOV?: 'first_person' | 'second_person' | 'third_person_limited' | 'third_person_omniscient'
+  /** Genre (e.g. "romance", "sci-fi", "mystery", "thriller", "fantasy", "historical") */
+  genre?: string
+  /** Dialogue density */
+  dialogueStyle?: 'sparse' | 'moderate' | 'dialogue_heavy'
+  /** Story pacing */
+  pacing?: 'slow' | 'moderate' | 'fast'
+  /** Mood / atmosphere description (e.g. "dark and brooding", "lighthearted", "tense") */
+  moodAtmosphere?: string
+  /** Target age group */
+  targetAgeGroup?: 'children' | 'young_adult' | 'adult'
+  /** Narrative style (e.g. "descriptive", "minimalist", "stream_of_consciousness", "epistolary") */
+  narrativeStyle?: string
 }
 
 // ==================== PRISMA RELATION TYPES ====================
@@ -159,7 +177,9 @@ export interface WritingContext {
   sources: SourceMappingInfo[]
   /** Citation format for the project */
   citationFormat: CitationFormat
-  /** Style profile (may be partial during onboarding) */
+  /** Project type: ACADEMIC, BOOK, or STORY */
+  projectType: ProjectType
+  /** Style profile (may be partial) */
   styleProfile: Partial<StyleProfile> | null
   /** Any additional writing guidelines */
   writingGuidelines: string | null

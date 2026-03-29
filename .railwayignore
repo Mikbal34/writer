@@ -1,0 +1,6 @@
+node_modules
+.next
+.playwright-mcp
+eymen_project.pdf
+pitch-deck-assets
+pitch-deck.md

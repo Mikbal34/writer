@@ -17,7 +17,7 @@ import type {
   PrevNextSubsection,
   SourceMappingInfo,
 } from '@/types/project'
-import type { CitationFormat } from '@prisma/client'
+import type { CitationFormat, ProjectType } from '@prisma/client'
 import type { SystemPromptPart } from '@/lib/claude'
 import { getFormatSettings } from '@/lib/constants'
 
@@ -34,12 +34,14 @@ export function getWritingPrompt(context: WritingContext): {
   userPrompt: string
 } {
   const systemPromptParts = buildSystemPromptParts(
+    context.projectType,
     context.styleProfile,
     context.citationFormat,
     context.writingGuidelines
   )
 
   const userPrompt = getSessionContextPrompt(
+    context.projectType,
     context.subsection,
     context.chapter,
     context.section,
@@ -58,6 +60,7 @@ export function getWritingPrompt(context: WritingContext): {
  * This is also useful standalone when you need to inspect the prompt without streaming.
  */
 export function getSessionContextPrompt(
+  projectType: ProjectType,
   subsection: SubsectionFull,
   chapter: ChapterWithSections,
   section: SectionWithSubsections,
@@ -134,8 +137,8 @@ export function getSessionContextPrompt(
   }
   parts.push('')
 
-  // --- 6. Sources ---
-  if (sources.length > 0) {
+  // --- 6. Sources (ACADEMIC only) ---
+  if (projectType === 'ACADEMIC' && sources.length > 0) {
     parts.push(`## Sources for This Subsection`)
     parts.push('')
 
@@ -173,38 +176,74 @@ export function getSessionContextPrompt(
     }
   }
 
-  // --- 7. Citation instructions ---
-  parts.push(`## Citation Instructions`)
-  parts.push(buildCitationInstructions(citationFormat))
-  parts.push('')
+  // --- 7. Citation instructions (ACADEMIC only) ---
+  if (projectType === 'ACADEMIC') {
+    parts.push(`## Citation Instructions`)
+    parts.push(buildCitationInstructions(citationFormat))
+    parts.push('')
+  }
 
   // --- 8. Style reminders ---
   if (styleProfile && Object.keys(styleProfile).length > 0) {
     parts.push(`## Writing Style Reminders`)
-    parts.push(buildStyleReminders(styleProfile))
+    parts.push(buildStyleReminders(styleProfile, projectType))
     parts.push('')
   }
 
-  // --- 9. Output format ---
+  // --- 9. Output format (type-specific) ---
   parts.push(`## Output`)
-  parts.push(
-    `Write the full academic text for subsection ${subsection.subsectionId}: "${subsection.title}".`
-  )
-  parts.push(
-    (() => {
-      const { wordsPerPage } = getFormatSettings(citationFormat)
-      const pages = subsection.estimatedPages ?? 3
-      const target = pages * wordsPerPage
-      const tolerance = Math.round(wordsPerPage * 0.2)
-      return `Write approximately ${target}–${target + tolerance} words (${pages} academic pages, ~${wordsPerPage} words/page for ${citationFormat} format). This word count is important — do not write significantly more or less.`
-    })()
-  )
-  parts.push(
-    `Do not include the subsection heading — just the body text with footnote markers indicated as [fn: citation text].`
-  )
-  parts.push(
-    `Footnote format: Insert [fn: <citation>] immediately after the punctuation that follows the referenced claim.`
-  )
+
+  const wordTarget = (() => {
+    const { wordsPerPage } = getFormatSettings(citationFormat)
+    const pages = subsection.estimatedPages ?? 3
+    const target = pages * wordsPerPage
+    const tolerance = Math.round(wordsPerPage * 0.2)
+    return `Write approximately ${target}–${target + tolerance} words.`
+  })()
+
+  if (projectType === 'STORY') {
+    parts.push(
+      `Write the full narrative text for subsection ${subsection.subsectionId}: "${subsection.title}".`
+    )
+    parts.push(wordTarget)
+    parts.push(
+      `Do not include the subsection heading — just the narrative body.`
+    )
+    parts.push(
+      `Focus on storytelling: scene-setting, character development, dialogue, and emotional resonance. Do NOT include academic footnotes or citations.`
+    )
+  } else if (projectType === 'BOOK') {
+    parts.push(
+      `Write the full text for subsection ${subsection.subsectionId}: "${subsection.title}".`
+    )
+    parts.push(wordTarget)
+    parts.push(
+      `Do not include the subsection heading — just the body text.`
+    )
+    parts.push(
+      `Write in an engaging, informative style. Do NOT include academic footnotes or citations.`
+    )
+  } else {
+    // ACADEMIC
+    parts.push(
+      `Write the full academic text for subsection ${subsection.subsectionId}: "${subsection.title}".`
+    )
+    parts.push(
+      (() => {
+        const { wordsPerPage } = getFormatSettings(citationFormat)
+        const pages = subsection.estimatedPages ?? 3
+        const target = pages * wordsPerPage
+        const tolerance = Math.round(wordsPerPage * 0.2)
+        return `Write approximately ${target}–${target + tolerance} words (${pages} academic pages, ~${wordsPerPage} words/page for ${citationFormat} format). This word count is important — do not write significantly more or less.`
+      })()
+    )
+    parts.push(
+      `Do not include the subsection heading — just the body text with footnote markers indicated as [fn: citation text].`
+    )
+    parts.push(
+      `Footnote format: Insert [fn: <citation>] immediately after the punctuation that follows the referenced claim.`
+    )
+  }
 
   return parts.join('\n')
 }
@@ -212,29 +251,75 @@ export function getSessionContextPrompt(
 // ==================== PRIVATE HELPERS ====================
 
 function buildSystemPromptParts(
+  projectType: ProjectType,
   styleProfile: Partial<StyleProfile> | null,
   citationFormat: CitationFormat,
   writingGuidelines: string | null
 ): SystemPromptPart[] {
-  // --- Part 1: Core rules + citation format (cacheable, same across project) ---
+  // --- Part 1: Core rules (cacheable, same across project) ---
   const coreLines: string[] = []
 
-  coreLines.push(
-    `You are an expert academic ghostwriter assisting with a scholarly book. Your task is to write rigorous, well-argued academic prose for the subsection described in the user prompt.`
-  )
-  coreLines.push('')
+  if (projectType === 'STORY') {
+    coreLines.push(
+      `You are an expert fiction writer and storytelling craftsman. Your task is to write compelling, immersive narrative prose for the section described in the user prompt.`
+    )
+    coreLines.push('')
+    coreLines.push(`## Core Writing Rules`)
+    coreLines.push(`- Write vivid, engaging prose with strong sensory details.`)
+    coreLines.push(`- Develop characters through actions, dialogue, and internal thoughts.`)
+    coreLines.push(`- Build atmosphere and tension appropriate to the scene.`)
+    coreLines.push(`- Use varied sentence structures for rhythm and pacing.`)
+    coreLines.push(`- Show, don't tell — convey emotions through behavior, not labels.`)
+    coreLines.push(`- Maintain consistent voice and point of view throughout.`)
+    coreLines.push(`- Create natural, believable dialogue that reveals character.`)
+    coreLines.push(`- Use scene transitions that maintain narrative flow.`)
+    coreLines.push(`- Do NOT include academic footnotes, citations, or references.`)
 
-  coreLines.push(`## Core Writing Rules`)
-  coreLines.push(`- Academic register: objective, analytical, argument-driven.`)
-  coreLines.push(`- Do NOT use first person ("I", "we") unless the project style requires it.`)
-  coreLines.push(`- Every claim that draws on a source must have a footnote marker.`)
-  coreLines.push(`- Define technical terms on their first occurrence.`)
-  coreLines.push(`- Maintain dialogue between classical and modern scholarship.`)
-  coreLines.push(`- Paragraphs should be well-structured with clear topic sentences.`)
-  coreLines.push('')
+    // Inject narrative preferences from styleProfile
+    const narrativePrefs = buildNarrativePreferences(styleProfile)
+    if (narrativePrefs) {
+      coreLines.push('')
+      coreLines.push(`## Narrative Preferences`)
+      coreLines.push(narrativePrefs)
+    }
+  } else if (projectType === 'BOOK') {
+    coreLines.push(
+      `You are an expert non-fiction writer and communicator. Your task is to write clear, engaging, and informative prose for the section described in the user prompt.`
+    )
+    coreLines.push('')
+    coreLines.push(`## Core Writing Rules`)
+    coreLines.push(`- Write in an accessible, engaging tone — informative but not academic.`)
+    coreLines.push(`- Use concrete examples and anecdotes to illustrate points.`)
+    coreLines.push(`- Structure arguments clearly with smooth transitions.`)
+    coreLines.push(`- Define technical terms naturally within context.`)
+    coreLines.push(`- Maintain a conversational yet authoritative voice.`)
+    coreLines.push(`- Use analogies and metaphors to explain complex ideas.`)
+    coreLines.push(`- Keep the reader engaged with varied paragraph structures.`)
+    coreLines.push(`- Do NOT include academic footnotes, citations, or references.`)
 
-  coreLines.push(`## Citation Format: ${citationFormat}`)
-  coreLines.push(buildCitationSystemNote(citationFormat))
+    const narrativePrefs = buildNarrativePreferences(styleProfile)
+    if (narrativePrefs) {
+      coreLines.push('')
+      coreLines.push(`## Writing Preferences`)
+      coreLines.push(narrativePrefs)
+    }
+  } else {
+    // ACADEMIC — original prompt
+    coreLines.push(
+      `You are an expert academic ghostwriter assisting with a scholarly book. Your task is to write rigorous, well-argued academic prose for the subsection described in the user prompt.`
+    )
+    coreLines.push('')
+    coreLines.push(`## Core Writing Rules`)
+    coreLines.push(`- Academic register: objective, analytical, argument-driven.`)
+    coreLines.push(`- Do NOT use first person ("I", "we") unless the project style requires it.`)
+    coreLines.push(`- Every claim that draws on a source must have a footnote marker.`)
+    coreLines.push(`- Define technical terms on their first occurrence.`)
+    coreLines.push(`- Maintain dialogue between classical and modern scholarship.`)
+    coreLines.push(`- Paragraphs should be well-structured with clear topic sentences.`)
+    coreLines.push('')
+    coreLines.push(`## Citation Format: ${citationFormat}`)
+    coreLines.push(buildCitationSystemNote(citationFormat))
+  }
 
   // --- Part 2: Style profile + writing guidelines (dynamic, project-specific) ---
   const dynamicLines: string[] = []
@@ -412,7 +497,57 @@ Rules:
   return notes[citationFormat] ?? ''
 }
 
-function buildStyleReminders(styleProfile: Partial<StyleProfile>): string {
+function buildNarrativePreferences(styleProfile: Partial<StyleProfile> | null): string | null {
+  if (!styleProfile) return null
+  const prefs: string[] = []
+
+  const povLabels: Record<string, string> = {
+    first_person: 'First person narration',
+    second_person: 'Second person narration',
+    third_person_limited: 'Third person limited POV',
+    third_person_omniscient: 'Third person omniscient POV',
+  }
+  if (styleProfile.narrativePOV) {
+    prefs.push(`- **Point of View:** ${povLabels[styleProfile.narrativePOV] ?? styleProfile.narrativePOV}`)
+  }
+  if (styleProfile.genre) {
+    prefs.push(`- **Genre:** ${styleProfile.genre}`)
+  }
+  if (styleProfile.dialogueStyle) {
+    const dlgLabels: Record<string, string> = {
+      sparse: 'Minimal dialogue, mostly narrative prose',
+      moderate: 'Balanced mix of dialogue and narrative',
+      dialogue_heavy: 'Dialogue-heavy, characters drive the story through conversation',
+    }
+    prefs.push(`- **Dialogue:** ${dlgLabels[styleProfile.dialogueStyle] ?? styleProfile.dialogueStyle}`)
+  }
+  if (styleProfile.pacing) {
+    const paceLabels: Record<string, string> = {
+      slow: 'Slow, atmospheric pacing with detailed descriptions',
+      moderate: 'Moderate pacing balancing action and reflection',
+      fast: 'Fast-paced, action-driven with short scenes',
+    }
+    prefs.push(`- **Pacing:** ${paceLabels[styleProfile.pacing] ?? styleProfile.pacing}`)
+  }
+  if (styleProfile.moodAtmosphere) {
+    prefs.push(`- **Mood / Atmosphere:** ${styleProfile.moodAtmosphere}`)
+  }
+  if (styleProfile.targetAgeGroup) {
+    const ageLabels: Record<string, string> = {
+      children: 'Children (simple language, age-appropriate content)',
+      young_adult: 'Young adult (accessible language, coming-of-age themes)',
+      adult: 'Adult (mature themes, complex language)',
+    }
+    prefs.push(`- **Target Audience:** ${ageLabels[styleProfile.targetAgeGroup] ?? styleProfile.targetAgeGroup}`)
+  }
+  if (styleProfile.narrativeStyle) {
+    prefs.push(`- **Narrative Style:** ${styleProfile.narrativeStyle}`)
+  }
+
+  return prefs.length > 0 ? prefs.join('\n') : null
+}
+
+function buildStyleReminders(styleProfile: Partial<StyleProfile>, projectType?: ProjectType): string {
   const reminders: string[] = []
 
   if (styleProfile.sentenceLength) {

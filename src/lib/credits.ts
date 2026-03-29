@@ -33,8 +33,70 @@ export const ESTIMATED_COSTS: Record<string, number> = {
   bibliography_enrich: 3,
   source_upload_extract: 5,
   preview_chat: 10,
-  generate_image: 160,
-  generate_character_ref: 160,
+  design_chat: 10,
+  generate_image: 150,
+  generate_portrait: 150,
+  generate_cover: 150,
+  regenerate_image: 150,
+}
+
+export const IMAGE_CREDIT_COST = 150
+
+export async function checkImageCredits(
+  userId: string
+): Promise<{ allowed: boolean; balance: number }> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { creditBalance: true },
+  })
+  const balance = user?.creditBalance ?? 0
+  return { allowed: balance >= IMAGE_CREDIT_COST, balance }
+}
+
+export async function deductImageCredits(
+  userId: string,
+  operation: string,
+  metadata?: Record<string, unknown>
+): Promise<{ newBalance: number; creditsUsed: number }> {
+  const creditsUsed = IMAGE_CREDIT_COST
+
+  const result = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { creditBalance: true },
+    })
+
+    const currentBalance = user?.creditBalance ?? 0
+    if (currentBalance < creditsUsed) {
+      throw new InsufficientCreditsError(currentBalance, creditsUsed)
+    }
+
+    const newBalance = currentBalance - creditsUsed
+
+    await tx.user.update({
+      where: { id: userId },
+      data: { creditBalance: newBalance },
+    })
+
+    await tx.creditTransaction.create({
+      data: {
+        userId,
+        amount: -creditsUsed,
+        balance: newBalance,
+        type: 'ai_operation',
+        operation,
+        inputTokens: 0,
+        outputTokens: 0,
+        creditsUsed,
+        model: 'imagen',
+        metadata: metadata as object ?? undefined,
+      },
+    })
+
+    return { newBalance, creditsUsed }
+  })
+
+  return result
 }
 
 export class InsufficientCreditsError extends Error {

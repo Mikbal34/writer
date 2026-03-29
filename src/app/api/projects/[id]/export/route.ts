@@ -93,12 +93,14 @@ function parseMarkdownRuns(text: string, fontSize: number): TextRun[] {
 // ---------------------------------------------------------------------------
 interface SubsectionData {
   subsectionId: string
+  subsectionDbId: string
   title: string
   content: string | null
   sectionTitle: string
   chapterTitle: string
   chapterNumber: number
   chapterId: string
+  isLastInChapter: boolean
 }
 
 function buildDocx(
@@ -410,6 +412,41 @@ interface ProjectImageData {
   chapterId: string | null
   subsectionId: string | null
   sortOrder: number
+  layout: string
+  position: string
+}
+
+interface BookDesignSettings {
+  bodyFontSize?: number
+  headingFontSize?: number
+  lineHeight?: number
+  paragraphSpacing?: number
+  firstLineIndent?: number
+  textAlign?: string
+  pageSize?: string
+  marginTop?: number
+  marginBottom?: number
+  marginLeft?: number
+  marginRight?: number
+  chapterTitleSize?: number
+  chapterTitleAlign?: string
+  sectionTitleSize?: number
+  subsectionTitleSize?: number
+  textColor?: string
+  headingColor?: string
+  showPageNumbers?: boolean
+  showChapterDivider?: boolean
+  imageLayout?: string
+  imageWidthPercent?: number
+  imagePosition?: string
+}
+
+const PAGE_SIZES: Record<string, [number, number]> = {
+  'A4': [595.28, 841.89],
+  'A5': [419.53, 595.28],
+  'B5': [498.90, 708.66],
+  '6x9': [432, 648],
+  '5x8': [360, 576],
 }
 
 function buildPdf(
@@ -419,16 +456,26 @@ function buildPdf(
   formatter: CitationFormatter,
   includeBibliography: boolean,
   language?: string | null,
-  images?: ProjectImageData[]
+  images?: ProjectImageData[],
+  design?: BookDesignSettings | null
 ): Promise<Buffer> {
   const labels = getLabels(language)
+  const d = design ?? {}
+
+  // Page dimensions from design settings
+  const pageDimensions = PAGE_SIZES[d.pageSize ?? 'A4'] ?? PAGE_SIZES['A4']
+  const mTop = d.marginTop ?? 72
+  const mBottom = d.marginBottom ?? 72
+  const mLeft = d.marginLeft ?? 72
+  const mRight = d.marginRight ?? 72
+
   return new Promise((resolve, reject) => {
     const fontFamily = resolvePdfFontFamily()
     const hasCustomFont = !!fontFamily.regular
 
     const doc = new PDFDocument({
-      size: 'A4',
-      margins: { top: 72, bottom: 72, left: 72, right: 72 },
+      size: pageDimensions as [number, number],
+      margins: { top: mTop, bottom: mBottom, left: mLeft, right: mRight },
       bufferPages: true,
       info: { Title: projectTitle },
     })
@@ -460,14 +507,23 @@ function buildPdf(
     doc.on('error', reject)
 
     // ---- Page-bottom footnote tracking ----
-    const PAGE_HEIGHT = 841.89 // A4
-    const MARGIN_BOTTOM = 72
-    const MARGIN_LEFT = 72
+    const PAGE_HEIGHT = pageDimensions[1]
+    const PAGE_WIDTH = pageDimensions[0]
+    const MARGIN_BOTTOM = mBottom
+    const MARGIN_LEFT = mLeft
     const CONTENT_BOTTOM = PAGE_HEIGHT - MARGIN_BOTTOM
     const FOOTNOTE_FONT_SIZE = 8.5
     const FOOTNOTE_LINE_GAP = 1.5
     const FOOTNOTE_SEPARATOR_HEIGHT = 15 // space for the separator line + padding
-    const CONTENT_WIDTH = 595.28 - 72 - 72 // A4 width minus margins
+    const CONTENT_WIDTH = PAGE_WIDTH - mLeft - mRight
+
+    // Font sizes from design settings
+    const BODY_SIZE = d.bodyFontSize ?? 11
+    const CHAPTER_SIZE = d.chapterTitleSize ?? 18
+    const SECTION_SIZE = d.sectionTitleSize ?? 14
+    const SUBSECTION_SIZE = d.subsectionTitleSize ?? 12
+    const LINE_GAP = Math.round((d.lineHeight ?? 1.5) * BODY_SIZE - BODY_SIZE)
+    const PARA_INDENT = d.firstLineIndent ?? 36
 
     // Per-page footnote storage
     const pageFootnotes: Map<number, Array<{ num: number; text: string }>> = new Map()
@@ -518,7 +574,7 @@ function buildPdf(
     const coverImage = images?.find((img) => img.sortOrder === -1)
     if (coverImage) {
       try {
-        doc.image(coverImage.imageData, 0, 0, { width: 595.28, height: PAGE_HEIGHT })
+        doc.image(coverImage.imageData, 0, 0, { width: PAGE_WIDTH, height: PAGE_HEIGHT })
       } catch {
         // Fallback to text title if cover image fails
         doc.font(fonts.bold).fontSize(24)
@@ -539,49 +595,69 @@ function buildPdf(
         currentChapter = sub.chapterTitle
         currentSection = ''
         if (doc.y > 100) doc.addPage()
-        doc.font(fonts.bold).fontSize(18)
+        doc.font(fonts.bold).fontSize(CHAPTER_SIZE)
         doc.text(`${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, { align: 'left' })
         doc.moveDown(0.5)
 
-        // Insert chapter images as full pages
-        if (images && images.length > 0) {
-          const chapterImages = images.filter((img) => img.chapterId === sub.chapterId)
-          for (const img of chapterImages) {
-            try {
-              doc.addPage()
-              // Center image on page, maximize within margins
-              const maxW = CONTENT_WIDTH
-              const maxH = PAGE_HEIGHT - 72 - 72 // margins top + bottom
-              doc.image(img.imageData, MARGIN_LEFT, 72, {
-                fit: [maxW, maxH],
-                align: 'center',
-                valign: 'center',
-              })
-            } catch (imgErr) {
-              console.error('[export] Failed to embed image:', imgErr)
-            }
-          }
-          // Start text on a fresh page after images
-          if (chapterImages.length > 0) {
-            doc.addPage()
-          }
-        }
       }
 
       // Section heading
       if (sub.sectionTitle !== currentSection) {
         currentSection = sub.sectionTitle
-        doc.font(fonts.bold).fontSize(14)
+        doc.font(fonts.bold).fontSize(SECTION_SIZE)
         ensureSpace(30)
         doc.text(sub.sectionTitle)
         doc.moveDown(0.3)
       }
 
       // Subsection heading
-      doc.font(fonts.bold).fontSize(12)
+      doc.font(fonts.bold).fontSize(SUBSECTION_SIZE)
       ensureSpace(25)
       doc.text(sub.title)
       doc.moveDown(0.2)
+
+      // Helper: render an image based on its layout type
+      function renderImage(img: ProjectImageData) {
+        try {
+          if (img.layout === 'full_page') {
+            doc.addPage()
+            const maxW = CONTENT_WIDTH
+            const maxH = PAGE_HEIGHT - 72 - 72
+            doc.image(img.imageData, MARGIN_LEFT, 72, {
+              fit: [maxW, maxH],
+              align: 'center',
+              valign: 'center',
+            })
+            doc.addPage()
+          } else if (img.layout === 'half_page') {
+            ensureSpace(PAGE_HEIGHT * 0.4)
+            const halfH = PAGE_HEIGHT * 0.35
+            doc.image(img.imageData, MARGIN_LEFT + CONTENT_WIDTH * 0.1, undefined, {
+              fit: [CONTENT_WIDTH * 0.8, halfH],
+              align: 'center',
+            })
+            doc.moveDown(0.5)
+          } else {
+            // inline: smaller image within text flow
+            ensureSpace(200)
+            doc.image(img.imageData, MARGIN_LEFT + CONTENT_WIDTH * 0.15, undefined, {
+              fit: [CONTENT_WIDTH * 0.7, 250],
+              align: 'center',
+            })
+            doc.moveDown(0.5)
+          }
+        } catch (imgErr) {
+          console.error('[export] Failed to embed image:', imgErr)
+        }
+      }
+
+      // Insert "before" images for this subsection
+      if (images && images.length > 0) {
+        const beforeImages = images.filter(
+          (img) => img.subsectionId === sub.subsectionDbId && img.position === 'before' && img.sortOrder >= 0
+        )
+        for (const img of beforeImages) renderImage(img)
+      }
 
       // Content
       if (sub.content) {
@@ -608,7 +684,7 @@ function buildPdf(
           }
 
           // Check if paragraph fits; if not, new page
-          doc.font(fonts.regular).fontSize(11)
+          doc.font(fonts.regular).fontSize(BODY_SIZE)
           const paraHeight = doc.heightOfString(plainText.trim(), {
             width: CONTENT_WIDTH - 36,
             lineGap: 4,
@@ -626,9 +702,26 @@ function buildPdf(
         }
       } else {
         doc.fillColor('#999999')
-        doc.font(fonts.italic).fontSize(11)
+        doc.font(fonts.italic).fontSize(BODY_SIZE)
         doc.text(labels.notWritten)
         doc.fillColor('#000000')
+      }
+
+      // Insert "after" images for this subsection
+      if (images && images.length > 0) {
+        const afterImages = images.filter(
+          (img) => img.subsectionId === sub.subsectionDbId && img.position === 'after' && img.sortOrder >= 0
+        )
+        for (const img of afterImages) renderImage(img)
+      }
+
+      // Also insert chapter-level images (no subsection) that haven't been placed yet
+      // These go after the LAST subsection of that chapter
+      if (images && images.length > 0 && sub.isLastInChapter) {
+        const chapterOnlyImages = images.filter(
+          (img) => img.chapterId === sub.chapterId && !img.subsectionId && img.sortOrder >= 0
+        )
+        for (const img of chapterOnlyImages) renderImage(img)
       }
 
       doc.moveDown(0.3)
@@ -637,14 +730,14 @@ function buildPdf(
     // Bibliography
     if (includeBibliography && bibliography.length > 0) {
       doc.addPage()
-      doc.font(fonts.bold).fontSize(18)
+      doc.font(fonts.bold).fontSize(CHAPTER_SIZE)
       doc.text(labels.bibliography, { align: 'left' })
       doc.moveDown(0.5)
 
       const formatted = bibliography.map((entry) => formatter.formatBibliographyEntry(entry))
       const sorted = CitationFormatter.sortBibliography(formatted)
 
-      doc.font(fonts.regular).fontSize(11)
+      doc.font(fonts.regular).fontSize(BODY_SIZE)
       for (const item of sorted) {
         doc.text(item.entry, {
           indent: 36,
@@ -724,7 +817,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Verify project ownership
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
-      select: { id: true, title: true, citationFormat: true, language: true, projectType: true },
+      select: { id: true, title: true, citationFormat: true, language: true, projectType: true, bookDesign: true },
     })
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
@@ -758,16 +851,25 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Flatten to subsection list
     const subsections: SubsectionData[] = []
     for (const ch of chapters) {
+      // Collect all subsection ids for this chapter to mark the last one
+      const allSubIds: string[] = []
+      for (const sec of ch.sections) {
+        for (const sub of sec.subsections) allSubIds.push(sub.id)
+      }
+      const lastSubId = allSubIds[allSubIds.length - 1]
+
       for (const sec of ch.sections) {
         for (const sub of sec.subsections) {
           subsections.push({
             subsectionId: sub.subsectionId,
+            subsectionDbId: sub.id,
             title: sub.title,
             content: sub.content,
             sectionTitle: sec.title,
             chapterTitle: ch.title,
             chapterNumber: ch.number,
             chapterId: ch.id,
+            isLastInChapter: sub.id === lastSubId,
           })
         }
       }
@@ -793,7 +895,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     if (includeIllustrations && project.projectType !== 'ACADEMIC') {
       const imgs = await prisma.projectImage.findMany({
         where: { projectId },
-        select: { imageData: true, chapterId: true, subsectionId: true, sortOrder: true },
+        select: { imageData: true, chapterId: true, subsectionId: true, sortOrder: true, layout: true, position: true },
         orderBy: { sortOrder: 'asc' },
       })
       projectImages = imgs.map((img) => ({
@@ -801,6 +903,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         chapterId: img.chapterId,
         subsectionId: img.subsectionId,
         sortOrder: img.sortOrder,
+        layout: img.layout,
+        position: img.position,
       }))
     }
 
@@ -814,7 +918,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         formatter,
         includeBibliography,
         project.language,
-        projectImages
+        projectImages,
+        project.bookDesign as BookDesignSettings | null
       )
     } else {
       const doc = buildDocx(

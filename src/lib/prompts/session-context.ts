@@ -104,6 +104,7 @@ export async function buildSessionContext(
     nextSubsection: next,
     sources,
     citationFormat: project.citationFormat as CitationFormat,
+    projectType: project.projectType,
     styleProfile: project.styleProfile
       ? (project.styleProfile as Partial<StyleProfile>)
       : null,

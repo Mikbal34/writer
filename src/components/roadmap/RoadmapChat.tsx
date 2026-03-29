@@ -215,7 +215,9 @@ export default function RoadmapChat({
      sourceDensity,
      messages: newMessages.map((m) => ({
       role: m.role,
-      content: m.content,
+      content: m.role === "assistant" && m.content.length > 800
+        ? m.content.slice(0, 800) + "\n[...truncated for context efficiency]"
+        : m.content,
      })),
     }),
    });
