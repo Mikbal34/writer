@@ -226,6 +226,26 @@ export default function ExportPage() {
         <FadeUp delay={0.2} className="border border-[#d4c9b5]/60 rounded-sm bg-[#FAF7F0]/80 p-6 md:p-8">
           <SectionTitle className="mb-6">Export Settings</SectionTitle>
 
+          {isLoading ? (
+            <div className="space-y-4 animate-pulse">
+              <div className="h-3 w-24 bg-[#d4c9b5]/40 rounded" />
+              <div className="grid grid-cols-3 gap-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-16 rounded-sm bg-[#d4c9b5]/20 border border-[#d4c9b5]/30" />
+                ))}
+              </div>
+              <div className="h-3 w-28 bg-[#d4c9b5]/40 rounded mt-4" />
+              <div className="grid grid-cols-2 gap-2">
+                {[1, 2].map((i) => (
+                  <div key={i} className="h-16 rounded-sm bg-[#d4c9b5]/20 border border-[#d4c9b5]/30" />
+                ))}
+              </div>
+              <div className="h-10 w-full bg-[#d4c9b5]/20 rounded-sm mt-4" />
+              <div className="h-12 w-full bg-[#1C1410]/10 rounded-sm mt-2" />
+            </div>
+          ) : (
+          <>
+
           {/* Export Scope */}
           <div className="space-y-2 mb-5">
             <label className="font-ui text-xs uppercase tracking-widest text-[#5C4A32]">
@@ -435,6 +455,8 @@ export default function ExportPage() {
               <BookOpen className="h-4 w-4" />
               Book Preview
             </button>
+          )}
+          </>
           )}
         </FadeUp>
 
