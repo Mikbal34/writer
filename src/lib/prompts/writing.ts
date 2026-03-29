@@ -248,6 +248,19 @@ export function getSessionContextPrompt(
   return parts.join('\n')
 }
 
+// ==================== CONSTANTS ====================
+
+const FORMATTING_RULES = `## Formatting
+You may use standard markdown formatting when it improves clarity:
+- **Bold** (\`**text**\`) for emphasis or key terms.
+- *Italic* (\`*text*\`) for titles, foreign words, or light emphasis.
+- Bullet lists (\`- item\`) and numbered lists (\`1. item\`) when presenting multiple points, steps, or comparisons.
+- Tables (markdown table syntax) when comparing data, listing attributes, or presenting structured information.
+- Blockquotes (\`> text\`) for direct quotations or highlighted passages.
+- Horizontal rules (\`---\`) for thematic breaks between major sections within the subsection.
+- Subheadings (\`## heading\` or \`### heading\`) only when the subsection is long enough to warrant internal structure.
+Do NOT overuse formatting — prose should remain the primary medium. Use tables and lists only when they genuinely serve the content better than flowing text.`
+
 // ==================== PRIVATE HELPERS ====================
 
 function buildSystemPromptParts(
@@ -274,6 +287,8 @@ function buildSystemPromptParts(
     coreLines.push(`- Create natural, believable dialogue that reveals character.`)
     coreLines.push(`- Use scene transitions that maintain narrative flow.`)
     coreLines.push(`- Do NOT include academic footnotes, citations, or references.`)
+    coreLines.push('')
+    coreLines.push(FORMATTING_RULES)
 
     // Inject narrative preferences from styleProfile
     const narrativePrefs = buildNarrativePreferences(styleProfile)
@@ -296,6 +311,8 @@ function buildSystemPromptParts(
     coreLines.push(`- Use analogies and metaphors to explain complex ideas.`)
     coreLines.push(`- Keep the reader engaged with varied paragraph structures.`)
     coreLines.push(`- Do NOT include academic footnotes, citations, or references.`)
+    coreLines.push('')
+    coreLines.push(FORMATTING_RULES)
 
     const narrativePrefs = buildNarrativePreferences(styleProfile)
     if (narrativePrefs) {
@@ -316,6 +333,8 @@ function buildSystemPromptParts(
     coreLines.push(`- Define technical terms on their first occurrence.`)
     coreLines.push(`- Maintain dialogue between classical and modern scholarship.`)
     coreLines.push(`- Paragraphs should be well-structured with clear topic sentences.`)
+    coreLines.push('')
+    coreLines.push(FORMATTING_RULES)
     coreLines.push('')
     coreLines.push(`## Citation Format: ${citationFormat}`)
     coreLines.push(buildCitationSystemNote(citationFormat))

@@ -331,4 +331,53 @@
   .animate-bar-fill {
     animation: bar-fill 0.8s ease-out both;
   }
+
+  /* Tiptap editor styles */
+  .tiptap {
+    outline: none;
+  }
+  .tiptap p.is-editor-empty:first-child::before {
+    color: var(--muted-foreground);
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+  .tiptap table {
+    border-collapse: collapse;
+    margin: 1em 0;
+    width: 100%;
+    table-layout: auto;
+  }
+  .tiptap table th,
+  .tiptap table td {
+    border: 1px solid var(--border);
+    padding: 0.4em 0.6em;
+    vertical-align: top;
+    min-width: 80px;
+  }
+  .tiptap table th {
+    background: var(--muted);
+    font-weight: 600;
+  }
+  .tiptap table .selectedCell {
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+  }
+  .tiptap blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 1em;
+    margin: 1em 0;
+    color: var(--muted-foreground);
+  }
+  .tiptap hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1.5em 0;
+  }
+  .tiptap sup.footnote-marker {
+    color: var(--primary);
+    cursor: help;
+    font-size: 0.75em;
+    font-weight: 600;
+  }
 }

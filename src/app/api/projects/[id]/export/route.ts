@@ -14,6 +14,11 @@ import {
   AlignmentType,
   PageBreak,
   convertInchesToTwip,
+  Table as DocxTable,
+  TableRow as DocxTableRow,
+  TableCell as DocxTableCell,
+  WidthType,
+  BorderStyle,
 } from 'docx'
 import PDFDocument from 'pdfkit'
 import { writeFile, mkdir } from 'fs/promises'
@@ -49,16 +54,13 @@ function parseContent(content: string): ContentBlock[] {
   let match: RegExpExecArray | null
 
   while ((match = regex.exec(content)) !== null) {
-    // Text before the footnote
     if (match.index > lastIndex) {
       blocks.push({ text: content.slice(lastIndex, match.index) })
     }
-    // The footnote itself (empty text, just a reference)
     blocks.push({ text: '', footnote: match[1].trim() })
     lastIndex = regex.lastIndex
   }
 
-  // Remaining text
   if (lastIndex < content.length) {
     blocks.push({ text: content.slice(lastIndex) })
   }
@@ -67,25 +69,119 @@ function parseContent(content: string): ContentBlock[] {
 }
 
 // ---------------------------------------------------------------------------
-// Parse markdown *italic* into styled TextRuns (works for body + footnotes)
+// Parse inline markdown (bold, italic, bold+italic) into styled TextRuns
 // ---------------------------------------------------------------------------
-function parseMarkdownRuns(text: string, fontSize: number): TextRun[] {
-  const parts = text.split(/(\*[^*]+\*)/g)
+function parseInlineRuns(text: string, fontSize: number, baseOpts?: { bold?: boolean; italic?: boolean }): TextRun[] {
+  // Split by bold+italic (***), bold (**), italic (*), preserving delimiters
+  const parts = text.split(/((?:\*\*\*).+?(?:\*\*\*)|(?:\*\*).+?(?:\*\*)|(?:\*).+?(?:\*))/g)
   return parts.filter(Boolean).map(part => {
-    if (part.startsWith('*') && part.endsWith('*')) {
-      return new TextRun({
-        text: part.slice(1, -1),
-        italics: true,
-        size: fontSize,
-        font: 'Times New Roman',
-      })
+    let bold = baseOpts?.bold ?? false
+    let italic = baseOpts?.italic ?? false
+    let content = part
+
+    if (part.startsWith('***') && part.endsWith('***')) {
+      bold = true
+      italic = true
+      content = part.slice(3, -3)
+    } else if (part.startsWith('**') && part.endsWith('**')) {
+      bold = true
+      content = part.slice(2, -2)
+    } else if (part.startsWith('*') && part.endsWith('*')) {
+      italic = true
+      content = part.slice(1, -1)
     }
+
     return new TextRun({
-      text: part,
+      text: content,
+      bold,
+      italics: italic,
       size: fontSize,
       font: 'Times New Roman',
     })
   })
+}
+
+// Backward-compatible alias
+function parseMarkdownRuns(text: string, fontSize: number): TextRun[] {
+  return parseInlineRuns(text, fontSize)
+}
+
+// ---------------------------------------------------------------------------
+// Markdown block types for structured content parsing
+// ---------------------------------------------------------------------------
+type MdBlock =
+  | { type: 'paragraph'; text: string }
+  | { type: 'heading'; level: 2 | 3; text: string }
+  | { type: 'bullet_list'; items: string[] }
+  | { type: 'ordered_list'; items: string[] }
+  | { type: 'blockquote'; text: string }
+  | { type: 'table'; headers: string[]; rows: string[][] }
+  | { type: 'hr' }
+
+function parseMarkdownBlocks(content: string): MdBlock[] {
+  const blocks: MdBlock[] = []
+  const rawBlocks = content.split(/\n{2,}/)
+
+  for (const raw of rawBlocks) {
+    const trimmed = raw.trim()
+    if (!trimmed) continue
+
+    // Horizontal rule
+    if (/^---+$/.test(trimmed)) {
+      blocks.push({ type: 'hr' })
+      continue
+    }
+
+    // Headings
+    if (trimmed.startsWith('### ')) {
+      blocks.push({ type: 'heading', level: 3, text: trimmed.slice(4) })
+      continue
+    }
+    if (trimmed.startsWith('## ')) {
+      blocks.push({ type: 'heading', level: 2, text: trimmed.slice(3) })
+      continue
+    }
+
+    // Table detection
+    const lines = trimmed.split('\n')
+    if (lines.length >= 2 && lines[0].includes('|') && /^\|[\s:*-]+(\|[\s:*-]+)*\|?$/.test(lines[1].trim())) {
+      const parseCells = (row: string) => row.split('|').slice(1, -1).map(c => c.trim())
+      const headers = parseCells(lines[0])
+      const rows = lines.slice(2).filter(l => l.includes('|')).map(parseCells)
+      blocks.push({ type: 'table', headers, rows })
+      continue
+    }
+
+    // Blockquote
+    if (trimmed.startsWith('> ')) {
+      const text = lines.map(l => l.replace(/^>\s?/, '')).join(' ')
+      blocks.push({ type: 'blockquote', text })
+      continue
+    }
+
+    // Unordered list
+    if (/^[-*]\s/.test(trimmed)) {
+      const items = lines.filter(l => /^[-*]\s/.test(l.trim())).map(l => l.replace(/^[-*]\s+/, '').trim())
+      if (items.length > 0) {
+        blocks.push({ type: 'bullet_list', items })
+        continue
+      }
+    }
+
+    // Ordered list
+    if (/^\d+\.\s/.test(trimmed)) {
+      const items = lines.filter(l => /^\d+\.\s/.test(l.trim())).map(l => l.replace(/^\d+\.\s+/, '').trim())
+      if (items.length > 0) {
+        blocks.push({ type: 'ordered_list', items })
+        continue
+      }
+    }
+
+    // Regular paragraph
+    blocks.push({ type: 'paragraph', text: trimmed })
+  }
+
+  return blocks
 }
 
 // ---------------------------------------------------------------------------
@@ -171,37 +267,131 @@ function buildDocx(
       })
     )
 
-    // Content with footnotes
+    // Content with rich formatting
     if (sub.content) {
-      const paragraphs = sub.content.split('\n\n').filter((p) => p.trim() && p.trim() !== '---')
-      for (const para of paragraphs) {
-        const blocks = parseContent(para)
-        const runs: (TextRun | FootnoteReferenceRun)[] = []
+      const mdBlocks = parseMarkdownBlocks(sub.content)
 
-        for (const block of blocks) {
+      // Helper: build inline runs with footnote support
+      function buildRunsWithFootnotes(text: string, fontSize: number, baseOpts?: { bold?: boolean }): (TextRun | FootnoteReferenceRun)[] {
+        const contentBlocks = parseContent(text)
+        const runs: (TextRun | FootnoteReferenceRun)[] = []
+        for (const block of contentBlocks) {
           if (block.text) {
-            runs.push(...parseMarkdownRuns(block.text, 24))
+            runs.push(...parseInlineRuns(block.text, fontSize, baseOpts))
           }
           if (block.footnote) {
             const fnId = footnoteCounter++
             footnotes[fnId] = {
               children: [
-                new Paragraph({
-                  children: parseMarkdownRuns(block.footnote, 20),
-                }),
+                new Paragraph({ children: parseInlineRuns(block.footnote, 20) }),
               ],
             }
             runs.push(new FootnoteReferenceRun(fnId))
           }
         }
+        return runs
+      }
 
-        children.push(
-          new Paragraph({
-            children: runs,
-            spacing: { after: 120, line: 360 }, // 1.5 line spacing
-            indent: { firstLine: convertInchesToTwip(0.5) },
-          })
-        )
+      for (const mdBlock of mdBlocks) {
+        switch (mdBlock.type) {
+          case 'paragraph': {
+            children.push(
+              new Paragraph({
+                children: buildRunsWithFootnotes(mdBlock.text, 24),
+                spacing: { after: 120, line: 360 },
+                indent: { firstLine: convertInchesToTwip(0.5) },
+              })
+            )
+            break
+          }
+          case 'heading': {
+            children.push(
+              new Paragraph({
+                children: [new TextRun({ text: mdBlock.text, bold: true, size: mdBlock.level === 2 ? 28 : 26, font: 'Times New Roman', color: '000000' })],
+                heading: mdBlock.level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
+                spacing: { before: 200, after: 100 },
+              })
+            )
+            break
+          }
+          case 'bullet_list': {
+            for (const item of mdBlock.items) {
+              children.push(
+                new Paragraph({
+                  children: buildRunsWithFootnotes(item, 24),
+                  bullet: { level: 0 },
+                  spacing: { after: 60 },
+                  indent: { left: convertInchesToTwip(0.5) },
+                })
+              )
+            }
+            break
+          }
+          case 'ordered_list': {
+            for (let li = 0; li < mdBlock.items.length; li++) {
+              children.push(
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: `${li + 1}. `, size: 24, font: 'Times New Roman' }),
+                    ...buildRunsWithFootnotes(mdBlock.items[li], 24),
+                  ],
+                  spacing: { after: 60 },
+                  indent: { left: convertInchesToTwip(0.5) },
+                })
+              )
+            }
+            break
+          }
+          case 'blockquote': {
+            children.push(
+              new Paragraph({
+                children: buildRunsWithFootnotes(mdBlock.text, 24, { bold: false }),
+                spacing: { after: 120, line: 360 },
+                indent: { left: convertInchesToTwip(0.5), right: convertInchesToTwip(0.5) },
+                border: {
+                  left: { style: BorderStyle.SINGLE, size: 6, color: '999999', space: 8 },
+                },
+              })
+            )
+            break
+          }
+          case 'table': {
+            const allRows = [mdBlock.headers, ...mdBlock.rows]
+            const colCount = mdBlock.headers.length || 1
+            const table = new DocxTable({
+              rows: allRows.map((cells, rowIdx) =>
+                new DocxTableRow({
+                  children: cells.map(cell =>
+                    new DocxTableCell({
+                      children: [
+                        new Paragraph({
+                          children: parseInlineRuns(cell, 22, rowIdx === 0 ? { bold: true } : undefined),
+                          spacing: { after: 40 },
+                        }),
+                      ],
+                      width: { size: Math.floor(100 / colCount), type: WidthType.PERCENTAGE },
+                    })
+                  ),
+                })
+              ),
+              width: { size: 100, type: WidthType.PERCENTAGE },
+            })
+            children.push(new Paragraph({ spacing: { after: 60 } })) // gap before table
+            children.push(table as unknown as Paragraph) // docx sections accept tables in children
+            children.push(new Paragraph({ spacing: { after: 120 } })) // gap after table
+            break
+          }
+          case 'hr': {
+            children.push(
+              new Paragraph({
+                children: [new TextRun({ text: '' })],
+                border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' } },
+                spacing: { before: 200, after: 200 },
+              })
+            )
+            break
+          }
+        }
       }
     } else {
       children.push(
@@ -659,46 +849,165 @@ function buildPdf(
         for (const img of beforeImages) renderImage(img)
       }
 
-      // Content
+      // Content with rich formatting
       if (sub.content) {
-        const paragraphs = sub.content.split('\n\n').filter((p: string) => p.trim() && p.trim() !== '---')
+        const mdBlocks = parseMarkdownBlocks(sub.content)
 
-        for (const para of paragraphs) {
-          // Extract footnotes from this paragraph
-          const blocks = parseContent(para)
-          let plainText = ''
-          const paraFootnotes: Array<{ pos: number; text: string; num: number }> = []
-
+        // Helper: extract footnotes and return text with [N] markers
+        function extractFootnotes(text: string): string {
+          const blocks = parseContent(text)
+          let result = ''
           for (const block of blocks) {
-            if (block.text) plainText += block.text
+            if (block.text) result += block.text
             if (block.footnote) {
               const num = globalFootnoteCounter++
-              paraFootnotes.push({ pos: plainText.length, text: block.footnote, num })
-              plainText += `[${num}]`
+              addPageFootnote(num, block.footnote)
+              result += `[${num}]`
             }
           }
+          return result
+        }
 
-          // Register footnotes on this page (reserve space at bottom)
-          for (const fn of paraFootnotes) {
-            addPageFootnote(fn.num, fn.text)
+        for (const mdBlock of mdBlocks) {
+          switch (mdBlock.type) {
+            case 'paragraph': {
+              const plainText = extractFootnotes(mdBlock.text).trim()
+              doc.font(fonts.regular).fontSize(BODY_SIZE)
+              const paraHeight = doc.heightOfString(plainText, { width: CONTENT_WIDTH - PARA_INDENT, lineGap: LINE_GAP })
+              ensureSpace(paraHeight + 10)
+              pdfRichText(doc, plainText, { regular: fonts.regular, italic: fonts.italic }, {
+                fontSize: BODY_SIZE,
+                lineGap: LINE_GAP,
+                indent: PARA_INDENT,
+                align: d.textAlign ?? 'justify',
+              })
+              doc.moveDown(0.3)
+              break
+            }
+            case 'heading': {
+              const size = mdBlock.level === 2 ? SECTION_SIZE : SUBSECTION_SIZE
+              doc.font(fonts.bold).fontSize(size)
+              ensureSpace(size + 20)
+              doc.text(mdBlock.text, { align: 'left' })
+              doc.moveDown(0.3)
+              break
+            }
+            case 'bullet_list': {
+              for (const item of mdBlock.items) {
+                const plainItem = extractFootnotes(item).trim()
+                doc.font(fonts.regular).fontSize(BODY_SIZE)
+                const itemHeight = doc.heightOfString(`\u2022  ${plainItem}`, { width: CONTENT_WIDTH - PARA_INDENT, lineGap: LINE_GAP })
+                ensureSpace(itemHeight + 5)
+                // Bullet character + text
+                doc.font(fonts.regular).fontSize(BODY_SIZE)
+                doc.text(`\u2022`, MARGIN_LEFT + PARA_INDENT * 0.5, undefined, { continued: true, lineGap: LINE_GAP })
+                doc.text(`  ${plainItem}`, { width: CONTENT_WIDTH - PARA_INDENT, lineGap: LINE_GAP })
+              }
+              doc.moveDown(0.3)
+              break
+            }
+            case 'ordered_list': {
+              for (let li = 0; li < mdBlock.items.length; li++) {
+                const plainItem = extractFootnotes(mdBlock.items[li]).trim()
+                doc.font(fonts.regular).fontSize(BODY_SIZE)
+                const itemHeight = doc.heightOfString(`${li + 1}. ${plainItem}`, { width: CONTENT_WIDTH - PARA_INDENT, lineGap: LINE_GAP })
+                ensureSpace(itemHeight + 5)
+                doc.text(`${li + 1}.`, MARGIN_LEFT + PARA_INDENT * 0.5, undefined, { continued: true, lineGap: LINE_GAP })
+                doc.text(` ${plainItem}`, { width: CONTENT_WIDTH - PARA_INDENT, lineGap: LINE_GAP })
+              }
+              doc.moveDown(0.3)
+              break
+            }
+            case 'blockquote': {
+              const plainText = extractFootnotes(mdBlock.text).trim()
+              doc.font(fonts.italic).fontSize(BODY_SIZE)
+              const quoteHeight = doc.heightOfString(plainText, { width: CONTENT_WIDTH - PARA_INDENT * 2, lineGap: LINE_GAP })
+              ensureSpace(quoteHeight + 15)
+              // Draw left border
+              const quoteY = doc.y
+              doc.save()
+              doc.strokeColor('#999999').lineWidth(2)
+              doc.moveTo(MARGIN_LEFT + PARA_INDENT * 0.75, quoteY)
+                .lineTo(MARGIN_LEFT + PARA_INDENT * 0.75, quoteY + quoteHeight + 4)
+                .stroke()
+              doc.restore()
+              doc.font(fonts.italic).fontSize(BODY_SIZE)
+              doc.text(plainText, MARGIN_LEFT + PARA_INDENT, undefined, {
+                width: CONTENT_WIDTH - PARA_INDENT * 2,
+                lineGap: LINE_GAP,
+              })
+              doc.moveDown(0.3)
+              break
+            }
+            case 'table': {
+              const allRows = [mdBlock.headers, ...mdBlock.rows]
+              const colCount = mdBlock.headers.length || 1
+              const colWidth = CONTENT_WIDTH / colCount
+              const cellPadding = 4
+              const tableFontSize = BODY_SIZE - 1
+
+              // Calculate row heights
+              doc.font(fonts.regular).fontSize(tableFontSize)
+              const rowHeights = allRows.map(cells => {
+                let maxH = 0
+                for (const cell of cells) {
+                  const h = doc.heightOfString(cell, { width: colWidth - cellPadding * 2 })
+                  if (h > maxH) maxH = h
+                }
+                return maxH + cellPadding * 2
+              })
+
+              const totalHeight = rowHeights.reduce((a, b) => a + b, 0)
+              ensureSpace(Math.min(totalHeight + 20, 200)) // at least start on this page
+
+              for (let ri = 0; ri < allRows.length; ri++) {
+                const rowH = rowHeights[ri]
+                ensureSpace(rowH + 2)
+                const startY = doc.y
+
+                for (let ci = 0; ci < allRows[ri].length; ci++) {
+                  const cellX = MARGIN_LEFT + ci * colWidth
+                  // Draw cell border
+                  doc.save()
+                  doc.strokeColor('#CCCCCC').lineWidth(0.5)
+                  doc.rect(cellX, startY, colWidth, rowH).stroke()
+                  doc.restore()
+
+                  // Header row: bold + background
+                  if (ri === 0) {
+                    doc.save()
+                    doc.fillColor('#F5F5F5').rect(cellX, startY, colWidth, rowH).fill()
+                    doc.restore()
+                    doc.font(fonts.bold).fontSize(tableFontSize).fillColor('#000000')
+                  } else {
+                    doc.font(fonts.regular).fontSize(tableFontSize).fillColor('#000000')
+                  }
+
+                  doc.text(
+                    allRows[ri][ci] ?? '',
+                    cellX + cellPadding,
+                    startY + cellPadding,
+                    { width: colWidth - cellPadding * 2 }
+                  )
+                }
+
+                doc.y = startY + rowH
+              }
+              doc.moveDown(0.5)
+              break
+            }
+            case 'hr': {
+              ensureSpace(20)
+              doc.save()
+              doc.strokeColor('#CCCCCC').lineWidth(0.5)
+              doc.moveTo(MARGIN_LEFT + CONTENT_WIDTH * 0.2, doc.y)
+                .lineTo(MARGIN_LEFT + CONTENT_WIDTH * 0.8, doc.y)
+                .stroke()
+              doc.restore()
+              doc.moveDown(0.8)
+              break
+            }
           }
-
-          // Check if paragraph fits; if not, new page
-          doc.font(fonts.regular).fontSize(BODY_SIZE)
-          const paraHeight = doc.heightOfString(plainText.trim(), {
-            width: CONTENT_WIDTH - 36,
-            lineGap: 4,
-          })
-          ensureSpace(paraHeight + 10)
-
-          // Render paragraph with italic support
-          pdfRichText(doc, plainText.trim(), { regular: fonts.regular, italic: fonts.italic }, {
-            fontSize: 11,
-            lineGap: 4,
-            indent: 36,
-            align: 'justify',
-          })
-          doc.moveDown(0.3)
         }
       } else {
         doc.fillColor('#999999')
