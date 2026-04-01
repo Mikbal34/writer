@@ -14,7 +14,6 @@ import {
   Shield,
   Check,
   Crown,
-  BarChart3,
 } from "lucide-react";
 import NewProjectDialog from "@/components/NewProjectDialog";
 import { authOptions } from "@/lib/auth";
@@ -63,8 +62,6 @@ function OrnamentDots() {
   );
 }
 
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim()).filter(Boolean);
-
 export default async function HomePage() {
   const session = await getServerSession(authOptions);
 
@@ -98,8 +95,6 @@ export default async function HomePage() {
   }, 0);
 
   const completedCount = projects.filter((p) => p.status === "completed").length;
-  const isAdmin = ADMIN_EMAILS.includes(session.user.email ?? "");
-
   return (
     <div
       className="min-h-screen"
@@ -141,16 +136,6 @@ export default async function HomePage() {
               <Feather className="h-3.5 w-3.5" />
               <span className="hidden sm:block">Writing Twin</span>
             </Link>
-            {isAdmin && (
-              <Link
-                href="/analytics"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-sm font-ui transition-colors duration-150"
-                style={{ color: "rgba(250,247,240,0.70)" }}
-              >
-                <BarChart3 className="h-3.5 w-3.5" />
-                <span className="hidden sm:block">Analytics</span>
-              </Link>
-            )}
             <SignOutButton
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-sm font-ui transition-colors duration-150"
               style={{ color: "rgba(250,247,240,0.55)" }}
