@@ -1,0 +1,220 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth, AuthError } from '@/lib/auth'
+import { prisma } from '@/lib/db'
+import { MODEL_MULTIPLIERS } from '@/lib/credits'
+
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim()).filter(Boolean)
+
+// Real USD costs per million tokens
+const USD_PER_MILLION: Record<string, { input: number; output: number }> = {
+  sonnet: { input: 3.0, output: 15.0 },
+  haiku: { input: 0.25, output: 1.25 },
+  imagen: { input: 0, output: 0 }, // flat cost per image
+}
+const IMAGE_USD_COST = 0.03 // ~$0.03 per image generation
+
+export async function GET(req: NextRequest) {
+  try {
+    const session = await requireAuth()
+
+    // Admin-only endpoint
+    if (!session.user.email || !ADMIN_EMAILS.includes(session.user.email)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const url = new URL(req.url)
+    const targetUserId = url.searchParams.get('userId')
+    const days = parseInt(url.searchParams.get('days') ?? '30', 10)
+
+    // Admin can view any user's analytics, defaults to own
+    const userId = targetUserId ?? session.user.id
+    const since = new Date()
+    since.setDate(since.getDate() - days)
+
+    // Fetch all transactions in the period
+    const transactions = await prisma.creditTransaction.findMany({
+      where: { userId, createdAt: { gte: since } },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    // Current balance
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { creditBalance: true, createdAt: true },
+    })
+
+    // --- Aggregations ---
+
+    // Total credits spent (only ai_operation transactions)
+    const aiOps = transactions.filter((t) => t.type === 'ai_operation')
+    const totalCreditsSpent = aiOps.reduce((sum, t) => sum + (t.creditsUsed ?? 0), 0)
+    const totalInputTokens = aiOps.reduce((sum, t) => sum + (t.inputTokens ?? 0), 0)
+    const totalOutputTokens = aiOps.reduce((sum, t) => sum + (t.outputTokens ?? 0), 0)
+
+    // Per-operation breakdown
+    const byOperation: Record<string, { count: number; credits: number; inputTokens: number; outputTokens: number }> = {}
+    for (const t of aiOps) {
+      const op = t.operation ?? 'unknown'
+      if (!byOperation[op]) byOperation[op] = { count: 0, credits: 0, inputTokens: 0, outputTokens: 0 }
+      byOperation[op].count++
+      byOperation[op].credits += t.creditsUsed ?? 0
+      byOperation[op].inputTokens += t.inputTokens ?? 0
+      byOperation[op].outputTokens += t.outputTokens ?? 0
+    }
+
+    // Per-model breakdown
+    const byModel: Record<string, { count: number; credits: number; inputTokens: number; outputTokens: number; estimatedUSD: number }> = {}
+    for (const t of aiOps) {
+      const model = t.model ?? 'unknown'
+      if (!byModel[model]) byModel[model] = { count: 0, credits: 0, inputTokens: 0, outputTokens: 0, estimatedUSD: 0 }
+      byModel[model].count++
+      byModel[model].credits += t.creditsUsed ?? 0
+      byModel[model].inputTokens += t.inputTokens ?? 0
+      byModel[model].outputTokens += t.outputTokens ?? 0
+
+      // Estimate USD cost
+      if (model === 'imagen') {
+        byModel[model].estimatedUSD += IMAGE_USD_COST
+      } else {
+        const rates = USD_PER_MILLION[model]
+        if (rates) {
+          byModel[model].estimatedUSD +=
+            ((t.inputTokens ?? 0) / 1_000_000) * rates.input +
+            ((t.outputTokens ?? 0) / 1_000_000) * rates.output
+        }
+      }
+    }
+
+    // Total estimated USD
+    const totalEstimatedUSD = Object.values(byModel).reduce((sum, m) => sum + m.estimatedUSD, 0)
+
+    // Daily usage (for chart)
+    const dailyMap: Record<string, { credits: number; operations: number; inputTokens: number; outputTokens: number }> = {}
+    for (const t of aiOps) {
+      const day = t.createdAt.toISOString().slice(0, 10)
+      if (!dailyMap[day]) dailyMap[day] = { credits: 0, operations: 0, inputTokens: 0, outputTokens: 0 }
+      dailyMap[day].credits += t.creditsUsed ?? 0
+      dailyMap[day].operations++
+      dailyMap[day].inputTokens += t.inputTokens ?? 0
+      dailyMap[day].outputTokens += t.outputTokens ?? 0
+    }
+
+    // Fill in missing days
+    const daily: Array<{ date: string; credits: number; operations: number; inputTokens: number; outputTokens: number }> = []
+    const cursor = new Date(since)
+    const today = new Date()
+    while (cursor <= today) {
+      const day = cursor.toISOString().slice(0, 10)
+      daily.push({
+        date: day,
+        ...(dailyMap[day] ?? { credits: 0, operations: 0, inputTokens: 0, outputTokens: 0 }),
+      })
+      cursor.setDate(cursor.getDate() + 1)
+    }
+
+    // Per-project breakdown
+    const byProject: Record<string, { name: string; credits: number; count: number }> = {}
+    for (const t of aiOps) {
+      const meta = t.metadata as Record<string, unknown> | null
+      const projectId = meta?.projectId as string | undefined
+      if (projectId) {
+        if (!byProject[projectId]) byProject[projectId] = { name: projectId, credits: 0, count: 0 }
+        byProject[projectId].credits += t.creditsUsed ?? 0
+        byProject[projectId].count++
+      }
+    }
+
+    // Resolve project names
+    const projectIds = Object.keys(byProject)
+    if (projectIds.length > 0) {
+      const projects = await prisma.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, title: true },
+      })
+      for (const p of projects) {
+        if (byProject[p.id]) byProject[p.id].name = p.title
+      }
+    }
+
+    // Recent transactions (last 50)
+    const recent = transactions.slice(-50).reverse()
+
+    // Platform-wide stats (admin sees all users)
+    const allUsers = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        creditBalance: true,
+        createdAt: true,
+        _count: { select: { projects: true, creditTransactions: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    const platformTotalCreditsGranted = await prisma.creditTransaction.aggregate({
+      where: { amount: { gt: 0 } },
+      _sum: { amount: true },
+    })
+    const platformTotalCreditsSpent = await prisma.creditTransaction.aggregate({
+      where: { type: 'ai_operation' },
+      _sum: { creditsUsed: true },
+    })
+
+    return NextResponse.json({
+      balance: user?.creditBalance ?? 0,
+      memberSince: user?.createdAt,
+      viewingUserId: userId,
+      period: { days, since: since.toISOString() },
+      totals: {
+        creditsSpent: totalCreditsSpent,
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        operations: aiOps.length,
+        estimatedUSD: Math.round(totalEstimatedUSD * 100) / 100,
+      },
+      byOperation: Object.entries(byOperation)
+        .map(([op, data]) => ({ operation: op, ...data }))
+        .sort((a, b) => b.credits - a.credits),
+      byModel: Object.entries(byModel)
+        .map(([model, data]) => ({ model, ...data, estimatedUSD: Math.round(data.estimatedUSD * 100) / 100 }))
+        .sort((a, b) => b.credits - a.credits),
+      byProject: Object.entries(byProject)
+        .map(([id, data]) => ({ projectId: id, ...data }))
+        .sort((a, b) => b.credits - a.credits),
+      daily,
+      recent: recent.map((t) => ({
+        id: t.id,
+        type: t.type,
+        operation: t.operation,
+        amount: t.amount,
+        balance: t.balance,
+        creditsUsed: t.creditsUsed,
+        inputTokens: t.inputTokens,
+        outputTokens: t.outputTokens,
+        model: t.model,
+        createdAt: t.createdAt,
+      })),
+      platform: {
+        totalUsers: allUsers.length,
+        totalCreditsGranted: platformTotalCreditsGranted._sum.amount ?? 0,
+        totalCreditsSpent: platformTotalCreditsSpent._sum.creditsUsed ?? 0,
+        users: allUsers.map((u) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          creditBalance: u.creditBalance,
+          projects: u._count.projects,
+          transactions: u._count.creditTransactions,
+          joinedAt: u.createdAt,
+        })),
+      },
+    })
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    console.error('[GET /api/analytics]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

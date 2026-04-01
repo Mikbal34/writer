@@ -8,7 +8,7 @@ import {
   type SystemPromptPart,
   type ToolDefinition,
 } from '@/lib/claude'
-import { compressHistory } from '@/lib/conversation'
+import { compressHistory, type ChatType } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -462,9 +462,16 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     const currentDesign = project.bookDesign as BookDesign | null
 
-    // Compress history
+    // Compress history — token-based with structured design prompt
     const { messages: compressedMessages, summary: conversationSummary } =
-      await compressHistory(messages)
+      await compressHistory(messages, {
+        chatType: 'design' as ChatType,
+        maxTokens: 20000,
+        keepRecent: 4,
+        reinjectContext: currentDesign
+          ? `Current design: ${currentDesign.pageSize} page, ${currentDesign.bodyFont} ${currentDesign.bodyFontSize}pt, ${currentDesign.textAlign}`
+          : undefined,
+      })
 
     const systemPrompt = buildSystemPrompt(project, currentDesign, conversationSummary)
     const tools = buildTools()

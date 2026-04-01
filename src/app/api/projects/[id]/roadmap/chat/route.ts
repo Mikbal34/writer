@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { streamChatWithTools, type ChatMessage, type SystemPromptPart, type ToolDefinition } from '@/lib/claude'
-import { compressHistory } from '@/lib/conversation'
+import { compressHistory, type ChatType } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 import { getFormatSettings } from '@/lib/constants'
 import { findOrCreateBibliography } from '@/lib/bibliography'
@@ -874,9 +874,16 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         : m.content,
     }))
 
-    // Compress conversation history if too long
+    // Compress conversation history — token-based with structured roadmap prompt
     const { messages: compressedMessages, summary: conversationSummary } =
-      await compressHistory(trimmedMessages)
+      await compressHistory(trimmedMessages, {
+        chatType: 'roadmap' as ChatType,
+        maxTokens: 40000,
+        keepRecent: 4,
+        reinjectContext: isCreationMode
+          ? undefined
+          : `Roadmap index: ${JSON.stringify(roadmapIndex)}`,
+      })
 
     const systemPrompt = buildSystemPrompt(roadmapIndex, project, conversationSummary, sourceDensity)
 

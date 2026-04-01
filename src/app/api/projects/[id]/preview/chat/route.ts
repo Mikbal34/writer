@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { streamChatWithTools, HAIKU, type ChatMessage, type SystemPromptPart, type ToolDefinition } from '@/lib/claude'
-import { compressHistory } from '@/lib/conversation'
+import { compressHistory, type ChatType } from '@/lib/conversation'
 import { checkCredits, deductCredits, checkImageCredits, deductImageCredits } from '@/lib/credits'
 import { generateImage, buildImagePrompt } from '@/lib/imagen'
 
@@ -516,9 +516,20 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const guidelines = project.writingGuidelines as Record<string, unknown> | null
     const artStyle = (guidelines?.artStyle as string) ?? null
 
-    // Compress history
+    // Compress history — token-based with structured preview prompt
+    const characterContext = characters.length > 0
+      ? `Characters: ${characters.map(c => `${c.name} (${c.visualTraits ?? 'no traits'})`).join(', ')}`
+      : undefined
     const { messages: compressedMessages, summary: conversationSummary } =
-      await compressHistory(messages)
+      await compressHistory(messages, {
+        chatType: 'preview' as ChatType,
+        maxTokens: 25000,
+        keepRecent: 4,
+        reinjectContext: [
+          artStyle ? `Art style: ${artStyle}` : null,
+          characterContext,
+        ].filter(Boolean).join('\n') || undefined,
+      })
 
     const systemPrompt = buildSystemPrompt(project, characters, project.chapters, artStyle, conversationSummary)
     const tools = buildTools()

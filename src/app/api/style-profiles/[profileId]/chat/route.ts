@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { streamChatWithUsage, HAIKU, type ChatMessage } from '@/lib/claude'
-import { compressHistory } from '@/lib/conversation'
+import { compressHistory, type ChatType } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 import { getStyleTwinSystemPrompt, parseStyleProfileFromChat } from '@/lib/prompts/style-twin'
 import type { StyleProfile } from '@/types/project'
@@ -43,8 +43,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const currentProfile = styleProfile.profile as Partial<StyleProfile> | null
     const systemPrompt = getStyleTwinSystemPrompt(currentProfile)
 
-    // Compress history if too long
-    const { messages: compressedMessages } = await compressHistory(messages)
+    // Compress history — token-based with structured style prompt
+    const { messages: compressedMessages } = await compressHistory(messages, {
+      chatType: 'style' as ChatType,
+      maxTokens: 20000,
+      keepRecent: 4,
+    })
 
     const encoder = new TextEncoder()
     const stream = new ReadableStream({

@@ -66,6 +66,8 @@ export interface StreamResult {
   fullText: string
   inputTokens: number
   outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
 }
 
 export async function streamChatWithUsage(
@@ -90,6 +92,8 @@ export async function streamChatWithUsage(
   let fullText = ''
   let inputTokens = 0
   let outputTokens = 0
+  let cacheReadTokens = 0
+  let cacheCreationTokens = 0
 
   for await (const event of response) {
     if (
@@ -101,13 +105,16 @@ export async function streamChatWithUsage(
     }
     if (event.type === 'message_start' && event.message?.usage) {
       inputTokens = event.message.usage.input_tokens
+      const usage = event.message.usage as unknown as Record<string, number>
+      cacheReadTokens = usage.cache_read_input_tokens ?? 0
+      cacheCreationTokens = usage.cache_creation_input_tokens ?? 0
     }
     if (event.type === 'message_delta' && event.usage) {
       outputTokens = event.usage.output_tokens
     }
   }
 
-  return { fullText, inputTokens, outputTokens }
+  return { fullText, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens }
 }
 
 export type ToolDefinition = Anthropic.Messages.Tool
@@ -119,12 +126,17 @@ export interface ToolCallResult {
 }
 
 /**
- * Stream chat with tool use support. Handles the tool use loop automatically:
- * 1. Send messages + tools to Claude
- * 2. If Claude calls a tool → execute handler → add result → loop back
- * 3. If Claude produces text → stream it to onChunk
- * 4. Accumulate total tokens across all iterations
+ * Maximum characters for a single tool result before truncation.
+ * Prevents token explosion from large DB queries (chapters, library entries).
  */
+const MAX_TOOL_RESULT_CHARS = 12000
+
+function truncateToolResult(result: string, maxChars: number = MAX_TOOL_RESULT_CHARS): string {
+  if (result.length <= maxChars) return result
+  const half = Math.floor(maxChars / 2)
+  return result.slice(0, half) + '\n\n[...truncated — result too large...]\n\n' + result.slice(-half)
+}
+
 export async function streamChatWithTools(
   messages: ChatMessage[],
   systemPrompt: string | SystemPromptPart[],
@@ -132,14 +144,17 @@ export async function streamChatWithTools(
   handleToolCall: (toolName: string, toolInput: Record<string, unknown>) => Promise<string>,
   onChunk?: (text: string) => void,
   onToolCall?: (toolName: string) => void,
-  options?: { model?: string; maxIterations?: number }
+  options?: { model?: string; maxIterations?: number; maxToolResultChars?: number }
 ): Promise<StreamResult> {
   const client = createClaudeClient()
   const model = options?.model ?? SONNET
   const maxIterations = options?.maxIterations ?? 5
+  const maxResultChars = options?.maxToolResultChars ?? MAX_TOOL_RESULT_CHARS
 
   let totalInputTokens = 0
   let totalOutputTokens = 0
+  let totalCacheReadTokens = 0
+  let totalCacheCreationTokens = 0
   let fullText = ''
 
   // Build the messages array in Anthropic's native format for tool use
@@ -161,6 +176,8 @@ export async function streamChatWithTools(
     let iterationText = ''
     let iterationInputTokens = 0
     let iterationOutputTokens = 0
+    let iterationCacheRead = 0
+    let iterationCacheCreation = 0
     const toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = []
     let currentToolId = ''
     let currentToolName = ''
@@ -170,6 +187,9 @@ export async function streamChatWithTools(
     for await (const event of response) {
       if (event.type === 'message_start' && event.message?.usage) {
         iterationInputTokens = event.message.usage.input_tokens
+        const usage = event.message.usage as unknown as Record<string, number>
+        iterationCacheRead = usage.cache_read_input_tokens ?? 0
+        iterationCacheCreation = usage.cache_creation_input_tokens ?? 0
       }
       if (event.type === 'content_block_start') {
         if (event.content_block.type === 'tool_use') {
@@ -210,6 +230,8 @@ export async function streamChatWithTools(
 
     totalInputTokens += iterationInputTokens
     totalOutputTokens += iterationOutputTokens
+    totalCacheReadTokens += iterationCacheRead
+    totalCacheCreationTokens += iterationCacheCreation
     fullText += iterationText
 
     // If no tool calls, we're done
@@ -232,7 +254,7 @@ export async function streamChatWithTools(
     }
     apiMessages.push({ role: 'assistant', content: assistantContent })
 
-    // Execute tool calls and add results
+    // Execute tool calls and add results (with size limiting)
     const toolResults: Anthropic.Messages.ToolResultBlockParam[] = []
     for (const tc of toolCalls) {
       onToolCall?.(tc.name)
@@ -240,13 +262,19 @@ export async function streamChatWithTools(
       toolResults.push({
         type: 'tool_result',
         tool_use_id: tc.id,
-        content: result,
+        content: truncateToolResult(result, maxResultChars),
       })
     }
     apiMessages.push({ role: 'user', content: toolResults })
   }
 
-  return { fullText, inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
+  return {
+    fullText,
+    inputTokens: totalInputTokens,
+    outputTokens: totalOutputTokens,
+    cacheReadTokens: totalCacheReadTokens,
+    cacheCreationTokens: totalCacheCreationTokens,
+  }
 }
 
 export interface JSONResult<T> {
