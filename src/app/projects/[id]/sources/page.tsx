@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import {
   Plus,
@@ -9,11 +9,8 @@ import {
   Upload,
   ChevronDown,
   ChevronUp,
-  Pencil,
   FileText,
   Search,
-  Paperclip,
-  FileCheck,
   CheckCircle2,
   Download,
   BookOpen,
@@ -30,6 +27,8 @@ import { toast } from "sonner";
 import UploadArea from "@/components/sources/UploadArea";
 import SourceList, { type SourceItem } from "@/components/sources/SourceList";
 import KunyeForm from "@/components/sources/KunyeForm";
+import PdfFinderButton from "@/components/sources/PdfFinderButton";
+import BulkPdfFinder from "@/components/sources/BulkPdfFinder";
 import LibraryPickerDialog from "@/components/library/LibraryPickerDialog";
 import { Ornament, PageNumber, PageTitle } from "@/components/shared/BookElements";
 import { FadeUp, FadeIn, StaggerItem } from "@/components/shared/Animations";
@@ -80,10 +79,7 @@ export default function SourcesPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [bibSearch, setBibSearch] = useState("");
   const [bibFilter, setBibFilter] = useState<"all" | "complete" | "incomplete">("all");
-  const [uploadingBibId, setUploadingBibId] = useState<string | null>(null);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
-  const bibFileInputRef = useRef<HTMLInputElement>(null);
-  const pendingBibIdRef = useRef<string | null>(null);
 
   const fetchSources = useCallback(async () => {
     try {
@@ -150,47 +146,6 @@ export default function SourcesPage() {
     fetchBibliography();
   }
 
-  function handleBibUploadClick(bibId: string, e: React.MouseEvent) {
-    e.stopPropagation();
-    pendingBibIdRef.current = bibId;
-    bibFileInputRef.current?.click();
-  }
-
-  async function handleBibFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    const bibId = pendingBibIdRef.current;
-    e.target.value = "";
-    if (!file || !bibId) return;
-
-    setUploadingBibId(bibId);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("projectId", projectId);
-      formData.append("bibliographyId", bibId);
-
-      const res = await fetch("/api/sources/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Upload failed" }));
-        throw new Error(err.error ?? "Upload failed");
-      }
-
-      toast.success("Document linked successfully");
-      fetchSources();
-      fetchBibliography();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Upload failed";
-      toast.error(message);
-    } finally {
-      setUploadingBibId(null);
-      pendingBibIdRef.current = null;
-    }
-  }
-
   const completeCount = allBibliography.filter(isBibComplete).length;
   const partialCount = allBibliography.filter(isBibPartial).length;
   const missingCount = allBibliography.length - completeCount - partialCount;
@@ -217,6 +172,14 @@ export default function SourcesPage() {
           subtitle="Manage your sources. Upload PDFs or fill in bibliography details from the roadmap."
         />
         <div className="flex gap-2">
+          <BulkPdfFinder
+            projectId={projectId}
+            missingCount={allBibliography.filter((b) => !b.sourceId).length}
+            onComplete={() => {
+              fetchSources();
+              fetchBibliography();
+            }}
+          />
           <button
             onClick={() => setShowUpload(!showUpload)}
             className="flex items-center gap-2 px-3 py-1.5 border border-[#d4c9b5] rounded-sm font-ui text-xs text-ink hover:bg-[#e8dfd0]/30 transition-colors"
@@ -338,16 +301,6 @@ export default function SourcesPage() {
         </div>
       </FadeIn>
 
-      {/* Hidden file input for bibliography row uploads */}
-      <input
-        ref={bibFileInputRef}
-        type="file"
-        accept=".pdf,.doc,.docx,.txt"
-        onChange={handleBibFileChange}
-        className="hidden"
-        aria-hidden="true"
-      />
-
       {/* Ornament divider */}
       <Ornament className="w-48 mx-auto text-[#c9bfad] mb-4" />
 
@@ -429,10 +382,8 @@ export default function SourcesPage() {
                     {bib.entryType}
                   </span>
 
-                  {/* Download / attach */}
-                  {uploadingBibId === bib.id ? (
-                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-forest" />
-                  ) : bib.sourceId ? (
+                  {/* Download / PDF finder */}
+                  {bib.sourceId ? (
                     <button
                       onClick={(e) => e.stopPropagation()}
                       className="w-8 h-8 rounded-sm flex items-center justify-center hover:bg-[#e8dfd0]/50 transition-colors shrink-0"
@@ -440,22 +391,14 @@ export default function SourcesPage() {
                       <Download className="w-4 h-4 text-ink-light group-hover:text-forest transition-colors" />
                     </button>
                   ) : (
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      title="Add Document"
-                      onClick={(e) => handleBibUploadClick(bib.id, e)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ")
-                          handleBibUploadClick(
-                            bib.id,
-                            e as unknown as React.MouseEvent
-                          );
+                    <PdfFinderButton
+                      bibliographyId={bib.id}
+                      projectId={projectId}
+                      onSourceLinked={() => {
+                        fetchSources();
+                        fetchBibliography();
                       }}
-                      className="w-8 h-8 rounded-sm flex items-center justify-center hover:bg-[#e8dfd0]/50 transition-colors shrink-0"
-                    >
-                      <Paperclip className="w-4 h-4 text-ink-light group-hover:text-forest transition-colors" />
-                    </div>
+                    />
                   )}
                 </StaggerItem>
               );

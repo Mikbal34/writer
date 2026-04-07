@@ -38,6 +38,7 @@ export const ESTIMATED_COSTS: Record<string, number> = {
   generate_portrait: 150,
   generate_cover: 150,
   regenerate_image: 150,
+  research_ai_search: 5,
 }
 
 export const IMAGE_CREDIT_COST = 150
