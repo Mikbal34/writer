@@ -131,7 +131,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const recent = transactions.slice(-50).reverse()
+    // Return up to 1000 most-recent transactions in the period (client-side paginates)
+    const recent = transactions.slice().reverse().slice(0, 1000)
 
     const allUsers = await prisma.user.findMany({
       select: {

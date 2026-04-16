@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -11,6 +11,10 @@ import {
   Clock,
   ArrowLeft,
   LogOut,
+  Search,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -140,6 +144,10 @@ function MiniChart({ data, height = 100 }: { data: Array<{ date: string; value: 
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
+type UserSortKey = "name" | "email" | "creditBalance" | "projects" | "transactions" | "joinedAt"
+type SortDir = "asc" | "desc"
+const PAGE_SIZE = 50
+
 export default function AdminPanel() {
   const router = useRouter()
   const [data, setData] = useState<AnalyticsData | null>(null)
@@ -147,6 +155,15 @@ export default function AdminPanel() {
   const [days, setDays] = useState(30)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("genel")
+
+  // Users tab: search + sort
+  const [userSearch, setUserSearch] = useState("")
+  const [userSortKey, setUserSortKey] = useState<UserSortKey>("transactions")
+  const [userSortDir, setUserSortDir] = useState<SortDir>("desc")
+
+  // Transactions tab: operation filter + pagination
+  const [opFilter, setOpFilter] = useState<string>("all")
+  const [txPage, setTxPage] = useState(1)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -167,6 +184,63 @@ export default function AdminPanel() {
   }, [days, selectedUserId, router])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Reset pagination when underlying dataset changes
+  useEffect(() => { setTxPage(1) }, [days, selectedUserId, opFilter])
+
+  // ---- Derived data (users tab) ----
+  const filteredSortedUsers = useMemo(() => {
+    if (!data) return []
+    const q = userSearch.trim().toLowerCase()
+    const list = data.platform.users.filter((u) => {
+      if (!q) return true
+      return (u.name ?? "").toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q)
+    })
+    const dir = userSortDir === "asc" ? 1 : -1
+    const getVal = (u: AnalyticsData["platform"]["users"][number]): string | number => {
+      switch (userSortKey) {
+        case "name": return (u.name ?? "").toLowerCase()
+        case "email": return (u.email ?? "").toLowerCase()
+        case "creditBalance": return u.creditBalance
+        case "projects": return u.projects
+        case "transactions": return u.transactions
+        case "joinedAt": return new Date(u.joinedAt).getTime()
+      }
+    }
+    return list.sort((a, b) => {
+      const av = getVal(a), bv = getVal(b)
+      if (av < bv) return -1 * dir
+      if (av > bv) return 1 * dir
+      return 0
+    })
+  }, [data, userSearch, userSortKey, userSortDir])
+
+  // ---- Derived data (transactions tab) ----
+  const filteredRecent = useMemo(() => {
+    if (!data) return []
+    if (opFilter === "all") return data.recent
+    return data.recent.filter((t) => (t.operation ?? "") === opFilter)
+  }, [data, opFilter])
+
+  const availableOps = useMemo(() => {
+    if (!data) return [] as string[]
+    const set = new Set<string>()
+    for (const t of data.recent) if (t.operation) set.add(t.operation)
+    return Array.from(set).sort()
+  }, [data])
+
+  const txPageCount = Math.max(1, Math.ceil(filteredRecent.length / PAGE_SIZE))
+  const currentTxPage = Math.min(txPage, txPageCount)
+  const paginatedRecent = filteredRecent.slice((currentTxPage - 1) * PAGE_SIZE, currentTxPage * PAGE_SIZE)
+
+  function toggleUserSort(key: UserSortKey) {
+    if (userSortKey === key) {
+      setUserSortDir(userSortDir === "asc" ? "desc" : "asc")
+    } else {
+      setUserSortKey(key)
+      setUserSortDir(key === "name" || key === "email" ? "asc" : "desc")
+    }
+  }
 
   async function handleLogout() {
     await fetch("/api/admin/logout", { method: "POST" })
@@ -435,26 +509,64 @@ export default function AdminPanel() {
               {/* ====== KULLANICILAR ====== */}
               {tab === "kullanicilar" && (
                 <div className="rounded-lg overflow-hidden" style={{ backgroundColor: "#fff", border: "1px solid #e8e2d8" }}>
-                  <div className="px-5 py-4 border-b" style={{ borderColor: "#e8e2d8" }}>
-                    <h3 className="font-display text-sm font-semibold" style={{ color: "#2D1F0E" }}>Kayitli Kullanicilar</h3>
-                    <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>
-                      Toplam {data.platform.totalUsers} kullanici · son {days} gunde {fmt(data.platform.totalCreditsGranted)} kredi verildi, {fmt(data.platform.totalCreditsSpent)} harcandi
-                    </p>
+                  <div className="px-5 py-4 border-b flex items-center justify-between gap-4 flex-wrap" style={{ borderColor: "#e8e2d8" }}>
+                    <div>
+                      <h3 className="font-display text-sm font-semibold" style={{ color: "#2D1F0E" }}>Kayitli Kullanicilar</h3>
+                      <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>
+                        Toplam {data.platform.totalUsers} kullanici · son {days} gunde {fmt(data.platform.totalCreditsGranted)} kredi verildi, {fmt(data.platform.totalCreditsSpent)} harcandi
+                        {userSearch && <> · {filteredSortedUsers.length} sonuc</>}
+                      </p>
+                    </div>
+                    <div
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-sm"
+                      style={{ backgroundColor: "#F5F0E6", border: "1px solid #e8e2d8" }}
+                    >
+                      <Search className="h-3.5 w-3.5" style={{ color: "#a89a82" }} />
+                      <input
+                        type="text"
+                        value={userSearch}
+                        onChange={(e) => setUserSearch(e.target.value)}
+                        placeholder="Isim veya e-posta ara..."
+                        className="bg-transparent outline-none font-ui text-xs w-56"
+                        style={{ color: "#2D1F0E" }}
+                      />
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr style={{ backgroundColor: "rgba(201,168,76,0.05)" }}>
-                          <th className="text-left font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>Kullanici</th>
-                          <th className="text-left font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>E-posta</th>
-                          <th className="text-right font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>Bakiye</th>
-                          <th className="text-right font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>Projeler</th>
-                          <th className="text-right font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>Islem ({days}g)</th>
-                          <th className="text-right font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>Katilim</th>
+                          {([
+                            { key: "name", label: "Kullanici", align: "left" },
+                            { key: "email", label: "E-posta", align: "left" },
+                            { key: "creditBalance", label: "Bakiye", align: "right" },
+                            { key: "projects", label: "Projeler", align: "right" },
+                            { key: "transactions", label: `Islem (${days}g)`, align: "right" },
+                            { key: "joinedAt", label: "Katilim", align: "right" },
+                          ] as Array<{ key: UserSortKey; label: string; align: "left" | "right" }>).map((col) => {
+                            const active = userSortKey === col.key
+                            return (
+                              <th
+                                key={col.key}
+                                onClick={() => toggleUserSort(col.key)}
+                                className={`text-${col.align} font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider cursor-pointer select-none hover:bg-[#C9A84C]/[0.08] transition-colors`}
+                                style={{ color: active ? "#2D1F0E" : "#8a7a65" }}
+                              >
+                                <span className={`inline-flex items-center gap-1 ${col.align === "right" ? "justify-end w-full" : ""}`}>
+                                  {col.label}
+                                  {active ? (
+                                    <span className="text-[8px]">{userSortDir === "asc" ? "↑" : "↓"}</span>
+                                  ) : (
+                                    <ArrowUpDown className="h-2.5 w-2.5 opacity-40" />
+                                  )}
+                                </span>
+                              </th>
+                            )
+                          })}
                         </tr>
                       </thead>
                       <tbody>
-                        {data.platform.users.map((u) => (
+                        {filteredSortedUsers.map((u) => (
                           <tr
                             key={u.id}
                             className="border-t cursor-pointer hover:bg-[#C9A84C]/[0.03] transition-colors"
@@ -477,6 +589,11 @@ export default function AdminPanel() {
                         ))}
                       </tbody>
                     </table>
+                    {filteredSortedUsers.length === 0 && (
+                      <p className="text-center py-10 font-ui text-sm" style={{ color: "#a89a82" }}>
+                        {userSearch ? `"${userSearch}" icin sonuc yok` : "Henuz kullanici yok"}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -484,9 +601,25 @@ export default function AdminPanel() {
               {/* ====== ISLEM GECMISI ====== */}
               {tab === "islemler" && (
                 <div className="rounded-lg overflow-hidden" style={{ backgroundColor: "#fff", border: "1px solid #e8e2d8" }}>
-                  <div className="px-5 py-4 border-b" style={{ borderColor: "#e8e2d8" }}>
-                    <h3 className="font-display text-sm font-semibold" style={{ color: "#2D1F0E" }}>Son Islemler</h3>
-                    <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>Son 50 islem · son {days} gun — {viewLabel}</p>
+                  <div className="px-5 py-4 border-b flex items-center justify-between gap-4 flex-wrap" style={{ borderColor: "#e8e2d8" }}>
+                    <div>
+                      <h3 className="font-display text-sm font-semibold" style={{ color: "#2D1F0E" }}>Islem Gecmisi</h3>
+                      <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>
+                        {filteredRecent.length} islem · son {days} gun — {viewLabel}
+                        {opFilter !== "all" && <> · {OP_LABELS[opFilter] ?? opFilter}</>}
+                      </p>
+                    </div>
+                    <select
+                      value={opFilter}
+                      onChange={(e) => setOpFilter(e.target.value)}
+                      className="px-3 py-1.5 rounded-sm font-ui text-xs outline-none cursor-pointer"
+                      style={{ backgroundColor: "#F5F0E6", border: "1px solid #e8e2d8", color: "#2D1F0E" }}
+                    >
+                      <option value="all">Tum islemler</option>
+                      {availableOps.map((op) => (
+                        <option key={op} value={op}>{OP_LABELS[op] ?? op}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -501,7 +634,7 @@ export default function AdminPanel() {
                         </tr>
                       </thead>
                       <tbody>
-                        {data.recent.map((t) => {
+                        {paginatedRecent.map((t) => {
                           const isGrant = t.amount > 0
                           return (
                             <tr key={t.id} className="border-t hover:bg-[#C9A84C]/[0.03] transition-colors" style={{ borderColor: "#f0ebe2" }}>
@@ -532,10 +665,42 @@ export default function AdminPanel() {
                         })}
                       </tbody>
                     </table>
-                    {data.recent.length === 0 && (
-                      <p className="text-center py-10 font-ui text-sm" style={{ color: "#a89a82" }}>Henuz islem yok</p>
+                    {filteredRecent.length === 0 && (
+                      <p className="text-center py-10 font-ui text-sm" style={{ color: "#a89a82" }}>
+                        {opFilter !== "all" ? "Bu islem tipinde kayit yok" : "Henuz islem yok"}
+                      </p>
                     )}
                   </div>
+
+                  {/* Pagination */}
+                  {filteredRecent.length > PAGE_SIZE && (
+                    <div className="px-5 py-3 border-t flex items-center justify-between" style={{ borderColor: "#e8e2d8" }}>
+                      <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>
+                        {(currentTxPage - 1) * PAGE_SIZE + 1}–{Math.min(currentTxPage * PAGE_SIZE, filteredRecent.length)} / {filteredRecent.length}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setTxPage((p) => Math.max(1, p - 1))}
+                          disabled={currentTxPage <= 1}
+                          className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[#C9A84C]/10 transition-colors"
+                          style={{ color: "#6b5a45" }}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <span className="font-ui text-xs tabular-nums px-2" style={{ color: "#2D1F0E" }}>
+                          {currentTxPage} / {txPageCount}
+                        </span>
+                        <button
+                          onClick={() => setTxPage((p) => Math.min(txPageCount, p + 1))}
+                          disabled={currentTxPage >= txPageCount}
+                          className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[#C9A84C]/10 transition-colors"
+                          style={{ color: "#6b5a45" }}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
