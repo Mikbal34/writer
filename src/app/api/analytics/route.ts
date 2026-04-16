@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, AuthError } from '@/lib/auth'
+import { requireAdmin, AdminAuthError } from '@/lib/admin-auth'
 import { prisma } from '@/lib/db'
-import { MODEL_MULTIPLIERS } from '@/lib/credits'
-
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim()).filter(Boolean)
 
 // Real USD costs per million tokens
 const USD_PER_MILLION: Record<string, { input: number; output: number }> = {
@@ -15,43 +12,46 @@ const IMAGE_USD_COST = 0.03 // ~$0.03 per image generation
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await requireAuth()
-
-    // Admin-only endpoint
-    if (!session.user.email || !ADMIN_EMAILS.includes(session.user.email)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const url = new URL(req.url)
     const targetUserId = url.searchParams.get('userId')
     const days = parseInt(url.searchParams.get('days') ?? '30', 10)
 
-    // Admin can view any user's analytics, defaults to own
-    const userId = targetUserId ?? session.user.id
     const since = new Date()
     since.setDate(since.getDate() - days)
 
-    // Fetch all transactions in the period
+    // Fetch transactions — scoped to target user, or platform-wide
     const transactions = await prisma.creditTransaction.findMany({
-      where: { userId, createdAt: { gte: since } },
+      where: {
+        createdAt: { gte: since },
+        ...(targetUserId ? { userId: targetUserId } : {}),
+      },
       orderBy: { createdAt: 'asc' },
     })
 
-    // Current balance
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { creditBalance: true, createdAt: true },
-    })
+    // Balance + memberSince (per-user view) or aggregate (platform view)
+    let balance = 0
+    let memberSince: Date | null = null
+    if (targetUserId) {
+      const user = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { creditBalance: true, createdAt: true },
+      })
+      balance = user?.creditBalance ?? 0
+      memberSince = user?.createdAt ?? null
+    } else {
+      const agg = await prisma.user.aggregate({ _sum: { creditBalance: true } })
+      balance = agg._sum.creditBalance ?? 0
+    }
 
     // --- Aggregations ---
 
-    // Total credits spent (only ai_operation transactions)
     const aiOps = transactions.filter((t) => t.type === 'ai_operation')
     const totalCreditsSpent = aiOps.reduce((sum, t) => sum + (t.creditsUsed ?? 0), 0)
     const totalInputTokens = aiOps.reduce((sum, t) => sum + (t.inputTokens ?? 0), 0)
     const totalOutputTokens = aiOps.reduce((sum, t) => sum + (t.outputTokens ?? 0), 0)
 
-    // Per-operation breakdown
     const byOperation: Record<string, { count: number; credits: number; inputTokens: number; outputTokens: number }> = {}
     for (const t of aiOps) {
       const op = t.operation ?? 'unknown'
@@ -62,7 +62,6 @@ export async function GET(req: NextRequest) {
       byOperation[op].outputTokens += t.outputTokens ?? 0
     }
 
-    // Per-model breakdown
     const byModel: Record<string, { count: number; credits: number; inputTokens: number; outputTokens: number; estimatedUSD: number }> = {}
     for (const t of aiOps) {
       const model = t.model ?? 'unknown'
@@ -72,7 +71,6 @@ export async function GET(req: NextRequest) {
       byModel[model].inputTokens += t.inputTokens ?? 0
       byModel[model].outputTokens += t.outputTokens ?? 0
 
-      // Estimate USD cost
       if (model === 'imagen') {
         byModel[model].estimatedUSD += IMAGE_USD_COST
       } else {
@@ -85,10 +83,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Total estimated USD
     const totalEstimatedUSD = Object.values(byModel).reduce((sum, m) => sum + m.estimatedUSD, 0)
 
-    // Daily usage (for chart)
+    // Daily usage
     const dailyMap: Record<string, { credits: number; operations: number; inputTokens: number; outputTokens: number }> = {}
     for (const t of aiOps) {
       const day = t.createdAt.toISOString().slice(0, 10)
@@ -99,7 +96,6 @@ export async function GET(req: NextRequest) {
       dailyMap[day].outputTokens += t.outputTokens ?? 0
     }
 
-    // Fill in missing days
     const daily: Array<{ date: string; credits: number; operations: number; inputTokens: number; outputTokens: number }> = []
     const cursor = new Date(since)
     const today = new Date()
@@ -124,7 +120,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Resolve project names
     const projectIds = Object.keys(byProject)
     if (projectIds.length > 0) {
       const projects = await prisma.project.findMany({
@@ -136,10 +131,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Recent transactions (last 50)
     const recent = transactions.slice(-50).reverse()
 
-    // Platform-wide stats (admin sees all users)
     const allUsers = await prisma.user.findMany({
       select: {
         id: true,
@@ -162,9 +155,9 @@ export async function GET(req: NextRequest) {
     })
 
     return NextResponse.json({
-      balance: user?.creditBalance ?? 0,
-      memberSince: user?.createdAt,
-      viewingUserId: userId,
+      balance,
+      memberSince,
+      viewingUserId: targetUserId,
       period: { days, since: since.toISOString() },
       totals: {
         creditsSpent: totalCreditsSpent,
@@ -211,7 +204,7 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (err) {
-    if (err instanceof AuthError) {
+    if (err instanceof AdminAuthError) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     console.error('[GET /api/analytics]', err)

@@ -2,39 +2,24 @@
 
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   BarChart3,
-  TrendingDown,
-  Coins,
-  Cpu,
-  ImageIcon,
-  MessageSquare,
-  PenTool,
-  Palette,
-  Layers,
   DollarSign,
-  Zap,
-  FileText,
   Users,
-  ShieldCheck,
-  Home,
   FolderOpen,
-  Activity,
   Clock,
   ArrowLeft,
-  Feather,
+  LogOut,
 } from "lucide-react"
-
-const TEXTURE_URL =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 interface AnalyticsData {
   balance: number
-  memberSince: string
-  viewingUserId: string
+  memberSince: string | null
+  viewingUserId: string | null
   period: { days: number; since: string }
   totals: {
     creditsSpent: number
@@ -156,9 +141,9 @@ function MiniChart({ data, height = 100 }: { data: Array<{ date: string; value: 
 // Page
 // ---------------------------------------------------------------------------
 export default function AdminPanel() {
+  const router = useRouter()
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [forbidden, setForbidden] = useState(false)
   const [days, setDays] = useState(30)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("genel")
@@ -169,31 +154,24 @@ export default function AdminPanel() {
       const params = new URLSearchParams({ days: String(days) })
       if (selectedUserId) params.set("userId", selectedUserId)
       const res = await fetch(`/api/analytics?${params}`)
-      if (res.status === 403) { setForbidden(true); return }
+      if (res.status === 401) {
+        router.replace("/analytics/login")
+        return
+      }
       if (res.ok) setData(await res.json())
     } catch (err) {
       console.error("Analytics fetch failed:", err)
     } finally {
       setLoading(false)
     }
-  }, [days, selectedUserId])
+  }, [days, selectedUserId, router])
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // --- Forbidden ---
-  if (forbidden) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#F5F0E6" }}>
-        <div className="text-center">
-          <ShieldCheck className="h-12 w-12 mx-auto mb-4" style={{ color: "#C9A84C" }} />
-          <h1 className="font-display text-2xl font-bold mb-2" style={{ color: "#2D1F0E" }}>Erisim Engellendi</h1>
-          <p className="font-body text-sm mb-6" style={{ color: "#6b5a45" }}>Bu sayfa yalnizca yoneticilere aciktir.</p>
-          <Link href="/" className="font-ui text-sm px-4 py-2 rounded" style={{ backgroundColor: "#2D1F0E", color: "#FAF7F0" }}>
-            Ana Sayfaya Don
-          </Link>
-        </div>
-      </div>
-    )
+  async function handleLogout() {
+    await fetch("/api/admin/logout", { method: "POST" })
+    router.replace("/analytics/login")
+    router.refresh()
   }
 
   const tabs: Array<{ id: Tab; label: string; icon: typeof BarChart3 }> = [
@@ -298,16 +276,24 @@ export default function AdminPanel() {
           </div>
         )}
 
-        {/* Back */}
-        <div className="px-3 pb-4">
+        {/* Back + Logout */}
+        <div className="px-3 pb-4 space-y-0.5">
           <Link
             href="/"
-            className="flex items-center gap-2 px-3 py-2 rounded text-xs font-ui transition-all"
+            className="flex items-center gap-2 px-3 py-2 rounded text-xs font-ui transition-all hover:opacity-80"
             style={{ color: "rgba(250,247,240,0.40)" }}
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Ana Sayfaya Don
           </Link>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded text-xs font-ui transition-all hover:opacity-80 text-left"
+            style={{ color: "rgba(250,247,240,0.40)" }}
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Cikis Yap
+          </button>
         </div>
       </aside>
 
@@ -347,7 +333,12 @@ export default function AdminPanel() {
                   {/* Platform stats */}
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     <StatCard label="Toplam Kullanici" value={String(data.platform.totalUsers)} sub="kayitli hesap" color="#2D1F0E" />
-                    <StatCard label="Kredi Bakiye" value={fmt(data.balance)} sub="mevcut bakiye" color="#C9A84C" />
+                    <StatCard
+                      label={selectedUserId ? "Kredi Bakiye" : "Toplam Bakiye"}
+                      value={fmt(data.balance)}
+                      sub={selectedUserId ? "mevcut bakiye" : "tum kullanicilar"}
+                      color="#C9A84C"
+                    />
                     <StatCard label="Harcanan Kredi" value={fmt(data.totals.creditsSpent)} sub={`${data.totals.operations} islem`} color="#c44" />
                     <StatCard label="Tahmini Maliyet" value={`$${data.totals.estimatedUSD.toFixed(2)}`} sub={`son ${days} gun`} color="#2D8B4E" />
                     <StatCard label="Token Kullanimi" value={fmtToken(data.totals.inputTokens + data.totals.outputTokens)} sub={`${fmtToken(data.totals.inputTokens)} giris / ${fmtToken(data.totals.outputTokens)} cikis`} color="#5c7cfa" />

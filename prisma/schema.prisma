@@ -65,6 +65,17 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+// ==================== ADMIN ====================
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastLoginAt  DateTime?
+}
+
 // ==================== USER STYLE PROFILES ====================
 
 model UserStyleProfile {

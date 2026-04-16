@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, AuthError } from '@/lib/auth'
+import { requireAdmin, AdminAuthError } from '@/lib/admin-auth'
 import { grantCredits } from '@/lib/credits'
-
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim()).filter(Boolean)
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireAuth()
-
-    if (!session.user.email || !ADMIN_EMAILS.includes(session.user.email)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const admin = await requireAdmin()
 
     const body = await req.json()
     const { userId, amount, reason } = body as {
@@ -28,12 +22,12 @@ export async function POST(req: NextRequest) {
 
     const { newBalance } = await grantCredits(userId, amount, 'admin_grant', {
       reason: reason ?? 'admin_grant',
-      grantedBy: session.user.email,
+      grantedBy: admin.username,
     })
 
     return NextResponse.json({ newBalance })
   } catch (err) {
-    if (err instanceof AuthError) {
+    if (err instanceof AdminAuthError) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     console.error('[POST /api/credits/admin]', err)
