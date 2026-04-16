@@ -15,7 +15,11 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  Download,
+  AlertTriangle,
 } from "lucide-react"
+
+const LOW_BALANCE_THRESHOLD = 50
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,6 +35,9 @@ interface AnalyticsData {
     outputTokens: number
     operations: number
     estimatedUSD: number
+    creditsGranted: number
+    creditsPurchased: number
+    creditsRefunded: number
   }
   byOperation: Array<{ operation: string; count: number; credits: number; inputTokens: number; outputTokens: number }>
   byModel: Array<{ model: string; count: number; credits: number; inputTokens: number; outputTokens: number; estimatedUSD: number }>
@@ -42,7 +49,11 @@ interface AnalyticsData {
     model: string | null; createdAt: string
   }>
   platform: {
-    totalUsers: number; totalCreditsGranted: number; totalCreditsSpent: number
+    totalUsers: number
+    totalCreditsGranted: number
+    totalCreditsPurchased: number
+    totalCreditsRefunded: number
+    totalCreditsSpent: number
     users: Array<{
       id: string; name: string | null; email: string | null
       creditBalance: number; projects: number; transactions: number; joinedAt: string
@@ -65,6 +76,24 @@ function fmtToken(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M"
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "K"
   return n.toString()
+}
+
+function downloadCsv(filename: string, rows: Array<Array<string | number | null | undefined>>) {
+  const escape = (v: string | number | null | undefined): string => {
+    const s = v == null ? "" : String(v)
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+    return s
+  }
+  const csv = rows.map((r) => r.map(escape).join(",")).join("\n")
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 const OP_LABELS: Record<string, string> = {
@@ -156,10 +185,11 @@ export default function AdminPanel() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("genel")
 
-  // Users tab: search + sort
+  // Users tab: search + sort + low-balance filter
   const [userSearch, setUserSearch] = useState("")
   const [userSortKey, setUserSortKey] = useState<UserSortKey>("transactions")
   const [userSortDir, setUserSortDir] = useState<SortDir>("desc")
+  const [onlyLowBalance, setOnlyLowBalance] = useState(false)
 
   // Transactions tab: operation filter + pagination
   const [opFilter, setOpFilter] = useState<string>("all")
@@ -193,6 +223,7 @@ export default function AdminPanel() {
     if (!data) return []
     const q = userSearch.trim().toLowerCase()
     const list = data.platform.users.filter((u) => {
+      if (onlyLowBalance && u.creditBalance >= LOW_BALANCE_THRESHOLD) return false
       if (!q) return true
       return (u.name ?? "").toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q)
     })
@@ -213,7 +244,12 @@ export default function AdminPanel() {
       if (av > bv) return 1 * dir
       return 0
     })
-  }, [data, userSearch, userSortKey, userSortDir])
+  }, [data, userSearch, userSortKey, userSortDir, onlyLowBalance])
+
+  const lowBalanceCount = useMemo(() => {
+    if (!data) return 0
+    return data.platform.users.filter((u) => u.creditBalance < LOW_BALANCE_THRESHOLD).length
+  }, [data])
 
   // ---- Derived data (transactions tab) ----
   const filteredRecent = useMemo(() => {
@@ -232,6 +268,36 @@ export default function AdminPanel() {
   const txPageCount = Math.max(1, Math.ceil(filteredRecent.length / PAGE_SIZE))
   const currentTxPage = Math.min(txPage, txPageCount)
   const paginatedRecent = filteredRecent.slice((currentTxPage - 1) * PAGE_SIZE, currentTxPage * PAGE_SIZE)
+
+  function exportUsersCsv() {
+    const header = ["Kullanici", "E-posta", "Bakiye", "Projeler", `Islem (son ${days}g)`, "Katilim"]
+    const rows = filteredSortedUsers.map((u) => [
+      u.name ?? "",
+      u.email ?? "",
+      u.creditBalance,
+      u.projects,
+      u.transactions,
+      new Date(u.joinedAt).toISOString().slice(0, 10),
+    ])
+    downloadCsv(`kullanicilar-${days}g-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows])
+  }
+
+  function exportTransactionsCsv() {
+    const header = ["Tarih", "Islem", "Tip", "Model", "Giris Token", "Cikis Token", "Kredi", "Bakiye"]
+    const rows = filteredRecent.map((t) => [
+      new Date(t.createdAt).toISOString(),
+      OP_LABELS[t.operation ?? ""] ?? t.operation ?? "",
+      t.type,
+      t.model ?? "",
+      t.inputTokens ?? "",
+      t.outputTokens ?? "",
+      t.amount > 0 ? t.amount : -(t.creditsUsed ?? Math.abs(t.amount)),
+      t.balance,
+    ])
+    const scope = selectedUserId ? `user-${selectedUserId.slice(0, 8)}` : "platform"
+    const op = opFilter === "all" ? "tum" : opFilter
+    downloadCsv(`islemler-${scope}-${op}-${days}g-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows])
+  }
 
   function toggleUserSort(key: UserSortKey) {
     if (userSortKey === key) {
@@ -333,20 +399,26 @@ export default function AdminPanel() {
               <Users className="h-3 w-3 shrink-0" />
               Tum Kullanicilar
             </button>
-            {data.platform.users.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => { setSelectedUserId(u.id); setTab("genel") }}
-                className="w-full flex items-center justify-between px-3 py-1.5 rounded text-xs font-ui transition-all text-left"
-                style={{
-                  backgroundColor: selectedUserId === u.id ? "rgba(201,168,76,0.15)" : "transparent",
-                  color: selectedUserId === u.id ? "#C9A84C" : "rgba(250,247,240,0.45)",
-                }}
-              >
-                <span className="truncate">{u.name ?? u.email?.split("@")[0] ?? "?"}</span>
-                <span className="shrink-0 tabular-nums opacity-60">{fmt(u.creditBalance)}</span>
-              </button>
-            ))}
+            {data.platform.users.map((u) => {
+              const low = u.creditBalance < LOW_BALANCE_THRESHOLD
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => { setSelectedUserId(u.id); setTab("genel") }}
+                  className="w-full flex items-center justify-between px-3 py-1.5 rounded text-xs font-ui transition-all text-left"
+                  style={{
+                    backgroundColor: selectedUserId === u.id ? "rgba(201,168,76,0.15)" : "transparent",
+                    color: selectedUserId === u.id ? "#C9A84C" : "rgba(250,247,240,0.45)",
+                  }}
+                >
+                  <span className="truncate flex items-center gap-1.5">
+                    {low && <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: "#c44" }} />}
+                    {u.name ?? u.email?.split("@")[0] ?? "?"}
+                  </span>
+                  <span className="shrink-0 tabular-nums opacity-60">{fmt(u.creditBalance)}</span>
+                </button>
+              )
+            })}
           </div>
         )}
 
@@ -513,23 +585,59 @@ export default function AdminPanel() {
                     <div>
                       <h3 className="font-display text-sm font-semibold" style={{ color: "#2D1F0E" }}>Kayitli Kullanicilar</h3>
                       <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>
-                        Toplam {data.platform.totalUsers} kullanici · son {days} gunde {fmt(data.platform.totalCreditsGranted)} kredi verildi, {fmt(data.platform.totalCreditsSpent)} harcandi
+                        Toplam {data.platform.totalUsers} kullanici · son {days} gunde {fmt(data.platform.totalCreditsPurchased)} satis, {fmt(data.platform.totalCreditsGranted)} bonus, {fmt(data.platform.totalCreditsSpent)} harcandi
                         {userSearch && <> · {filteredSortedUsers.length} sonuc</>}
                       </p>
                     </div>
-                    <div
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-sm"
-                      style={{ backgroundColor: "#F5F0E6", border: "1px solid #e8e2d8" }}
-                    >
-                      <Search className="h-3.5 w-3.5" style={{ color: "#a89a82" }} />
-                      <input
-                        type="text"
-                        value={userSearch}
-                        onChange={(e) => setUserSearch(e.target.value)}
-                        placeholder="Isim veya e-posta ara..."
-                        className="bg-transparent outline-none font-ui text-xs w-56"
-                        style={{ color: "#2D1F0E" }}
-                      />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setOnlyLowBalance((v) => !v)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs transition-all"
+                        style={{
+                          backgroundColor: onlyLowBalance ? "rgba(196,68,68,0.10)" : "#F5F0E6",
+                          border: `1px solid ${onlyLowBalance ? "rgba(196,68,68,0.35)" : "#e8e2d8"}`,
+                          color: onlyLowBalance ? "#c44" : "#6b5a45",
+                        }}
+                        title={`< ${LOW_BALANCE_THRESHOLD} kredi`}
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Dusuk bakiye
+                        {lowBalanceCount > 0 && (
+                          <span
+                            className="tabular-nums px-1.5 rounded-full text-[10px]"
+                            style={{
+                              backgroundColor: onlyLowBalance ? "rgba(196,68,68,0.20)" : "rgba(196,68,68,0.12)",
+                              color: "#c44",
+                            }}
+                          >
+                            {lowBalanceCount}
+                          </span>
+                        )}
+                      </button>
+                      <div
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-sm"
+                        style={{ backgroundColor: "#F5F0E6", border: "1px solid #e8e2d8" }}
+                      >
+                        <Search className="h-3.5 w-3.5" style={{ color: "#a89a82" }} />
+                        <input
+                          type="text"
+                          value={userSearch}
+                          onChange={(e) => setUserSearch(e.target.value)}
+                          placeholder="Isim veya e-posta ara..."
+                          className="bg-transparent outline-none font-ui text-xs w-56"
+                          style={{ color: "#2D1F0E" }}
+                        />
+                      </div>
+                      <button
+                        onClick={exportUsersCsv}
+                        disabled={filteredSortedUsers.length === 0}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs transition-opacity disabled:opacity-40 hover:opacity-80"
+                        style={{ backgroundColor: "#2D1F0E", color: "#FAF7F0" }}
+                        title="CSV olarak indir"
+                      >
+                        <Download className="h-3 w-3" />
+                        CSV
+                      </button>
                     </div>
                   </div>
                   <div className="overflow-x-auto">
@@ -577,8 +685,13 @@ export default function AdminPanel() {
                               {u.name ?? "Isimsiz"}
                             </td>
                             <td className="font-ui text-xs py-3 px-4" style={{ color: "#8a7a65" }}>{u.email ?? "-"}</td>
-                            <td className="font-ui text-xs py-3 px-4 text-right tabular-nums font-medium" style={{ color: u.creditBalance > 0 ? "#2D8B4E" : "#c44" }}>
-                              {fmt(u.creditBalance)}
+                            <td className="font-ui text-xs py-3 px-4 text-right tabular-nums font-medium" style={{ color: u.creditBalance < LOW_BALANCE_THRESHOLD ? "#c44" : "#2D8B4E" }}>
+                              <span className="inline-flex items-center gap-1 justify-end">
+                                {u.creditBalance < LOW_BALANCE_THRESHOLD && (
+                                  <AlertTriangle className="h-3 w-3" aria-label="Dusuk bakiye" />
+                                )}
+                                {fmt(u.creditBalance)}
+                              </span>
                             </td>
                             <td className="font-ui text-xs py-3 px-4 text-right tabular-nums" style={{ color: "#6b5a45" }}>{u.projects}</td>
                             <td className="font-ui text-xs py-3 px-4 text-right tabular-nums" style={{ color: "#6b5a45" }}>{u.transactions}</td>
@@ -609,17 +722,29 @@ export default function AdminPanel() {
                         {opFilter !== "all" && <> · {OP_LABELS[opFilter] ?? opFilter}</>}
                       </p>
                     </div>
-                    <select
-                      value={opFilter}
-                      onChange={(e) => setOpFilter(e.target.value)}
-                      className="px-3 py-1.5 rounded-sm font-ui text-xs outline-none cursor-pointer"
-                      style={{ backgroundColor: "#F5F0E6", border: "1px solid #e8e2d8", color: "#2D1F0E" }}
-                    >
-                      <option value="all">Tum islemler</option>
-                      {availableOps.map((op) => (
-                        <option key={op} value={op}>{OP_LABELS[op] ?? op}</option>
-                      ))}
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={opFilter}
+                        onChange={(e) => setOpFilter(e.target.value)}
+                        className="px-3 py-1.5 rounded-sm font-ui text-xs outline-none cursor-pointer"
+                        style={{ backgroundColor: "#F5F0E6", border: "1px solid #e8e2d8", color: "#2D1F0E" }}
+                      >
+                        <option value="all">Tum islemler</option>
+                        {availableOps.map((op) => (
+                          <option key={op} value={op}>{OP_LABELS[op] ?? op}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={exportTransactionsCsv}
+                        disabled={filteredRecent.length === 0}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs transition-opacity disabled:opacity-40 hover:opacity-80"
+                        style={{ backgroundColor: "#2D1F0E", color: "#FAF7F0" }}
+                        title="CSV olarak indir"
+                      >
+                        <Download className="h-3 w-3" />
+                        CSV
+                      </button>
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -707,6 +832,40 @@ export default function AdminPanel() {
               {/* ====== MALIYET ANALIZI ====== */}
               {tab === "harcama" && (
                 <div className="space-y-6">
+                  {/* Kredi Akisi (grant vs purchase vs refund vs spend) */}
+                  <div className="rounded-lg p-5" style={{ backgroundColor: "#fff", border: "1px solid #e8e2d8" }}>
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="font-display text-sm font-semibold" style={{ color: "#2D1F0E" }}>Kredi Akisi</h3>
+                        <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>
+                          Son {days} gun — {viewLabel}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="rounded p-3" style={{ backgroundColor: "rgba(45,139,78,0.05)", border: "1px solid rgba(45,139,78,0.15)" }}>
+                        <p className="font-ui text-[10px] mb-1" style={{ color: "#5a7a5f" }}>Satin Alinan</p>
+                        <p className="font-display text-2xl font-bold tabular-nums" style={{ color: "#2D8B4E" }}>{fmt(data.totals.creditsPurchased)}</p>
+                        <p className="font-ui text-[9px] mt-0.5" style={{ color: "#a89a82" }}>kredi (gelir)</p>
+                      </div>
+                      <div className="rounded p-3" style={{ backgroundColor: "rgba(201,168,76,0.05)", border: "1px solid rgba(201,168,76,0.15)" }}>
+                        <p className="font-ui text-[10px] mb-1" style={{ color: "#8a7a65" }}>Bonus (Grant)</p>
+                        <p className="font-display text-2xl font-bold tabular-nums" style={{ color: "#C9A84C" }}>{fmt(data.totals.creditsGranted)}</p>
+                        <p className="font-ui text-[9px] mt-0.5" style={{ color: "#a89a82" }}>hediye + admin</p>
+                      </div>
+                      <div className="rounded p-3" style={{ backgroundColor: "rgba(92,124,250,0.05)", border: "1px solid rgba(92,124,250,0.15)" }}>
+                        <p className="font-ui text-[10px] mb-1" style={{ color: "#6b7aa8" }}>Iade</p>
+                        <p className="font-display text-2xl font-bold tabular-nums" style={{ color: "#5c7cfa" }}>{fmt(data.totals.creditsRefunded)}</p>
+                        <p className="font-ui text-[9px] mt-0.5" style={{ color: "#a89a82" }}>refund</p>
+                      </div>
+                      <div className="rounded p-3" style={{ backgroundColor: "rgba(196,68,68,0.05)", border: "1px solid rgba(196,68,68,0.15)" }}>
+                        <p className="font-ui text-[10px] mb-1" style={{ color: "#a05555" }}>Harcanan</p>
+                        <p className="font-display text-2xl font-bold tabular-nums" style={{ color: "#c44" }}>{fmt(data.totals.creditsSpent)}</p>
+                        <p className="font-ui text-[9px] mt-0.5" style={{ color: "#a89a82" }}>{data.totals.operations} islem</p>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* USD cost per model */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {data.byModel.map((m) => (

@@ -52,6 +52,16 @@ export async function GET(req: NextRequest) {
     const totalInputTokens = aiOps.reduce((sum, t) => sum + (t.inputTokens ?? 0), 0)
     const totalOutputTokens = aiOps.reduce((sum, t) => sum + (t.outputTokens ?? 0), 0)
 
+    // Revenue breakdown (period-scoped; user-scoped if targetUserId)
+    let creditsGranted = 0  // initial_grant + admin_grant
+    let creditsPurchased = 0  // purchase
+    let creditsRefunded = 0  // refund
+    for (const t of transactions) {
+      if (t.type === 'initial_grant' || t.type === 'admin_grant') creditsGranted += t.amount
+      else if (t.type === 'purchase') creditsPurchased += t.amount
+      else if (t.type === 'refund') creditsRefunded += t.amount
+    }
+
     const byOperation: Record<string, { count: number; credits: number; inputTokens: number; outputTokens: number }> = {}
     for (const t of aiOps) {
       const op = t.operation ?? 'unknown'
@@ -154,15 +164,18 @@ export async function GET(req: NextRequest) {
     })
     const periodTxByUser = new Map(periodTxGroups.map((g) => [g.userId, g._count._all]))
 
-    // Platform totals for the selected period
-    const platformPeriodGranted = await prisma.creditTransaction.aggregate({
-      where: { amount: { gt: 0 }, createdAt: { gte: since } },
-      _sum: { amount: true },
+    // Platform totals for the selected period — grouped by transaction type
+    const platformByType = await prisma.creditTransaction.groupBy({
+      by: ['type'],
+      where: { createdAt: { gte: since } },
+      _sum: { amount: true, creditsUsed: true },
     })
-    const platformPeriodSpent = await prisma.creditTransaction.aggregate({
-      where: { type: 'ai_operation', createdAt: { gte: since } },
-      _sum: { creditsUsed: true },
-    })
+    const platformGranted =
+      (platformByType.find((g) => g.type === 'initial_grant')?._sum.amount ?? 0) +
+      (platformByType.find((g) => g.type === 'admin_grant')?._sum.amount ?? 0)
+    const platformPurchased = platformByType.find((g) => g.type === 'purchase')?._sum.amount ?? 0
+    const platformRefunded = platformByType.find((g) => g.type === 'refund')?._sum.amount ?? 0
+    const platformSpent = platformByType.find((g) => g.type === 'ai_operation')?._sum.creditsUsed ?? 0
 
     return NextResponse.json({
       balance,
@@ -175,6 +188,9 @@ export async function GET(req: NextRequest) {
         outputTokens: totalOutputTokens,
         operations: aiOps.length,
         estimatedUSD: Math.round(totalEstimatedUSD * 100) / 100,
+        creditsGranted,
+        creditsPurchased,
+        creditsRefunded,
       },
       byOperation: Object.entries(byOperation)
         .map(([op, data]) => ({ operation: op, ...data }))
@@ -200,8 +216,10 @@ export async function GET(req: NextRequest) {
       })),
       platform: {
         totalUsers: allUsers.length,
-        totalCreditsGranted: platformPeriodGranted._sum.amount ?? 0,
-        totalCreditsSpent: platformPeriodSpent._sum.creditsUsed ?? 0,
+        totalCreditsGranted: platformGranted,
+        totalCreditsPurchased: platformPurchased,
+        totalCreditsRefunded: platformRefunded,
+        totalCreditsSpent: platformSpent,
         users: allUsers.map((u) => ({
           id: u.id,
           name: u.name,
