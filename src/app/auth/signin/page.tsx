@@ -1,8 +1,9 @@
 "use client";
 
+import { FormEvent, useState } from "react";
 import { signIn } from "next-auth/react";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Mail, Loader2, CheckCircle2 } from "lucide-react";
 import { FadeUpLarge, FadeRight } from "@/components/shared/Animations";
 
 const LOGIN_BG =
@@ -12,6 +13,33 @@ const TEXTURE_URL =
   "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp";
 
 export default function SignInPage() {
+  const [email, setEmail] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+
+  async function handleMagicLink(e: FormEvent) {
+    e.preventDefault();
+    setEmailError(null);
+    setEmailLoading(true);
+    try {
+      const res = await signIn("email", {
+        email,
+        callbackUrl: "/",
+        redirect: false,
+      });
+      if (res?.error) {
+        setEmailError("Mail gonderilemedi. Lutfen tekrar deneyin.");
+      } else {
+        setEmailSent(true);
+      }
+    } catch {
+      setEmailError("Baglanti hatasi.");
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
   return (
     <div
       className="min-h-screen flex"
@@ -91,13 +119,59 @@ export default function SignInPage() {
               <ArrowRight className="w-4 h-4 text-[#c9bfad] group-hover:text-ink group-hover:translate-x-0.5 transition-all" />
             </button>
 
-            {/* Sign up hint */}
-            <p className="font-ui text-sm text-center text-ink-light mt-6">
-              Don&apos;t have an account?{" "}
-              <span className="text-forest font-medium">
-                Sign up automatically with Google
-              </span>
-            </p>
+            {/* Divider */}
+            <div className="flex items-center gap-3 my-5">
+              <div className="h-px flex-1 bg-[#d4c9b5]/60" />
+              <span className="font-ui text-[11px] text-[#a89a82] tracking-wider uppercase">veya</span>
+              <div className="h-px flex-1 bg-[#d4c9b5]/60" />
+            </div>
+
+            {/* Email magic-link */}
+            {emailSent ? (
+              <div className="flex flex-col items-center text-center gap-3 py-4">
+                <CheckCircle2 className="h-8 w-8 text-forest" />
+                <p className="font-ui text-sm text-ink">
+                  <strong>{email}</strong> adresine giris baglantisi gonderildi.
+                </p>
+                <p className="font-ui text-xs text-ink-light">
+                  Gelen kutunu kontrol et — bazen spam klasorune dusebilir.
+                </p>
+                <button
+                  onClick={() => {
+                    setEmailSent(false);
+                    setEmail("");
+                  }}
+                  className="font-ui text-xs text-[#C9A84C] hover:underline mt-1"
+                >
+                  Farkli bir e-posta kullan
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleMagicLink} className="space-y-2">
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#a89a82]" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="eposta@adresin.com"
+                    required
+                    className="w-full pl-10 pr-3 py-3 rounded-sm border border-[#d4c9b5] bg-white/80 font-ui text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#C9A84C]/60"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={emailLoading || !email}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-sm bg-ink text-[#FAF7F0] font-ui text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  {emailLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {emailLoading ? "Gonderiliyor..." : "Giris linkini gonder"}
+                </button>
+                {emailError && (
+                  <p className="font-ui text-xs text-[#c44] text-center">{emailError}</p>
+                )}
+              </form>
+            )}
 
             {/* Bottom ornament */}
             <div className="flex items-center gap-3 mt-6">
