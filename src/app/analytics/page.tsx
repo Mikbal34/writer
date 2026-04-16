@@ -249,7 +249,7 @@ export default function AdminPanel() {
           <div className="px-3 pb-4 border-t mt-2 pt-3" style={{ borderColor: "rgba(201,168,76,0.10)" }}>
             <p className="font-ui text-[10px] mb-1.5 px-3" style={{ color: "rgba(250,247,240,0.35)" }}>Kullanici Filtresi</p>
             <button
-              onClick={() => setSelectedUserId(null)}
+              onClick={() => { setSelectedUserId(null); setTab("genel") }}
               className="w-full flex items-center gap-2 px-3 py-1.5 rounded text-xs font-ui transition-all text-left"
               style={{
                 backgroundColor: !selectedUserId ? "rgba(201,168,76,0.15)" : "transparent",
@@ -262,7 +262,7 @@ export default function AdminPanel() {
             {data.platform.users.map((u) => (
               <button
                 key={u.id}
-                onClick={() => setSelectedUserId(u.id)}
+                onClick={() => { setSelectedUserId(u.id); setTab("genel") }}
                 className="w-full flex items-center justify-between px-3 py-1.5 rounded text-xs font-ui transition-all text-left"
                 style={{
                   backgroundColor: selectedUserId === u.id ? "rgba(201,168,76,0.15)" : "transparent",
@@ -437,7 +437,9 @@ export default function AdminPanel() {
                 <div className="rounded-lg overflow-hidden" style={{ backgroundColor: "#fff", border: "1px solid #e8e2d8" }}>
                   <div className="px-5 py-4 border-b" style={{ borderColor: "#e8e2d8" }}>
                     <h3 className="font-display text-sm font-semibold" style={{ color: "#2D1F0E" }}>Kayitli Kullanicilar</h3>
-                    <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>Toplam {data.platform.totalUsers} kullanici — {fmt(data.platform.totalCreditsGranted)} kredi verildi, {fmt(data.platform.totalCreditsSpent)} harcandi</p>
+                    <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>
+                      Toplam {data.platform.totalUsers} kullanici · son {days} gunde {fmt(data.platform.totalCreditsGranted)} kredi verildi, {fmt(data.platform.totalCreditsSpent)} harcandi
+                    </p>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -447,7 +449,7 @@ export default function AdminPanel() {
                           <th className="text-left font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>E-posta</th>
                           <th className="text-right font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>Bakiye</th>
                           <th className="text-right font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>Projeler</th>
-                          <th className="text-right font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>Islemler</th>
+                          <th className="text-right font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>Islem ({days}g)</th>
                           <th className="text-right font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider" style={{ color: "#8a7a65" }}>Katilim</th>
                         </tr>
                       </thead>
@@ -484,7 +486,7 @@ export default function AdminPanel() {
                 <div className="rounded-lg overflow-hidden" style={{ backgroundColor: "#fff", border: "1px solid #e8e2d8" }}>
                   <div className="px-5 py-4 border-b" style={{ borderColor: "#e8e2d8" }}>
                     <h3 className="font-display text-sm font-semibold" style={{ color: "#2D1F0E" }}>Son Islemler</h3>
-                    <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>Son 50 islem — {viewLabel}</p>
+                    <p className="font-ui text-[10px]" style={{ color: "#a89a82" }}>Son 50 islem · son {days} gun — {viewLabel}</p>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">

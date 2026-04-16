@@ -140,17 +140,26 @@ export async function GET(req: NextRequest) {
         email: true,
         creditBalance: true,
         createdAt: true,
-        _count: { select: { projects: true, creditTransactions: true } },
+        _count: { select: { projects: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
 
-    const platformTotalCreditsGranted = await prisma.creditTransaction.aggregate({
-      where: { amount: { gt: 0 } },
+    // Per-user transaction counts within the selected period
+    const periodTxGroups = await prisma.creditTransaction.groupBy({
+      by: ['userId'],
+      where: { createdAt: { gte: since } },
+      _count: { _all: true },
+    })
+    const periodTxByUser = new Map(periodTxGroups.map((g) => [g.userId, g._count._all]))
+
+    // Platform totals for the selected period
+    const platformPeriodGranted = await prisma.creditTransaction.aggregate({
+      where: { amount: { gt: 0 }, createdAt: { gte: since } },
       _sum: { amount: true },
     })
-    const platformTotalCreditsSpent = await prisma.creditTransaction.aggregate({
-      where: { type: 'ai_operation' },
+    const platformPeriodSpent = await prisma.creditTransaction.aggregate({
+      where: { type: 'ai_operation', createdAt: { gte: since } },
       _sum: { creditsUsed: true },
     })
 
@@ -190,15 +199,15 @@ export async function GET(req: NextRequest) {
       })),
       platform: {
         totalUsers: allUsers.length,
-        totalCreditsGranted: platformTotalCreditsGranted._sum.amount ?? 0,
-        totalCreditsSpent: platformTotalCreditsSpent._sum.creditsUsed ?? 0,
+        totalCreditsGranted: platformPeriodGranted._sum.amount ?? 0,
+        totalCreditsSpent: platformPeriodSpent._sum.creditsUsed ?? 0,
         users: allUsers.map((u) => ({
           id: u.id,
           name: u.name,
           email: u.email,
           creditBalance: u.creditBalance,
           projects: u._count.projects,
-          transactions: u._count.creditTransactions,
+          transactions: periodTxByUser.get(u.id) ?? 0,
           joinedAt: u.createdAt,
         })),
       },
