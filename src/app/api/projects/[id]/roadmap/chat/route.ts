@@ -324,7 +324,33 @@ ${needsSources ? '- When adding sources, use author format "Surname, Name".\n' :
 ${toolsSection}
 FORMAT RULES:
 - NEVER use emoji. Never. Not in headings, text, or lists.
-- Use markdown formatting for lists, tables, and structural information (tables, headings, bullet points).${needsSources ? '\n- Use markdown tables for source lists and comparisons (| heading | heading | format).' : ''}`
+- Use markdown formatting for lists, tables, and structural information (tables, headings, bullet points).${needsSources ? '\n- Use markdown tables for source lists and comparisons (| heading | heading | format).' : ''}
+
+STRUCTURE DESIGN PRINCIPLES
+When proposing or modifying a roadmap, apply these principles:
+1. Progressive disclosure: early chapters establish context, vocabulary, and baseline facts; later chapters build on them with deeper analysis. A reader should be able to understand chapter N if they have read chapters 1..N-1 attentively.
+2. Balance of scope: each chapter should feel like a meaningful unit of thought, not a grab-bag. If a chapter has one section with four subsections and another with one subsection, ask whether it is really one chapter or two.
+3. Sectioning rhythm: sections inside a chapter are waypoints of the chapter's argument. Aim for 2-4 sections per chapter; fewer tends to undersell the chapter, more tends to fragment it.
+4. Subsection granularity: a subsection is the smallest writable unit. 2-5 pages each is the right ballpark. Subsections shorter than 2 pages usually should be merged; longer than 6 pages usually should be split.
+5. Titles carry weight: a chapter or section title is a promise to the reader about what they will get there. Prefer titles that name a claim or question over titles that name only a topic.
+6. Avoid mirror-image sections: if two sections could reasonably be swapped without weakening the chapter, one of them is probably redundant.
+7. First and last positions are privileged. A chapter's first section sets its frame; its last section should deliver the chapter's payoff. Neither is a filler slot.
+
+ARGUMENT FLOW CHECKS
+Before finalising a roadmap (or a significant modification), ask yourself:
+- What is the book's single controlling question or thesis? A reader who read only the titles of chapters, sections, and subsections should be able to reconstruct it.
+- Are there chapters whose only role seems to be "background"? If so, can their content be folded into the chapters that actually use it?
+- Does the middle sag? Long books often have a strong opening, a strong conclusion, and an uncertain middle. Structurally, the middle should earn its pages.
+- Is any chapter doing two fundamentally different jobs? Consider splitting.
+- Is any chapter only a list of loosely related items? Consider restructuring around an argument, not an inventory.
+
+WRITING HAND-OFF
+Each subsection you describe will later become a writing-session prompt. Give the writer enough to act on:
+- whatToWrite: a concrete brief ("Analyse the 1923-1930 archival letters, focusing on shifts in diplomatic tone"), not a label ("The letters").
+- keyPoints: 2-5 bullets naming the ideas the subsection must cover. Each bullet should be concrete enough that a writer cannot reasonably miss its target.
+- writingStrategy: one or two sentences on tone, structure, or pacing for this specific subsection — what makes THIS subsection different from its neighbours.
+- estimatedPages: your best page-count estimate in whole pages.
+When you are not given enough information to fill a field responsibly, write your best estimate and flag the assumption; do not leave the field empty.`
 
   const projectTypeLabel = project.projectType === 'STORY' ? 'story/fiction' : project.projectType === 'BOOK' ? 'book' : 'academic book'
 
