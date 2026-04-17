@@ -1,6 +1,7 @@
 import React from "react";
 import { getServerSession } from "next-auth";
 import Link from "next/link";
+import Image from "next/image";
 import {
   BookOpen,
   BookMarked,
@@ -23,7 +24,7 @@ import { FadeUp, FadeUpLarge, FadeIn, ScrollFadeUp, ScrollFadeIn, AnimatedBar } 
 
 const TEXTURE_URL =
   "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp";
-const HERO_URL = "/images/hero-landing.png";
+const HERO_URL = "/images/hero-landing.webp";
 
 const BOOK_COLORS = [
   { color: "#2D5016", accent: "#4a7a2e", spine: "#1e3a0e" },
@@ -616,9 +617,15 @@ function LandingPage() {
 
       {/* Hero */}
       <section className="relative min-h-[85vh] flex items-center overflow-hidden pt-16">
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${HERO_URL})` }}
+        <Image
+          src={HERO_URL}
+          alt=""
+          fill
+          priority
+          fetchPriority="high"
+          quality={82}
+          sizes="100vw"
+          className="object-cover object-center"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-[#1a0f05]/85 via-[#1a0f05]/70 to-[#1a0f05]/30" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#1a0f05]/60 via-transparent to-transparent" />
