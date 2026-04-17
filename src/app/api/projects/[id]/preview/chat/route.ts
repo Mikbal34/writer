@@ -558,7 +558,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             (toolName) => {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ step: 'thinking', tool: toolName })}\n\n`))
             },
-            { model: HAIKU }
+            { model: HAIKU, cacheTools: true }
           )
 
           const { newBalance, creditsUsed } = await deductCredits(
@@ -567,7 +567,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             result.inputTokens,
             result.outputTokens,
             'haiku',
-            { projectId }
+            { projectId },
+            { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
           )
 
           controller.enqueue(

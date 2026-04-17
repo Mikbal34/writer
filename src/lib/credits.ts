@@ -137,9 +137,17 @@ export async function deductCredits(
   inputTokens: number,
   outputTokens: number,
   model?: ModelType,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  cacheTokens?: { read?: number; creation?: number }
 ): Promise<{ newBalance: number; creditsUsed: number }> {
-  const creditsUsed = tokensToCredits(inputTokens, outputTokens, model)
+  // Charge 10% for cache reads, 125% for cache creations (Anthropic's pricing
+  // ratios). Uncached input and output are billed at full rate.
+  const cacheRead = cacheTokens?.read ?? 0
+  const cacheCreation = cacheTokens?.creation ?? 0
+  const creditsUsed =
+    tokensToCredits(inputTokens, outputTokens, model) +
+    Math.ceil(tokensToCredits(cacheRead, 0, model) * 0.1) +
+    Math.ceil(tokensToCredits(cacheCreation, 0, model) * 1.25)
 
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({
@@ -164,6 +172,8 @@ export async function deductCredits(
         operation,
         inputTokens,
         outputTokens,
+        cacheReadTokens: cacheRead || null,
+        cacheCreationTokens: cacheCreation || null,
         creditsUsed,
         model: model ?? null,
         metadata: metadata as object ?? undefined,

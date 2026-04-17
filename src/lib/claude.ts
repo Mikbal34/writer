@@ -144,12 +144,22 @@ export async function streamChatWithTools(
   handleToolCall: (toolName: string, toolInput: Record<string, unknown>) => Promise<string>,
   onChunk?: (text: string) => void,
   onToolCall?: (toolName: string) => void,
-  options?: { model?: string; maxIterations?: number; maxToolResultChars?: number }
+  options?: { model?: string; maxIterations?: number; maxToolResultChars?: number; cacheTools?: boolean }
 ): Promise<StreamResult> {
   const client = createClaudeClient()
   const model = options?.model ?? SONNET
   const maxIterations = options?.maxIterations ?? 5
   const maxResultChars = options?.maxToolResultChars ?? MAX_TOOL_RESULT_CHARS
+
+  // Cache-control on the final tool marks the tools block as cacheable —
+  // a big win when the tool definitions are large and identical across turns.
+  const apiTools: ToolDefinition[] =
+    options?.cacheTools && tools.length > 0
+      ? [
+          ...tools.slice(0, -1),
+          { ...tools[tools.length - 1], cache_control: { type: 'ephemeral' as const } } as ToolDefinition,
+        ]
+      : tools
 
   let totalInputTokens = 0
   let totalOutputTokens = 0
@@ -169,7 +179,7 @@ export async function streamChatWithTools(
       max_tokens: 32768,
       system: buildSystemParam(systemPrompt),
       messages: apiMessages,
-      tools,
+      tools: apiTools,
       stream: true,
     })
 

@@ -917,7 +917,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({ step: 'thinking', tool: toolName })}\n\n`)
               )
-            }
+            },
+            { cacheTools: true }
           )
 
           // Deduct credits based on actual usage
@@ -927,7 +928,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             result.inputTokens,
             result.outputTokens,
             'sonnet',
-            { projectId }
+            { projectId },
+            { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
           )
 
           // Parse and apply commands

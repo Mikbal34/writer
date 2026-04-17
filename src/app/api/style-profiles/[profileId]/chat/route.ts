@@ -72,7 +72,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             result.inputTokens,
             result.outputTokens,
             'haiku',
-            { styleProfileId: profileId }
+            { styleProfileId: profileId },
+            { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
           )
 
           // Check for style_profile tag in response

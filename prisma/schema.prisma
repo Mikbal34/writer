@@ -456,18 +456,20 @@ enum CreditTransactionType {
 }
 
 model CreditTransaction {
-  id            String                  @id @default(cuid())
-  userId        String
-  amount        Int
-  balance       Int
-  type          CreditTransactionType
-  operation     String?
-  inputTokens   Int?
-  outputTokens  Int?
-  creditsUsed   Int?
-  model         String?
-  metadata      Json?
-  createdAt     DateTime                @default(now())
+  id                 String                  @id @default(cuid())
+  userId             String
+  amount             Int
+  balance            Int
+  type               CreditTransactionType
+  operation          String?
+  inputTokens        Int?
+  outputTokens       Int?
+  cacheReadTokens    Int?
+  cacheCreationTokens Int?
+  creditsUsed        Int?
+  model              String?
+  metadata           Json?
+  createdAt          DateTime                @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -197,7 +197,8 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
             result.inputTokens,
             result.outputTokens,
             'sonnet',
-            { projectId, subsectionId }
+            { projectId, subsectionId },
+            { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
           )
 
           controller.enqueue(

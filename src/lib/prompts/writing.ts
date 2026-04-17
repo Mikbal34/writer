@@ -137,6 +137,9 @@ export function getSessionContextPrompt(
   }
   parts.push('')
 
+  // Project-constant citation instructions + style reminders are now carried by
+  // the cacheable system prompt. User prompt stays lean / per-subsection.
+
   // --- 6. Sources (ACADEMIC only) ---
   if (projectType === 'ACADEMIC' && sources.length > 0) {
     parts.push(`## Sources for This Subsection`)
@@ -176,19 +179,8 @@ export function getSessionContextPrompt(
     }
   }
 
-  // --- 7. Citation instructions (ACADEMIC only) ---
-  if (projectType === 'ACADEMIC') {
-    parts.push(`## Citation Instructions`)
-    parts.push(buildCitationInstructions(citationFormat))
-    parts.push('')
-  }
-
-  // --- 8. Style reminders ---
-  if (styleProfile && Object.keys(styleProfile).length > 0) {
-    parts.push(`## Writing Style Reminders`)
-    parts.push(buildStyleReminders(styleProfile, projectType))
-    parts.push('')
-  }
+  // Citation instructions + style reminders moved to cacheable system block
+  // (they are project-constant and waste tokens per call in user prompt).
 
   // --- 9. Output format (type-specific) ---
   parts.push(`## Output`)
@@ -340,9 +332,9 @@ function buildSystemPromptParts(
     coreLines.push(buildCitationSystemNote(citationFormat))
   }
 
-  // --- Part 2: Style profile + writing guidelines (dynamic, project-specific) ---
-  const dynamicLines: string[] = []
-
+  // Project-stable style + guidelines also go in the cache block — they don't
+  // change between subsection writes within the same project, so a shared
+  // cache prefix yields cache_read_input_tokens on every subsequent call.
   if (styleProfile) {
     const voiceNote =
       styleProfile.usesFirstPerson === false
@@ -350,31 +342,41 @@ function buildSystemPromptParts(
         : styleProfile.usesFirstPerson === true
         ? 'First person is acceptable.'
         : ''
-    if (voiceNote) dynamicLines.push(`- ${voiceNote}`)
-
-    if (styleProfile.tone) {
-      dynamicLines.push(`- Tone: ${styleProfile.tone}.`)
-    }
+    const styleBullets: string[] = []
+    if (voiceNote) styleBullets.push(`- ${voiceNote}`)
+    if (styleProfile.tone) styleBullets.push(`- Tone: ${styleProfile.tone}.`)
     if (styleProfile.rhetoricalApproach) {
-      dynamicLines.push(`- Rhetorical approach: ${styleProfile.rhetoricalApproach}.`)
+      styleBullets.push(`- Rhetorical approach: ${styleProfile.rhetoricalApproach}.`)
+    }
+    if (styleBullets.length > 0) {
+      coreLines.push('')
+      coreLines.push(`## Voice`)
+      coreLines.push(...styleBullets)
     }
   }
 
   if (writingGuidelines) {
-    dynamicLines.push('')
-    dynamicLines.push(`## Project-Specific Writing Guidelines`)
-    dynamicLines.push(writingGuidelines)
+    coreLines.push('')
+    coreLines.push(`## Project-Specific Writing Guidelines`)
+    coreLines.push(writingGuidelines)
   }
 
-  const parts: SystemPromptPart[] = [
-    { text: coreLines.join('\n'), cache: true },
-  ]
-
-  if (dynamicLines.length > 0) {
-    parts.push({ text: dynamicLines.join('\n') })
+  if (projectType === 'ACADEMIC') {
+    coreLines.push('')
+    coreLines.push(`## Citation Instructions`)
+    coreLines.push(buildCitationInstructions(citationFormat))
   }
 
-  return parts
+  if (styleProfile && Object.keys(styleProfile).length > 0) {
+    const reminders = buildStyleReminders(styleProfile, projectType)
+    if (reminders) {
+      coreLines.push('')
+      coreLines.push(`## Writing Style Reminders`)
+      coreLines.push(reminders)
+    }
+  }
+
+  return [{ text: coreLines.join('\n'), cache: true }]
 }
 
 function buildPositionInstructions(position: PositionInfo): string[] {
