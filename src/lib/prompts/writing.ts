@@ -265,11 +265,58 @@ Approach the subsection as a small self-contained argument:
 Avoid filler phrases ("It is important to note that...", "In conclusion..."). Every sentence should carry its own weight.
 
 ## Voice Discipline
-- Sentence variety is a style concern as well as a rhythm concern: avoid three consecutive sentences of identical length.
+- Sentence variety is a style concern as well as a rhythm concern: avoid three consecutive sentences of identical length or structure.
 - Prefer active voice unless the subject is genuinely unknown or the receiver of the action is the topic of the sentence.
 - Avoid nominalisations ("the implementation of...") when a verb form would be more direct ("implementing...").
 - Replace vague intensifiers ("very", "quite", "really") with precise modifiers when you can.
-- Resist hedging unless the evidence genuinely demands it. "May be" and "could be" should mark actual uncertainty, not politeness.`
+- Resist hedging unless the evidence genuinely demands it. "May be" and "could be" should mark actual uncertainty, not politeness.
+- Prefer concrete nouns over abstract ones. "The study measured a decline" beats "A decline was observed in the study's measurements".
+- Watch for false parallels in lists — each bullet should share grammatical form and conceptual scope with its siblings.
+- Resist tautologies ("end result", "advance planning", "past history") — they inflate sentences without adding meaning.
+- Prefer "because" over "due to the fact that", "if" over "in the event that", "to" over "in order to" when the shorter form fits.
+
+## Paragraph Architecture
+A well-built paragraph usually has:
+1. A topic sentence that announces the paragraph's single controlling idea.
+2. Supporting sentences that develop the idea through evidence, analysis, or illustration.
+3. A closing sentence that either completes the argument or bridges to the next paragraph.
+When a paragraph starts to do two jobs at once, split it. When it is too short to stand on its own, consider whether its idea belongs inside a neighbouring paragraph. Avoid "walls of text": paragraphs over about twelve lines of running prose typically need structural help — an embedded list, a pause point, or a logical split.
+
+## Evidence and Claims
+- Separate observation ("X happened") from interpretation ("X happened because..."). Readers should always know which is which.
+- When you introduce a quotation, frame it: tell the reader who is speaking, why it matters, and what the reader should take from it.
+- When you summarise a source, keep the level of abstraction honest. Do not tighten a nuanced argument into a slogan; do not over-qualify a clear one.
+- Counter-arguments are not decoration. If you raise an objection, engage with it seriously enough that the reader understands why your position still holds.
+- Numbers, dates, and named entities are often silently wrong in generated prose. Flag any fact you are not confident about rather than committing to it.
+
+## Transitions
+Good transitions earn their place; they do not merely announce "next point". Use them to signal the logical relationship between ideas:
+- **Addition / reinforcement:** moreover, furthermore, in addition, what is more.
+- **Contrast / tension:** however, yet, by contrast, in spite of this, on the other hand.
+- **Causation / consequence:** consequently, therefore, thus, as a result, hence.
+- **Concession:** admittedly, granted, to be sure, although it is true that.
+- **Exemplification:** for instance, to take one example, consider.
+- **Sequence in argument:** first — second — finally; at the same time; at this stage.
+Vary the transition family across consecutive paragraphs. Strings of "Moreover... Moreover... Moreover..." are a smell.
+
+## Common Pitfalls to Avoid
+- Opening every paragraph with a transition word. Start with substance first; let the transition come when it earns its place.
+- "Definition-then-topic" openings that never finish defining. If you define a term, do something with the definition.
+- Over-hedged prose: "It may perhaps be the case that in some instances..." — pick a position or name the uncertainty explicitly.
+- The false summary — repeating the paragraph's claim in different words as if that were analysis.
+- Decorative adjectives ("critical", "essential", "fundamental") that do not distinguish anything. Delete them unless the ranking they imply is earned.
+- Mechanical bullet lists where flowing prose would show your thinking better.
+
+## Quality Checklist
+Before closing the subsection, run a mental pass through these points:
+1. Does every paragraph have a single controlling idea that is visible from the topic sentence?
+2. Do the transitions between paragraphs signal specific logical relationships, not just sequence?
+3. Does every source-backed claim carry a footnote (or, for non-academic projects, an inline attribution where needed)?
+4. Is there at least one sentence of fresh analysis in the subsection — not just paraphrase of sources?
+5. Is the register consistent with the project's stated tone, and consistent within the subsection?
+6. Are there opportunities to tighten — sentences that say the same thing twice, adjectives that could be deleted, nominalisations that could become verbs?
+7. Does the closing sentence do more than echo the opening sentence of the subsection?
+A passing answer to each of these is the implicit minimum bar.`
 
 // ==================== PRIVATE HELPERS ====================
 
