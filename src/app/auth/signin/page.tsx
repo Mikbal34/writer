@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useRef, useEffect } from "react";
 import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
-import { ArrowRight, Mail, Loader2, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Mail, Loader2, ArrowLeft } from "lucide-react";
 import { FadeUpLarge, FadeRight } from "@/components/shared/Animations";
 
 const LOGIN_BG =
@@ -12,31 +13,90 @@ const LOGIN_BG =
 const TEXTURE_URL =
   "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp";
 
-export default function SignInPage() {
-  const [email, setEmail] = useState("");
-  const [emailLoading, setEmailLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
-  const [emailError, setEmailError] = useState<string | null>(null);
+type Step = "email" | "code";
 
-  async function handleMagicLink(e: FormEvent) {
+export default function SignInPage() {
+  const router = useRouter();
+  const [step, setStep] = useState<Step>("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [resendCountdown, setResendCountdown] = useState(0);
+  const codeInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Countdown tick for "resend code"
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const t = setTimeout(() => setResendCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCountdown]);
+
+  // Auto-focus code input when entering step 2
+  useEffect(() => {
+    if (step === "code") codeInputRef.current?.focus();
+  }, [step]);
+
+  async function requestCode(targetEmail: string) {
+    const res = await fetch("/api/auth/request-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: targetEmail }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error ?? "Kod gonderilemedi");
+    }
+  }
+
+  async function handleRequest(e: FormEvent) {
     e.preventDefault();
-    setEmailError(null);
-    setEmailLoading(true);
+    setError(null);
+    setLoading(true);
     try {
-      const res = await signIn("email", {
+      await requestCode(email);
+      setStep("code");
+      setResendCountdown(30);
+      setCode("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Baglanti hatasi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerify(e: FormEvent) {
+    e.preventDefault();
+    if (code.length !== 6) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await signIn("email-code", {
         email,
-        callbackUrl: "/",
+        code,
         redirect: false,
       });
-      if (res?.error) {
-        setEmailError("Mail gonderilemedi. Lutfen tekrar deneyin.");
+      if (!res || res.error) {
+        setError("Kod yanlis veya suresi dolmus. Tekrar dene.");
       } else {
-        setEmailSent(true);
+        router.replace("/");
+        router.refresh();
       }
     } catch {
-      setEmailError("Baglanti hatasi.");
+      setError("Baglanti hatasi");
     } finally {
-      setEmailLoading(false);
+      setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    if (resendCountdown > 0) return;
+    setError(null);
+    try {
+      await requestCode(email);
+      setResendCountdown(30);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kod gonderilemedi");
     }
   }
 
@@ -126,28 +186,9 @@ export default function SignInPage() {
               <div className="h-px flex-1 bg-[#d4c9b5]/60" />
             </div>
 
-            {/* Email magic-link */}
-            {emailSent ? (
-              <div className="flex flex-col items-center text-center gap-3 py-4">
-                <CheckCircle2 className="h-8 w-8 text-forest" />
-                <p className="font-ui text-sm text-ink">
-                  <strong>{email}</strong> adresine giris baglantisi gonderildi.
-                </p>
-                <p className="font-ui text-xs text-ink-light">
-                  Gelen kutunu kontrol et — bazen spam klasorune dusebilir.
-                </p>
-                <button
-                  onClick={() => {
-                    setEmailSent(false);
-                    setEmail("");
-                  }}
-                  className="font-ui text-xs text-[#C9A84C] hover:underline mt-1"
-                >
-                  Farkli bir e-posta kullan
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleMagicLink} className="space-y-2">
+            {/* Email + 6-digit code flow */}
+            {step === "email" ? (
+              <form onSubmit={handleRequest} className="space-y-2">
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#a89a82]" />
                   <input
@@ -156,20 +197,78 @@ export default function SignInPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="eposta@adresin.com"
                     required
+                    autoComplete="email"
                     className="w-full pl-10 pr-3 py-3 rounded-sm border border-[#d4c9b5] bg-white/80 font-ui text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#C9A84C]/60"
                   />
                 </div>
                 <button
                   type="submit"
-                  disabled={emailLoading || !email}
+                  disabled={loading || !email}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-sm bg-ink text-[#FAF7F0] font-ui text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
                 >
-                  {emailLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {emailLoading ? "Gonderiliyor..." : "Giris linkini gonder"}
+                  {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {loading ? "Gonderiliyor..." : "Giris kodu gonder"}
                 </button>
-                {emailError && (
-                  <p className="font-ui text-xs text-[#c44] text-center">{emailError}</p>
+                {error && (
+                  <p className="font-ui text-xs text-[#c44] text-center">{error}</p>
                 )}
+              </form>
+            ) : (
+              <form onSubmit={handleVerify} className="space-y-3">
+                <div className="text-center">
+                  <p className="font-ui text-xs text-ink-light mb-1">
+                    <strong className="text-ink">{email}</strong> adresine
+                  </p>
+                  <p className="font-ui text-xs text-ink-light">
+                    6 haneli giris kodu gonderildi.
+                  </p>
+                </div>
+                <input
+                  ref={codeInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
+                  required
+                  className="w-full px-3 py-3 text-center rounded-sm border border-[#d4c9b5] bg-white/80 font-mono text-2xl tracking-[0.5em] text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#C9A84C]/60"
+                />
+                <button
+                  type="submit"
+                  disabled={loading || code.length !== 6}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-sm bg-ink text-[#FAF7F0] font-ui text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {loading ? "Dogrulaniyor..." : "Giris yap"}
+                </button>
+                {error && (
+                  <p className="font-ui text-xs text-[#c44] text-center">{error}</p>
+                )}
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep("email");
+                      setCode("");
+                      setError(null);
+                    }}
+                    className="flex items-center gap-1 font-ui text-xs text-[#8a7a65] hover:text-ink transition-colors"
+                  >
+                    <ArrowLeft className="h-3 w-3" />
+                    E-postayi degistir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={resendCountdown > 0}
+                    className="font-ui text-xs text-[#C9A84C] hover:underline disabled:text-[#a89a82] disabled:no-underline disabled:cursor-not-allowed"
+                  >
+                    {resendCountdown > 0 ? `Kodu tekrar gonder (${resendCountdown}s)` : "Kodu tekrar gonder"}
+                  </button>
+                </div>
               </form>
             )}
 
