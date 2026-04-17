@@ -350,7 +350,22 @@ Each subsection you describe will later become a writing-session prompt. Give th
 - keyPoints: 2-5 bullets naming the ideas the subsection must cover. Each bullet should be concrete enough that a writer cannot reasonably miss its target.
 - writingStrategy: one or two sentences on tone, structure, or pacing for this specific subsection — what makes THIS subsection different from its neighbours.
 - estimatedPages: your best page-count estimate in whole pages.
-When you are not given enough information to fill a field responsibly, write your best estimate and flag the assumption; do not leave the field empty.`
+When you are not given enough information to fill a field responsibly, write your best estimate and flag the assumption; do not leave the field empty.
+
+COMMON ROADMAP PITFALLS
+- A chapter with five subsections all the same size is often a chapter that has not been thought through — real arguments have peaks and valleys.
+- Subsections whose titles all follow the same template ("The X of Y") usually indicate a table of contents, not a structured argument.
+- A section whose subsections repeat its own title in slight paraphrase ("Introduction to X" under a section called "X") adds no structure.
+- Long chains of "Historical background" → "Theoretical background" → "Conceptual framework" before the argument actually starts: cut ruthlessly, push the background into the chapters that use it.
+- Do not create a subsection that exists only because the section felt too short — either grow the section's real content or merge the section into its neighbour.
+- Page estimates that match perfectly to the page target suggest the numbers were fit to the target, not derived from the content. Let your estimates reflect what each subsection actually demands.
+
+COMMAND HYGIENE
+When you issue a batch of commands:
+- Group related commands. Do not split a single conceptual change across conversation turns when it can be issued as one batch.
+- Prefer add_chapter with nested sections and subsections over a sequence of separate add_chapter/add_section/add_subsection commands when creating new content from scratch.
+- Preserve stable IDs (the real dbIds) for anything you are modifying. Do not replace a modifiable unit with a fresh one when an update_* command would do the job.
+- When adding a subsection to a section that already has subsections, position it by choosing its subsectionId ("1.2.3" — coming after "1.2.2") with care; the order matters for the flow of the section.`
 
   const projectTypeLabel = project.projectType === 'STORY' ? 'story/fiction' : project.projectType === 'BOOK' ? 'book' : 'academic book'
 
