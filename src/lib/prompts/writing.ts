@@ -244,14 +244,32 @@ export function getSessionContextPrompt(
 
 const FORMATTING_RULES = `## Formatting
 You may use standard markdown formatting when it improves clarity:
-- **Bold** (\`**text**\`) for emphasis or key terms.
-- *Italic* (\`*text*\`) for titles, foreign words, or light emphasis.
-- Bullet lists (\`- item\`) and numbered lists (\`1. item\`) when presenting multiple points, steps, or comparisons.
-- Tables (markdown table syntax) when comparing data, listing attributes, or presenting structured information.
-- Blockquotes (\`> text\`) for direct quotations or highlighted passages.
-- Horizontal rules (\`---\`) for thematic breaks between major sections within the subsection.
-- Subheadings (\`## heading\` or \`### heading\`) only when the subsection is long enough to warrant internal structure.
-Do NOT overuse formatting — prose should remain the primary medium. Use tables and lists only when they genuinely serve the content better than flowing text.`
+- **Bold** (\`**text**\`) for emphasis or key terms — reserve for conceptual markers, not decoration.
+- *Italic* (\`*text*\`) for titles of works, foreign words, technical terms on first use, or light emphasis.
+- Bullet lists (\`- item\`) when presenting genuinely parallel, comparable items.
+- Numbered lists (\`1. item\`) when ordering matters (sequence, priority, rank).
+- Tables (markdown table syntax) when comparing data across clear dimensions; avoid tables for narrative content.
+- Blockquotes (\`> text\`) for direct quotations of significant length (40+ words) or highlighted passages from primary sources.
+- Horizontal rules (\`---\`) for thematic breaks between major sections within a long subsection; use sparingly.
+- Subheadings (\`## heading\` or \`### heading\`) only when the subsection is long enough to warrant internal structure — generally 1000+ words.
+- Code fences (\`\`\`) for verbatim quotation of code, structured data, or precise technical notation.
+Do NOT overuse formatting — prose should remain the primary medium. Use tables and lists only when they genuinely serve the content better than flowing text. Avoid stacking formatting (bold inside italic, italic inside links) unless semantically required.
+
+## Writing Process
+Approach the subsection as a small self-contained argument:
+1. Orient the reader briefly (what is this subsection doing in the broader chapter?).
+2. Present the main claim or question.
+3. Develop the argument with evidence, examples, and citations where required.
+4. Handle counter-arguments or alternative framings when the material calls for it.
+5. Close with a sentence that completes the thought and, where appropriate, bridges to what comes next.
+Avoid filler phrases ("It is important to note that...", "In conclusion..."). Every sentence should carry its own weight.
+
+## Voice Discipline
+- Sentence variety is a style concern as well as a rhythm concern: avoid three consecutive sentences of identical length.
+- Prefer active voice unless the subject is genuinely unknown or the receiver of the action is the topic of the sentence.
+- Avoid nominalisations ("the implementation of...") when a verb form would be more direct ("implementing...").
+- Replace vague intensifiers ("very", "quite", "really") with precise modifiers when you can.
+- Resist hedging unless the evidence genuinely demands it. "May be" and "could be" should mark actual uncertainty, not politeness.`
 
 // ==================== PRIVATE HELPERS ====================
 
