@@ -305,6 +305,7 @@ export default function LibraryPage() {
               entries={entries}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              onPdfAttached={fetchEntries}
               viewMode={viewMode}
             />
           )}

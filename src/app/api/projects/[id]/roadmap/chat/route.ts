@@ -109,7 +109,7 @@ function buildTools(isCreationMode: boolean, needsSources: boolean): ToolDefinit
   if (needsSources) {
     tools.push({
       name: 'get_library_entries',
-      description: 'Search the user\'s source library. Use this to find existing sources before suggesting new ones. Call without query to list recent entries.',
+      description: 'Search the user\'s source library. Returns ONLY entries that already have an attached PDF — metadata-only entries are excluded because they cannot be grounded during writing. Use this to find existing sources before suggesting new ones. Call without query to list recent entries.',
       input_schema: {
         type: 'object' as const,
         properties: {
@@ -229,23 +229,35 @@ async function handleToolCallFn(
     const query = toolInput.query as string | undefined
     const limit = Math.min((toolInput.limit as number) || 20, 50)
 
-    const where: Record<string, unknown> = { userId }
+    // Only surface library entries that have a usable PDF. Metadata-only
+    // entries are filtered out because they cannot be grounded during writing
+    // and would invite hallucinated citations.
+    const where: Record<string, unknown> = {
+      userId,
+      OR: [{ pdfStatus: 'ready' }, { filePath: { not: null } }],
+    }
     if (query) {
-      where.OR = [
-        { authorSurname: { contains: query, mode: 'insensitive' } },
-        { authorName: { contains: query, mode: 'insensitive' } },
-        { title: { contains: query, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { authorSurname: { contains: query, mode: 'insensitive' } },
+            { authorName: { contains: query, mode: 'insensitive' } },
+            { title: { contains: query, mode: 'insensitive' } },
+          ],
+        },
       ]
     }
 
     const entries = await prisma.libraryEntry.findMany({
       where,
       select: {
+        id: true,
         authorSurname: true,
         authorName: true,
         title: true,
         year: true,
         entryType: true,
+        abstract: true,
       },
       take: limit,
       orderBy: { updatedAt: 'desc' },

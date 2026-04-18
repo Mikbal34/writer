@@ -1,7 +1,9 @@
 "use client";
 
-import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen } from "lucide-react";
+import { useRef, useState } from "react";
+import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, Upload, AlertTriangle, Loader2 } from "lucide-react";
 import { StaggerItem, FadeUpLarge } from "@/components/shared/Animations";
+import { toast } from "sonner";
 
 export interface LibraryEntryRow {
  id: string;
@@ -13,6 +15,7 @@ export interface LibraryEntryRow {
  importSource: string | null;
  filePath: string | null;
  fileType: string | null;
+ pdfStatus?: string | null;
  tags: Array<{ tag: { id: string; name: string } }>;
  _count?: { bibliographies: number };
 }
@@ -21,6 +24,7 @@ interface LibraryEntryTableProps {
  entries: LibraryEntryRow[];
  onEdit: (entry: LibraryEntryRow) => void;
  onDelete: (id: string) => void;
+ onPdfAttached?: (entryId: string) => void;
  viewMode?: "list" | "card";
 }
 
@@ -48,8 +52,36 @@ export default function LibraryEntryTable({
  entries,
  onEdit,
  onDelete,
+ onPdfAttached,
  viewMode = "list",
 }: LibraryEntryTableProps) {
+ const [uploadingId, setUploadingId] = useState<string | null>(null);
+ const fileInputRef = useRef<HTMLInputElement>(null);
+ const [pendingEntryId, setPendingEntryId] = useState<string | null>(null);
+
+ async function handleFileSelected(entryId: string, file: File) {
+  setUploadingId(entryId);
+  try {
+   const form = new FormData();
+   form.append("file", file);
+   const res = await fetch(`/api/library/entries/${entryId}/attach-pdf`, {
+    method: "POST",
+    body: form,
+   });
+   if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast.error(err.error ?? "PDF yüklenemedi");
+    return;
+   }
+   toast.success("PDF yüklendi");
+   onPdfAttached?.(entryId);
+  } catch {
+   toast.error("Bağlantı hatası");
+  } finally {
+   setUploadingId(null);
+   setPendingEntryId(null);
+  }
+ }
  if (entries.length === 0) {
   return (
    <div className="text-center py-12">
@@ -261,16 +293,41 @@ export default function LibraryEntryTable({
        </span>
       )}
 
-      {/* File actions */}
-      {entry.filePath && (
-       <>
-        <span title={`PDF mevcut (${entry.fileType ?? "pdf"})`}>
-         <ExternalLink className="h-3.5 w-3.5 shrink-0 text-[#8a7a65] opacity-0 group-hover:opacity-100 transition-opacity" />
-        </span>
-        <span>
-         <Download className="h-3.5 w-3.5 shrink-0 text-[#8a7a65] opacity-0 group-hover:opacity-100 transition-opacity" />
-        </span>
-       </>
+      {/* PDF status */}
+      {entry.filePath ? (
+       <span title={`PDF mevcut (${entry.fileType ?? "pdf"})`} className="shrink-0 text-[#2D8B4E]">
+        <FileCheck className="h-3.5 w-3.5" />
+       </span>
+      ) : entry.pdfStatus === "downloading" || entry.pdfStatus === "pending" ? (
+       <span title="PDF indiriliyor" className="shrink-0 text-[#8a7a65]">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+       </span>
+      ) : (
+       <div
+        role="button"
+        tabIndex={0}
+        title="PDF yükle — yazımda kullanılabilmesi için gerekli"
+        onClick={(e) => {
+         e.stopPropagation();
+         setPendingEntryId(entry.id);
+         fileInputRef.current?.click();
+        }}
+        onKeyDown={(e) => {
+         if (e.key === "Enter" || e.key === " ") {
+          e.stopPropagation();
+          setPendingEntryId(entry.id);
+          fileInputRef.current?.click();
+         }
+        }}
+        className="flex items-center gap-1 px-1.5 py-0.5 shrink-0 rounded-sm text-[#c44] bg-[#c44]/10 hover:bg-[#c44]/20 cursor-pointer transition-colors"
+       >
+        {uploadingId === entry.id ? (
+         <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+         <Upload className="h-3 w-3" />
+        )}
+        <span className="font-ui text-[10px]">PDF</span>
+       </div>
       )}
 
       {/* Delete */}
@@ -296,6 +353,17 @@ export default function LibraryEntryTable({
      </StaggerItem>
     );
    })}
+   <input
+    ref={fileInputRef}
+    type="file"
+    accept="application/pdf"
+    className="hidden"
+    onChange={(e) => {
+     const f = e.target.files?.[0];
+     if (f && pendingEntryId) handleFileSelected(pendingEntryId, f);
+     e.target.value = "";
+    }}
+   />
   </div>
  );
 }

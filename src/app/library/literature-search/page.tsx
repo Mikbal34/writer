@@ -242,6 +242,9 @@ export default function LiteratureSearchPage() {
 
   const selectableCount = results.filter((r) => !r.alreadyInLibrary).length
 
+  const pdfAvailable = results.filter((r) => !!r.openAccessUrl)
+  const pdfMissing = results.filter((r) => !r.openAccessUrl)
+
   return (
     <div className="min-h-screen bg-[#F5F0E6]">
       <div className="max-w-6xl mx-auto px-6 py-8">
@@ -415,21 +418,53 @@ export default function LiteratureSearchPage() {
           </div>
         )}
 
-        <div className="space-y-3">
-          {results.map((r) => {
-            const isSelected = selectedIds.has(r.externalId)
-            const isExpanded = expandedAbstracts.has(r.externalId)
-            return (
-              <div
-                key={r.externalId}
-                className={`rounded-sm border p-4 transition-colors ${
-                  r.alreadyInLibrary
-                    ? "bg-[#F5F0E6]/50 border-[#d4c9b5]/40"
-                    : isSelected
-                    ? "bg-[#C9A84C]/10 border-[#C9A84C]"
-                    : "bg-[#FAF7F0] border-[#d4c9b5]"
-                }`}
-              >
+        {pdfAvailable.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <FileDown className="h-4 w-4 text-[#2D8B4E]" />
+              <h2 className="font-display text-sm font-semibold text-[#2D1F0E]">
+                PDF'i Hazır ({pdfAvailable.length})
+              </h2>
+              <span className="font-ui text-[11px] text-[#8a7a65]">
+                — eklerken PDF'i otomatik indirilir
+              </span>
+            </div>
+            <div className="space-y-3">{pdfAvailable.map(renderCard)}</div>
+          </div>
+        )}
+
+        {pdfMissing.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="h-4 w-4 text-[#C9A84C]" />
+              <h2 className="font-display text-sm font-semibold text-[#2D1F0E]">
+                PDF Yüklenmesi Gerekenler ({pdfMissing.length})
+              </h2>
+              <span className="font-ui text-[11px] text-[#8a7a65]">
+                — kütüphaneye ekledikten sonra manuel PDF yüklemen gerekir, yoksa yazımda kullanılmaz
+              </span>
+            </div>
+            <div className="space-y-3">{pdfMissing.map(renderCard)}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  function renderCard(r: SearchResult) {
+    const isSelected = selectedIds.has(r.externalId)
+    const isExpanded = expandedAbstracts.has(r.externalId)
+    return (
+      <div
+        key={r.externalId}
+        className={`rounded-sm border p-4 transition-colors ${
+          r.alreadyInLibrary
+            ? "bg-[#F5F0E6]/50 border-[#d4c9b5]/40"
+            : isSelected
+            ? "bg-[#C9A84C]/10 border-[#C9A84C]"
+            : "bg-[#FAF7F0] border-[#d4c9b5]"
+        }`}
+      >
                 <div className="flex items-start gap-3">
                   <input
                     type="checkbox"
@@ -529,10 +564,6 @@ export default function LiteratureSearchPage() {
                   </div>
                 </div>
               </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
+    )
+  }
 }
