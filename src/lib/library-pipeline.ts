@@ -58,7 +58,7 @@ interface ProcessResponse {
 async function extractChunks(
   entryId: string,
   filePath: string
-): Promise<ProcessResponse | null> {
+): Promise<{ ok: true; data: ProcessResponse } | { ok: false; error: string }> {
   try {
     const res = await fetch(`${PYTHON_SERVICE_URL}/process`, {
       method: 'POST',
@@ -66,13 +66,16 @@ async function extractChunks(
       body: JSON.stringify({ sourceId: entryId, filePath, fileType: 'pdf' }),
     })
     if (!res.ok) {
-      console.error(`[library-pipeline] Python /process returned ${res.status}`)
-      return null
+      const body = await res.text().catch(() => '')
+      const msg = `Python /process HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`
+      console.error('[library-pipeline]', msg)
+      return { ok: false, error: msg }
     }
-    return (await res.json()) as ProcessResponse
+    return { ok: true, data: (await res.json()) as ProcessResponse }
   } catch (err) {
-    console.error('[library-pipeline] Python /process failed:', err)
-    return null
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[library-pipeline] Python /process fetch failed:', msg)
+    return { ok: false, error: `Fetch failed: ${msg.slice(0, 200)}` }
   }
 }
 
@@ -109,12 +112,13 @@ export async function processAndEmbedLibraryPdf(entryId: string, filePath: strin
 
     await setStatus(entryId, 'extracting')
 
-    const proc = await extractChunks(entryId, filePath)
-    if (!proc) {
-      await setStatus(entryId, 'failed', { pdfError: 'Extraction failed' })
+    const extractResult = await extractChunks(entryId, filePath)
+    if (!extractResult.ok) {
+      await setStatus(entryId, 'failed', { pdfError: extractResult.error })
       return
     }
 
+    const proc = extractResult.data
     if (!proc.chunks || proc.chunks.length === 0) {
       if (proc.ocrPending) {
         // Scanned PDF — OCR running in the background. Mark as ready so the
