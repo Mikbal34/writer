@@ -15,7 +15,6 @@ import {
   Menu,
   X,
   Paintbrush,
-  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CreditBalance from "@/components/shared/CreditBalance";
@@ -97,12 +96,6 @@ export default function ProjectSidebar({
       label: "Sources",
       href: `/projects/${projectId}/sources`,
       icon: <Library className="w-4 h-4" />,
-      statusKey: "sources",
-    },
-    {
-      label: "Research",
-      href: `/projects/${projectId}/research`,
-      icon: <Search className="w-4 h-4" />,
       statusKey: "sources",
     },
     {

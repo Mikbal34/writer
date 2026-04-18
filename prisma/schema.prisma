@@ -391,11 +391,20 @@ model LibraryEntry {
   doi            String?
   url            String?
   metadata       Json?
-  importSource   String?   // "manual" | "bibtex" | "zotero"
+  importSource   String?   // "manual" | "bibtex" | "zotero" | "literature-search" | "pdf-upload"
   bibtexKey      String?
   zoteroKey      String?
   filePath       String?   // Local path to downloaded PDF/file
   fileType       String?   // "pdf" | "doc" | etc.
+
+  // Literature-search enrichment
+  abstract        String?  @db.Text
+  keywords        String[]
+  citationCount   Int?
+  relevanceScore  Float?            // Haiku-scored against the user's query
+  openAccessUrl   String?           // Direct PDF URL when open access
+  pdfStatus       String   @default("none") // "none" | "pending" | "downloading" | "extracting" | "embedding" | "ready" | "failed"
+  pdfError        String?
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   bibliographies Bibliography[]
@@ -406,6 +415,21 @@ model LibraryEntry {
 
   @@unique([userId, authorSurname, title])
   @@index([userId])
+  @@index([userId, pdfStatus])
+}
+
+model LiteratureSearchCache {
+  id         String   @id @default(cuid())
+  userId     String
+  queryHash  String   // sha256(normalized query + filters)
+  query      String
+  filters    Json?
+  results    Json     // AcademicSearchResult[] after ranking
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  @@unique([userId, queryHash])
+  @@index([expiresAt])
 }
 
 model LibraryTag {
