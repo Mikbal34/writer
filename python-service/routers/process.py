@@ -228,8 +228,10 @@ async def process_url(req: ProcessUrlRequest):
             response = await client.get(
                 req.url,
                 headers={
-                    "User-Agent": "Quilpen/1.0 (Academic Research Tool)",
-                    "Accept": "application/pdf,*/*",
+                    # Pretend to be a browser — some publishers (Elsevier,
+                    # Sage, etc.) block obvious bots with 403.
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "application/pdf,text/html;q=0.1,*/*;q=0.1",
                 },
             )
             response.raise_for_status()
@@ -239,6 +241,20 @@ async def process_url(req: ProcessUrlRequest):
 
     if len(pdf_bytes) < 1024:
         raise HTTPException(status_code=422, detail="PDF too small — likely invalid")
+
+    # PDF files start with "%PDF-"; anything else (HTML landing page, error
+    # page masquerading as 200, etc.) should be rejected up-front so the
+    # Next.js caller can fall back to an alternative URL.
+    if not pdf_bytes[:5].startswith(b"%PDF"):
+        snippet = pdf_bytes[:120].decode("utf-8", errors="replace").strip()
+        content_type = response.headers.get("content-type", "unknown")
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Not a PDF (content-type: {content_type}). "
+                f"Got: {snippet[:80]}"
+            ),
+        )
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp.write(pdf_bytes)
@@ -264,6 +280,12 @@ async def process_bytes(
     pdf_bytes = await file.read()
     if len(pdf_bytes) < 1024:
         raise HTTPException(status_code=422, detail="PDF too small — likely invalid")
+
+    if not pdf_bytes[:5].startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=422,
+            detail="Uploaded file is not a valid PDF (missing %PDF header).",
+        )
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp.write(pdf_bytes)
