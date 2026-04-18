@@ -39,6 +39,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
                     subsectionId: true,
                     title: true,
                     description: true,
+                    whatToWrite: true,
                     keyPoints: true,
                     writingStrategy: true,
                     estimatedPages: true,
@@ -47,6 +48,9 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
                     wordCount: true,
                     sortOrder: true,
                     sectionId: true,
+                    sourceMappings: {
+                      include: { bibliography: true },
+                    },
                   },
                 },
               },
