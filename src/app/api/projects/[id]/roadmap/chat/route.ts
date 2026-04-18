@@ -279,19 +279,21 @@ function buildSystemPrompt(
   const sourceRules = needsSources ? `
 
 SOURCE RULES:
-- In add_source commands, ALL of the following fields MUST be filled, none can be left empty: relevance, howToUse, whereToFind, extractionGuide. If information is missing, write your best estimate.
-- When adding sources, PREFER sources from the user's library first. Use get_library_entries tool to search the library before suggesting your own sources.` : ''
+- In add_source commands AND in nested "sources" arrays on subsections, ALL of the following fields MUST be filled, none can be left empty: relevance, howToUse, whereToFind, extractionGuide. If information is missing, write your best estimate.
+- When adding sources, PREFER sources from the user's library first. Use get_library_entries tool to search the library before suggesting your own sources.
+- CRITICAL: When you create new subsections (via add_subsection, or nested under add_section/add_chapter), include the sources INLINE on each subsection using the "sources" array. Do NOT defer source attachment to a separate follow-up turn — attach them in the SAME batch as their subsection. The user expects sources to appear together with the new structure, not after a second prompt.
+- Use add_source as a separate command ONLY when adding sources to a subsection that already exists in the roadmap.` : ''
 
   const commandDocs = `
 Available commands:
 - {"action": "update_subsection", "subsectionDbId": "...", "fields": {"title?": "...", "description?": "...", "whatToWrite?": "...", "keyPoints?": [...], "writingStrategy?": "...", "estimatedPages?": N}}
-- {"action": "add_subsection", "sectionDbId": "...", "subsection": {"subsectionId": "1.1.4", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N}}
+- {"action": "add_subsection", "sectionDbId": "...", "subsection": {"subsectionId": "1.1.4", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}}
 - {"action": "remove_subsection", "subsectionDbId": "..."}
 - {"action": "update_section", "sectionDbId": "...", "fields": {"title?": "...", "keyConcepts?": [...]}}
 - {"action": "add_section", "chapterDbId": "...", "section": {"sectionId": "1.3", "title": "...", "keyConcepts": [...]}, "subsections": [{"subsectionId": "1.3.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N}]}
 - {"action": "remove_section", "sectionDbId": "..."}
 - {"action": "update_chapter", "chapterDbId": "...", "fields": {"title?": "...", "purpose?": "...", "estimatedPages?": N}}
-- {"action": "add_chapter", "chapter": {"number": N, "title": "...", "purpose": "...", "estimatedPages": N}, "tempId": "__temp_ch_1", "sections": [{"sectionId": "1.1", "title": "...", "keyConcepts": [...], "tempId": "__temp_sec_1_1", "subsections": [{"subsectionId": "1.1.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N}]}]}
+- {"action": "add_chapter", "chapter": {"number": N, "title": "...", "purpose": "...", "estimatedPages": N}, "tempId": "__temp_ch_1", "sections": [{"sectionId": "1.1", "title": "...", "keyConcepts": [...], "tempId": "__temp_sec_1_1", "subsections": [{"subsectionId": "1.1.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}]}]}
 - {"action": "remove_chapter", "chapterDbId": "..."}
 - {"action": "move_section", "sectionDbId": "...", "targetChapterDbId": "..."}${sourceCommandDocs}
 - {"action": "update_project", "fields": {"topic?": "...", "purpose?": "...", "audience?": "...", "styleProfile?": {"narrativePOV?": "...", "genre?": "...", "dialogueStyle?": "...", "pacing?": "...", "moodAtmosphere?": "...", "targetAgeGroup?": "...", "narrativeStyle?": "...", "tone?": "..."}}}${sourceRules}`
@@ -405,7 +407,7 @@ When you issue a batch of commands:
    - How many sources per subsection do they want? (e.g., 2-3 sources)
    - Do they prefer a specific academic tradition or school of thought?
 4. After gathering source information (or if the user says "you decide"), use get_library_entries to check available sources, then create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section).
-5. When creating the roadmap, add sources to EVERY subsection (using add_source commands). Use sources from the library first; suggest your own for any gaps.
+5. When creating the roadmap, attach sources to EVERY subsection via the inline "sources" array on each subsection (inside add_chapter / add_section / add_subsection). Do NOT defer to a follow-up turn. Use sources from the user's library first; suggest your own only for genuine gaps.
 
 SOURCE DENSITY: ${SOURCE_DENSITY_INSTRUCTIONS[sourceDensity ?? 'normal']}
 6. Use update_project command to update project information.` : storyWritingPrefsStep || bookWritingPrefsStep || `
@@ -484,6 +486,54 @@ function parseCommands(text: string): Array<Record<string, unknown>> {
 // ---------------------------------------------------------------------------
 // Apply commands to the database
 // ---------------------------------------------------------------------------
+// Create SourceMappings for a freshly-created subsection from a nested
+// `sources` array. Called from add_subsection / add_section / add_chapter
+// so the AI can issue the whole roadmap (with sources) in one batch instead
+// of needing a follow-up turn to attach sources.
+async function createNestedSources(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  userId: string | undefined,
+  subsectionDbId: string,
+  rawSources: unknown
+): Promise<void> {
+  if (!Array.isArray(rawSources) || rawSources.length === 0) return
+  for (const raw of rawSources) {
+    const src = raw as Record<string, unknown>
+    if (!src || typeof src !== 'object') continue
+    const author = src.author as string | undefined
+    const work = src.work as string | undefined
+    if (!author || !work) continue
+    const biblio = await findOrCreateBibliography(tx, projectId, author, work, undefined, userId)
+    await tx.sourceMapping.upsert({
+      where: {
+        subsectionId_bibliographyId: {
+          subsectionId: subsectionDbId,
+          bibliographyId: biblio.id,
+        },
+      },
+      create: {
+        subsectionId: subsectionDbId,
+        bibliographyId: biblio.id,
+        sourceType: (src.sourceType as string) ?? 'modern',
+        priority: (src.priority as string) ?? 'supporting',
+        relevance: (src.relevance as string) ?? null,
+        howToUse: (src.howToUse as string) ?? null,
+        whereToFind: (src.whereToFind as string) ?? null,
+        extractionGuide: (src.extractionGuide as string) ?? null,
+      },
+      update: {
+        sourceType: (src.sourceType as string) ?? 'modern',
+        priority: (src.priority as string) ?? 'supporting',
+        relevance: (src.relevance as string) ?? null,
+        howToUse: (src.howToUse as string) ?? null,
+        whereToFind: (src.whereToFind as string) ?? null,
+        extractionGuide: (src.extractionGuide as string) ?? null,
+      },
+    })
+  }
+}
+
 async function applyCommands(
   tx: Prisma.TransactionClient,
   projectId: string,
@@ -545,6 +595,7 @@ async function applyCommands(
           },
         })
         if (cmd.tempId) tempIdMap.set(cmd.tempId as string, subsection.id)
+        await createNestedSources(tx, projectId, userId, subsection.id, sub.sources)
         break
       }
 
@@ -608,6 +659,7 @@ async function applyCommands(
               },
             })
             if (sub.tempId) tempIdMap.set(sub.tempId as string, subsec.id)
+            await createNestedSources(tx, projectId, userId, subsec.id, sub.sources)
           }
         }
         break
@@ -688,6 +740,7 @@ async function applyCommands(
                   },
                 })
                 if (sub.tempId) tempIdMap.set(sub.tempId as string, subsec.id)
+                await createNestedSources(tx, projectId, userId, subsec.id, sub.sources)
               }
             }
           }
