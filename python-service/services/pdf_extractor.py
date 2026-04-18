@@ -1,5 +1,6 @@
 """
-PDF text extraction using PyMuPDF (fitz).
+PDF text extraction using PyMuPDF (fitz), with pypdf fallback for PDFs that
+PyMuPDF chokes on (malformed xref tables, unusual encoders, etc.).
 Extracts text page by page with optional header/footer cleaning.
 Falls back to OCR (tesseract) for scanned/image-based PDFs.
 """
@@ -8,6 +9,12 @@ import io
 import re
 
 import fitz  # PyMuPDF
+
+try:
+    import pypdf  # fallback parser
+    HAS_PYPDF = True
+except ImportError:
+    HAS_PYPDF = False
 
 try:
     import pytesseract
@@ -30,67 +37,118 @@ def _ocr_page(page: fitz.Page) -> str:
     return text
 
 
+def _pypdf_page_count(file_path: str) -> int:
+    if not HAS_PYPDF:
+        return 0
+    reader = pypdf.PdfReader(file_path, strict=False)
+    return len(reader.pages)
+
+
+def _pypdf_extract_pages(file_path: str, max_pages: int = 0) -> list[dict]:
+    """Fallback extractor using pypdf — slower and lower fidelity than
+    PyMuPDF but handles some malformed PDFs PyMuPDF rejects."""
+    if not HAS_PYPDF:
+        return []
+    reader = pypdf.PdfReader(file_path, strict=False)
+    total = len(reader.pages)
+    if max_pages > 0:
+        total = min(max_pages, total)
+    pages: list[dict] = []
+    for i in range(total):
+        try:
+            raw = reader.pages[i].extract_text() or ""
+        except Exception:
+            raw = ""
+        cleaned = _clean_page_text(raw)
+        if cleaned.strip():
+            pages.append({"page_number": i + 1, "content": cleaned})
+    return pages
+
+
 def is_scanned_pdf(file_path: str) -> bool:
-    """Check if a PDF is scanned (image-based) by sampling first pages."""
-    doc = fitz.open(file_path)
-    sample_size = min(5, len(doc))
-    native_chars = 0
-    for i in range(sample_size):
-        native_chars += len(doc.load_page(i).get_text("text").strip())
-    doc.close()
-    return (native_chars / max(sample_size, 1)) < _MIN_TEXT_CHARS
+    """Check if a PDF is scanned (image-based) by sampling first pages.
+    Returns False if PDF cannot be opened with PyMuPDF (caller will retry via pypdf)."""
+    try:
+        doc = fitz.open(file_path)
+    except Exception:
+        return False
+    try:
+        sample_size = min(5, len(doc))
+        native_chars = 0
+        for i in range(sample_size):
+            native_chars += len(doc.load_page(i).get_text("text").strip())
+        return (native_chars / max(sample_size, 1)) < _MIN_TEXT_CHARS
+    finally:
+        doc.close()
 
 
 def get_total_pages(file_path: str) -> int:
-    """Return total page count of a PDF."""
-    doc = fitz.open(file_path)
-    count = len(doc)
-    doc.close()
-    return count
+    """Return total page count of a PDF, trying PyMuPDF first then pypdf."""
+    try:
+        doc = fitz.open(file_path)
+        try:
+            return len(doc)
+        finally:
+            doc.close()
+    except Exception:
+        return _pypdf_page_count(file_path)
 
 
 def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
     """
     Extract text from a PDF file, returning content for each page.
+    Tries PyMuPDF first; on failure or if a page throws, falls back to pypdf.
     If native text extraction yields little/no text, falls back to OCR.
-
-    Args:
-        file_path: Path to the PDF file.
-        max_pages: If > 0, only extract up to this many pages. 0 = all pages.
-
-    Returns:
-        List of dicts with keys: page_number (1-based), content (cleaned text).
     """
-    doc = fitz.open(file_path)
+    # Primary path: PyMuPDF.
+    try:
+        doc = fitz.open(file_path)
+    except Exception:
+        # PyMuPDF can't even open this PDF — go straight to pypdf.
+        return _pypdf_extract_pages(file_path, max_pages)
 
-    # Sample first few pages to decide if OCR is needed
-    sample_size = min(5, len(doc))
-    native_chars = 0
-    for i in range(sample_size):
-        native_chars += len(doc.load_page(i).get_text("text").strip())
-    use_ocr = HAS_OCR and (native_chars / max(sample_size, 1)) < _MIN_TEXT_CHARS
+    try:
+        sample_size = min(5, len(doc))
+        native_chars = 0
+        for i in range(sample_size):
+            try:
+                native_chars += len(doc.load_page(i).get_text("text").strip())
+            except Exception:
+                pass
+        use_ocr = HAS_OCR and (native_chars / max(sample_size, 1)) < _MIN_TEXT_CHARS
 
-    page_count = len(doc)
-    if max_pages > 0:
-        page_count = min(max_pages, page_count)
+        page_count = len(doc)
+        if max_pages > 0:
+            page_count = min(max_pages, page_count)
 
-    pages = []
-    for page_num in range(page_count):
-        page = doc.load_page(page_num)
-        raw_text = page.get_text("text")
+        pages: list[dict] = []
+        mupdf_errors = 0
+        for page_num in range(page_count):
+            try:
+                page = doc.load_page(page_num)
+                raw_text = page.get_text("text") or ""
+                if len(raw_text.strip()) < _MIN_TEXT_CHARS and use_ocr:
+                    raw_text = _ocr_page(page)
+            except Exception:
+                mupdf_errors += 1
+                continue
 
-        if len(raw_text.strip()) < _MIN_TEXT_CHARS and use_ocr:
-            raw_text = _ocr_page(page)
+            cleaned = _clean_page_text(raw_text)
+            if cleaned.strip():
+                pages.append({
+                    "page_number": page_num + 1,
+                    "content": cleaned,
+                })
 
-        cleaned = _clean_page_text(raw_text)
-        if cleaned.strip():
-            pages.append({
-                "page_number": page_num + 1,
-                "content": cleaned,
-            })
+        # If PyMuPDF returned nothing or choked on most pages, retry with pypdf.
+        if not pages or mupdf_errors > page_count // 2:
+            fallback = _pypdf_extract_pages(file_path, max_pages)
+            if fallback:
+                return fallback
 
-    doc.close()
-    return pages
+        return pages
+    finally:
+        doc.close()
 
 
 def _clean_page_text(text: str) -> str:

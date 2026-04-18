@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, Upload, AlertTriangle, Loader2 } from "lucide-react";
+import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, Upload, AlertTriangle, Loader2, RotateCw } from "lucide-react";
 import { StaggerItem, FadeUpLarge } from "@/components/shared/Animations";
 import { toast } from "sonner";
 
@@ -16,6 +16,8 @@ export interface LibraryEntryRow {
  filePath: string | null;
  fileType: string | null;
  pdfStatus?: string | null;
+ pdfError?: string | null;
+ openAccessUrl?: string | null;
  tags: Array<{ tag: { id: string; name: string } }>;
  _count?: { bibliographies: number };
 }
@@ -73,13 +75,33 @@ export default function LibraryEntryTable({
     toast.error(err.error ?? "PDF yüklenemedi");
     return;
    }
-   toast.success("PDF yüklendi");
+   toast.success("PDF yüklendi, arka planda işleniyor...");
    onPdfAttached?.(entryId);
   } catch {
    toast.error("Bağlantı hatası");
   } finally {
    setUploadingId(null);
    setPendingEntryId(null);
+  }
+ }
+
+ async function handleReprocess(entryId: string) {
+  setUploadingId(entryId);
+  try {
+   const res = await fetch(`/api/library/entries/${entryId}/reprocess`, {
+    method: "POST",
+   });
+   if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast.error(err.error ?? "Yeniden işleme başarısız");
+    return;
+   }
+   toast.success("Yeniden deneniyor...");
+   onPdfAttached?.(entryId);
+  } catch {
+   toast.error("Bağlantı hatası");
+  } finally {
+   setUploadingId(null);
   }
  }
  if (entries.length === 0) {
@@ -294,14 +316,63 @@ export default function LibraryEntryTable({
       )}
 
       {/* PDF status */}
-      {entry.filePath ? (
-       <span title={`PDF mevcut (${entry.fileType ?? "pdf"})`} className="shrink-0 text-[#2D8B4E]">
+      {entry.pdfStatus === "ready" ? (
+       <span title="RAG için hazır" className="shrink-0 text-[#2D8B4E]">
         <FileCheck className="h-3.5 w-3.5" />
        </span>
-      ) : entry.pdfStatus === "downloading" || entry.pdfStatus === "pending" ? (
-       <span title="PDF indiriliyor" className="shrink-0 text-[#8a7a65]">
+      ) : ["downloading", "pending", "extracting", "embedding"].includes(entry.pdfStatus ?? "") ? (
+       <span title={`İşleniyor: ${entry.pdfStatus}`} className="shrink-0 text-[#8a7a65]">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
        </span>
+      ) : entry.pdfStatus === "failed" ? (
+       <div className="flex items-center gap-1 shrink-0">
+        {entry.openAccessUrl && (
+         <div
+          role="button"
+          tabIndex={0}
+          title={entry.pdfError ? `Yeniden dene\n\n${entry.pdfError}` : "Yeniden dene"}
+          onClick={(e) => {
+           e.stopPropagation();
+           handleReprocess(entry.id);
+          }}
+          onKeyDown={(e) => {
+           if (e.key === "Enter" || e.key === " ") {
+            e.stopPropagation();
+            handleReprocess(entry.id);
+           }
+          }}
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#c44] bg-[#c44]/10 hover:bg-[#c44]/20 cursor-pointer transition-colors"
+         >
+          {uploadingId === entry.id ? (
+           <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+           <RotateCw className="h-3 w-3" />
+          )}
+          <span className="font-ui text-[10px]">Tekrar</span>
+         </div>
+        )}
+        <div
+         role="button"
+         tabIndex={0}
+         title="PDF yükle"
+         onClick={(e) => {
+          e.stopPropagation();
+          setPendingEntryId(entry.id);
+          fileInputRef.current?.click();
+         }}
+         onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+           e.stopPropagation();
+           setPendingEntryId(entry.id);
+           fileInputRef.current?.click();
+          }
+         }}
+         className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#c44] bg-[#c44]/10 hover:bg-[#c44]/20 cursor-pointer transition-colors"
+        >
+         <Upload className="h-3 w-3" />
+         <span className="font-ui text-[10px]">PDF</span>
+        </div>
+       </div>
       ) : (
        <div
         role="button"

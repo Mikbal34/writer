@@ -11,8 +11,10 @@ in isolated containers).
 """
 
 import os
+import re
 import tempfile
 from typing import List, Optional
+from urllib.parse import urljoin
 
 import httpx
 from fastapi import APIRouter, HTTPException, BackgroundTasks, File, UploadFile, Form
@@ -20,6 +22,81 @@ from pydantic import BaseModel
 
 from services.pdf_extractor import extract_text_by_page, is_scanned_pdf, get_total_pages
 from services.chunker import chunk_by_page
+
+
+BROWSER_HEADERS = {
+    # Present as a real browser — many publishers (Elsevier, Sage, JSTOR,
+    # NCBI PMC) block obvious bot User-Agents with 403.
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/pdf,text/html;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+# Meta tags scholarly publishers use to advertise the actual PDF URL on the
+# HTML landing page. The first one that matches wins.
+_CITATION_PDF_PATTERNS = [
+    re.compile(
+        r'<meta[^>]*name="citation_pdf_url"[^>]*content="([^"]+)"',
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r'<meta[^>]*content="([^"]+)"[^>]*name="citation_pdf_url"',
+        re.IGNORECASE,
+    ),
+]
+
+
+async def _fetch_pdf_bytes(client: httpx.AsyncClient, url: str) -> tuple[bytes, str, str]:
+    """GET a URL, returning (bytes, final_url, content_type). Raises on HTTP error."""
+    response = await client.get(url, headers=BROWSER_HEADERS)
+    response.raise_for_status()
+    return response.content, str(response.url), response.headers.get("content-type", "")
+
+
+async def _resolve_and_fetch_pdf(url: str) -> tuple[bytes, str]:
+    """Fetch a URL and — if the response is an HTML landing page — find and
+    follow the <meta name="citation_pdf_url"> tag. Returns (pdf_bytes, final_url).
+    Raises HTTPException on failure."""
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+        try:
+            content, final_url, content_type = await _fetch_pdf_bytes(client, url)
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=502, detail=f"PDF download failed: {e}")
+
+        if content[:5].startswith(b"%PDF"):
+            return content, final_url
+
+        # Not a PDF — look for citation_pdf_url in HTML body.
+        if b"citation_pdf_url" in content[:200_000]:
+            text = content.decode("utf-8", errors="replace")
+            for pattern in _CITATION_PDF_PATTERNS:
+                match = pattern.search(text)
+                if not match:
+                    continue
+                pdf_url = urljoin(final_url, match.group(1))
+                try:
+                    pdf_bytes, pdf_final_url, _ = await _fetch_pdf_bytes(client, pdf_url)
+                except httpx.HTTPError as e:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Scraped citation_pdf_url download failed: {e}",
+                    )
+                if not pdf_bytes[:5].startswith(b"%PDF"):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Scraped citation_pdf_url did not return a PDF ({pdf_final_url})",
+                    )
+                return pdf_bytes, pdf_final_url
+
+        # Neither a PDF nor a landing page we can parse.
+        snippet = content[:120].decode("utf-8", errors="replace").strip()
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Not a PDF (content-type: {content_type}). "
+                f"Got: {snippet[:80]}"
+            ),
+        )
 
 router = APIRouter()
 
@@ -222,39 +299,12 @@ class ProcessUrlRequest(BaseModel):
 
 @router.post("/process-url", response_model=ProcessResponse)
 async def process_url(req: ProcessUrlRequest):
-    """Download a PDF from a URL, extract + chunk, return."""
-    try:
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-            response = await client.get(
-                req.url,
-                headers={
-                    # Pretend to be a browser — some publishers (Elsevier,
-                    # Sage, etc.) block obvious bots with 403.
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Accept": "application/pdf,text/html;q=0.1,*/*;q=0.1",
-                },
-            )
-            response.raise_for_status()
-            pdf_bytes = response.content
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"PDF download failed: {e}")
+    """Download a PDF from a URL, extract + chunk, return. If the URL serves
+    an HTML landing page, look for a citation_pdf_url meta tag and follow it."""
+    pdf_bytes, _ = await _resolve_and_fetch_pdf(req.url)
 
     if len(pdf_bytes) < 1024:
         raise HTTPException(status_code=422, detail="PDF too small — likely invalid")
-
-    # PDF files start with "%PDF-"; anything else (HTML landing page, error
-    # page masquerading as 200, etc.) should be rejected up-front so the
-    # Next.js caller can fall back to an alternative URL.
-    if not pdf_bytes[:5].startswith(b"%PDF"):
-        snippet = pdf_bytes[:120].decode("utf-8", errors="replace").strip()
-        content_type = response.headers.get("content-type", "unknown")
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Not a PDF (content-type: {content_type}). "
-                f"Got: {snippet[:80]}"
-            ),
-        )
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp.write(pdf_bytes)
