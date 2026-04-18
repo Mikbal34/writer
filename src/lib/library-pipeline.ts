@@ -58,19 +58,20 @@ async function buildPdfCandidates(
   const pmcPdf = normalizePmcUrl(openAccessUrl)
   add(pmcPdf)
 
-  // Unpaywall lookup (only when we have a DOI — it's the authoritative key).
-  if (entry.doi) {
-    try {
-      const fromFinder = await findPdf({
-        doi: entry.doi,
-        title: entry.title,
-        authorSurname: entry.authorSurname,
-        entryType: entry.entryType,
-      })
-      if (fromFinder.found && fromFinder.pdfUrl) add(fromFinder.pdfUrl)
-    } catch (err) {
-      console.warn('[library-pipeline] findPdf fallback failed:', err)
-    }
+  // findPdf tries Unpaywall / Semantic Scholar / OpenAlex / CORE. It uses
+  // DOI when present and falls back to title + author otherwise, so we
+  // always call it — the DOI-less path can still rescue common cases where
+  // the primary openAccessUrl points at a landing page.
+  try {
+    const fromFinder = await findPdf({
+      doi: entry.doi,
+      title: entry.title,
+      authorSurname: entry.authorSurname,
+      entryType: entry.entryType,
+    })
+    if (fromFinder.found && fromFinder.pdfUrl) add(fromFinder.pdfUrl)
+  } catch (err) {
+    console.warn('[library-pipeline] findPdf fallback failed:', err)
   }
 
   return candidates
