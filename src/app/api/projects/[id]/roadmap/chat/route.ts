@@ -77,20 +77,27 @@ function buildCompactRoadmap(chapters: ChapterInput[]) {
 // Build a lightweight roadmap index (titles + IDs + counts only)
 // ---------------------------------------------------------------------------
 function buildRoadmapIndex(chapters: ChapterInput[]) {
-  return chapters.map((ch) => {
-    const sectionCount = ch.sections.length
-    const subsectionCount = ch.sections.reduce((a, s) => a + s.subsections.length, 0)
-    const sourceCount = ch.sections.reduce((a, s) =>
-      a + s.subsections.reduce((b, sub) => b + (sub.sourceMappings?.length ?? 0), 0), 0)
-    return {
-      dbId: ch.id,
-      number: ch.number,
-      title: ch.title,
-      sections: sectionCount,
-      subsections: subsectionCount,
-      sources: sourceCount,
-    }
-  })
+  // Richer-than-counts index: includes section and subsection IDs + titles so
+  // the AI can target any node (add_source, update_subsection, etc.) without
+  // calling get_chapter_detail just to discover structure. Full-text fields
+  // (description, whatToWrite, writingStrategy, source-usage fields) are still
+  // only available via get_chapter_detail on demand.
+  return chapters.map((ch) => ({
+    dbId: ch.id,
+    number: ch.number,
+    title: ch.title,
+    sections: ch.sections.map((sec) => ({
+      dbId: sec.id,
+      displayId: sec.sectionId,
+      title: sec.title,
+      subsections: sec.subsections.map((sub) => ({
+        dbId: sub.id,
+        displayId: sub.subsectionId,
+        title: sub.title,
+        sourceCount: sub.sourceMappings?.length ?? 0,
+      })),
+    })),
+  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -446,27 +453,39 @@ ${commonRules}
     ? `\n\n## Previous Conversation Summary\n${conversationSummary}`
     : ''
 
-  let dynamicPart: string
+  const languageLine = `Respond in the language specified by the project settings (Language: ${project.language ?? 'en'}). If the language is "tr", respond in Turkish. If "en", respond in English. Match the project language.`
+
+  const parts: SystemPromptPart[] = [
+    { text: staticPart, cache: true },
+  ]
+
   if (isCreationMode) {
-    dynamicPart = `Respond in the language specified by the project settings (Language: ${project.language ?? 'en'}). If the language is "tr", respond in Turkish. If "en", respond in English. Match the project language.
+    parts.push({
+      text: `${languageLine}
 
 Project information:
 - Title: ${project.title}
 - Topic: ${project.topic ?? 'Not specified'}
 - Purpose: ${project.purpose ?? 'Not specified'}
 - Target Audience: ${project.audience ?? 'Not specified'}
-- Language: ${project.language ?? 'en'}${summarySection}`
+- Language: ${project.language ?? 'en'}${summarySection}`,
+    })
   } else {
-    dynamicPart = `Respond in the language specified by the project settings (Language: ${project.language ?? 'en'}). If the language is "tr", respond in Turkish. If "en", respond in English. Match the project language.
-
-Roadmap index (use get_chapter_detail for full details):
-${JSON.stringify(roadmapIndex)}${summarySection}`
+    // Split the edit-mode dynamic section into two blocks:
+    //  1. roadmap index — cacheable because it only changes when the roadmap is
+    //     modified; stays identical across read-only Q&A turns, so subsequent
+    //     questions about the same roadmap benefit from cache_read.
+    //  2. language + summary — small and per-request, intentionally uncached.
+    parts.push({
+      text: `Roadmap index (use get_chapter_detail for full details):\n${JSON.stringify(roadmapIndex)}`,
+      cache: true,
+    })
+    parts.push({
+      text: `${languageLine}${summarySection}`,
+    })
   }
 
-  return [
-    { text: staticPart, cache: true },
-    { text: dynamicPart },
-  ]
+  return parts
 }
 
 // ---------------------------------------------------------------------------
@@ -968,15 +987,14 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         : m.content,
     }))
 
-    // Compress conversation history — token-based with structured roadmap prompt
+    // Compress conversation history — token-based with structured roadmap prompt.
+    // Roadmap index is carried by buildSystemPrompt as its own cacheable block,
+    // so we don't re-inject it into the compressed summary (was a duplicate).
     const { messages: compressedMessages, summary: conversationSummary } =
       await compressHistory(trimmedMessages, {
         chatType: 'roadmap' as ChatType,
         maxTokens: 40000,
         keepRecent: 4,
-        reinjectContext: isCreationMode
-          ? undefined
-          : `Roadmap index: ${JSON.stringify(roadmapIndex)}`,
       })
 
     const systemPrompt = buildSystemPrompt(roadmapIndex, project, conversationSummary, sourceDensity)
