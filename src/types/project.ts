@@ -28,8 +28,8 @@ export interface StyleProfile {
   formality: number
   /** Whether the author uses first person */
   usesFirstPerson: boolean
-  /** How the author handles citations in prose */
-  citationStyle: 'inline-footnote' | 'parenthetical' | 'endnote-heavy' | 'light'
+  /** Author's citation placement/density habit — NOT the academic format (APA/ISNAD/etc., set per-project). */
+  citationApproach: 'inline-footnote' | 'parenthetical' | 'endnote-heavy' | 'light'
   /** Typical paragraph length: 'short' (1-3 sentences) | 'medium' (4-6) | 'long' (7+) */
   paragraphLength: 'short' | 'medium' | 'long'
   /** Whether the author uses block quotes for long citations */

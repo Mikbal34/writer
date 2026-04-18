@@ -147,6 +147,13 @@ export default function LibraryPage() {
               <Feather className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Writing Twin</span>
             </Link>
+            <Link
+              href="/library"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs text-[#F5EDE0] transition-colors"
+            >
+              <Library className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">My Library</span>
+            </Link>
             <button
               onClick={() => signOut({ callbackUrl: "/" })}
               className="flex items-center gap-1.5 font-ui text-xs text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"

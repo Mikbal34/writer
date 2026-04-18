@@ -18,7 +18,7 @@ Analyse the provided writing sample and return a JSON object with these fields:
   "transitionPatterns": ["list of common transition phrases used"],
   "formality": 1-10,
   "usesFirstPerson": true | false,
-  "citationStyle": "inline-footnote" | "parenthetical" | "endnote-heavy" | "light",
+  "citationApproach": "inline-footnote" | "parenthetical" | "endnote-heavy" | "light",
   "paragraphLength": "short" | "medium" | "long",
   "usesBlockQuotes": true | false,
   "rhetoricalApproach": "argumentative" | "descriptive" | "analytical" | "comparative",

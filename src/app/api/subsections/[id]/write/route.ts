@@ -32,7 +32,7 @@ ${isAcademic ? `- Terminology density: ${style.terminologyDensity ?? 'medium'}` 
 ${isAcademic ? `- Paragraph structure: ${style.paragraphStructure ?? 'topic-sentence-first'}` : ''}
 ${isAcademic ? `- Formality (1-10): ${style.formality ?? 7}` : ''}
 ${isAcademic ? `- Uses first person: ${style.usesFirstPerson ? 'yes' : 'no'}` : ''}
-${isAcademic ? `- Citation style: ${style.citationStyle ?? 'inline-footnote'}` : ''}
+${isAcademic ? `- Citation approach: ${style.citationApproach ?? (style as { citationStyle?: string }).citationStyle ?? 'inline-footnote'}` : ''}
 ${isAcademic ? `- Rhetorical approach: ${style.rhetoricalApproach ?? 'analytical'}` : ''}
 ${style.narrativePOV ? `- Point of view: ${style.narrativePOV.replace(/_/g, ' ')}` : ''}
 ${style.genre ? `- Genre: ${style.genre}` : ''}

@@ -49,6 +49,13 @@ function Navbar() {
 
         <div className="flex items-center gap-3">
           <Link
+            href="/style"
+            className="flex items-center gap-1.5 font-ui text-sm text-[#F5EDE0] transition-colors"
+          >
+            <Feather className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Writing Twin</span>
+          </Link>
+          <Link
             href="/library"
             className="flex items-center gap-1.5 font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
           >
@@ -191,14 +198,18 @@ export default function StylePage() {
             </p>
           </FadeUp>
 
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
-            <span className="font-ui text-xs text-[#8a7a65]">
-              {profiles.length} profile{profiles.length !== 1 ? "s" : ""}
-            </span>
-            <NewProfileDialog onCreated={handleCreated} />
-          </div>
+          {profiles.length > 0 && (
+            <>
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
+                <span className="font-ui text-xs text-[#8a7a65]">
+                  {profiles.length} profile{profiles.length !== 1 ? "s" : ""}
+                </span>
+                <NewProfileDialog onCreated={handleCreated} />
+              </div>
 
-          <Ornament className="w-32 mx-auto text-[#c9bfad] mb-5" />
+              <Ornament className="w-32 mx-auto text-[#c9bfad] mb-5" />
+            </>
+          )}
 
           {isLoading ? (
             <div className="flex items-center justify-center py-12 gap-2">

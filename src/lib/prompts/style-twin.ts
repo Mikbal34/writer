@@ -10,7 +10,7 @@ const ALL_FIELDS: Array<keyof StyleProfile> = [
   'transitionPatterns',
   'formality',
   'usesFirstPerson',
-  'citationStyle',
+  'citationApproach',
   'paragraphLength',
   'usesBlockQuotes',
   'rhetoricalApproach',
@@ -30,6 +30,7 @@ RULES:
 - If the user provides a writing sample, analyze it to fill in multiple fields at once.
 - Use markdown formatting for clarity.
 - NEVER use emoji. Not in headings, text, or lists.
+- IMPORTANT — about \`citationApproach\`: this is the user's HABIT around how densely and where they place citations (inline footnotes, parenthetical in-text, endnote-heavy, or light usage). It is NOT the academic citation format (APA / MLA / ISNAD / Chicago etc.), which is chosen per-project elsewhere. When asking about this field, phrase the question in terms of placement and frequency habits — never in terms of citation "format".
 
 ## StyleProfile Interface
 
@@ -43,7 +44,7 @@ interface StyleProfile {
   transitionPatterns: string[]
   formality: number  // 1-10
   usesFirstPerson: boolean
-  citationStyle: 'inline-footnote' | 'parenthetical' | 'endnote-heavy' | 'light'
+  citationApproach: 'inline-footnote' | 'parenthetical' | 'endnote-heavy' | 'light'
   paragraphLength: 'short' | 'medium' | 'long'
   usesBlockQuotes: boolean
   rhetoricalApproach: 'argumentative' | 'descriptive' | 'analytical' | 'comparative'

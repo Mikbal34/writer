@@ -25,7 +25,7 @@ interface StyleProfile {
   transitionPatterns: string[]        // Array of transition words/phrases the author uses
   formality: number                   // 1 (very informal) to 10 (very formal)
   usesFirstPerson: boolean
-  citationStyle: 'inline-footnote' | 'parenthetical' | 'endnote-heavy' | 'light'
+  citationApproach: 'inline-footnote' | 'parenthetical' | 'endnote-heavy' | 'light'  // citation placement/density habit — NOT the academic format (APA/ISNAD/etc.)
   paragraphLength: 'short' | 'medium' | 'long'
   usesBlockQuotes: boolean
   rhetoricalApproach: 'argumentative' | 'descriptive' | 'analytical' | 'comparative'
@@ -74,7 +74,7 @@ export function getStyleInterviewPrompt(
     'transitionPatterns',
     'formality',
     'usesFirstPerson',
-    'citationStyle',
+    'citationApproach',
     'paragraphLength',
     'usesBlockQuotes',
     'rhetoricalApproach',
@@ -145,8 +145,10 @@ export function parseStyleProfile(response: string): StyleProfile {
     formality: typeof raw.formality === 'number' ? raw.formality : 7,
     usesFirstPerson:
       typeof raw.usesFirstPerson === 'boolean' ? raw.usesFirstPerson : false,
-    citationStyle:
-      (raw.citationStyle as StyleProfile['citationStyle']) ?? 'inline-footnote',
+    citationApproach:
+      (raw.citationApproach as StyleProfile['citationApproach']) ??
+      (raw.citationStyle as StyleProfile['citationApproach']) ??
+      'inline-footnote',
     paragraphLength:
       (raw.paragraphLength as StyleProfile['paragraphLength']) ?? 'medium',
     usesBlockQuotes:

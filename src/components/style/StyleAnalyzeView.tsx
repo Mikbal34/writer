@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import StyleProfilePreview from "./StyleProfilePreview";
 import type { StyleProfile } from "@/types/project";
 
 interface StyleAnalyzeViewProps {
@@ -70,21 +69,25 @@ export default function StyleAnalyzeView({
   if (result) {
     return (
       <div className="flex flex-col h-full">
-        <div className="px-6 py-4 border-b border-[#e8e0d4] shrink-0 flex items-center justify-between">
-          <h2 className="font-display text-lg font-bold italic text-[#2D1F0E]">
-            Analysis Result
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-12">
+          <div className="w-16 h-16 rounded-full bg-[#C9A84C]/15 flex items-center justify-center mb-5">
+            <CheckCircle2 className="h-9 w-9 text-[#C9A84C]" strokeWidth={1.5} />
+          </div>
+          <h2 className="font-display text-xl font-bold italic text-[#2D1F0E] mb-2">
+            Analysis Complete
           </h2>
+          <p className="font-body text-sm text-[#8a7a65] max-w-sm mb-6 leading-relaxed">
+            Your writing style profile has been created. Review the extracted
+            attributes on the right panel.
+          </p>
           <Button
-            variant="ghost"
-            size="sm"
+            variant="outline"
             onClick={() => setResult(null)}
-            className="font-ui text-xs text-[#8a7a65] hover:text-[#2D1F0E]"
+            className="font-ui text-sm gap-2"
           >
+            <Sparkles className="h-4 w-4" />
             Analyze Again
           </Button>
-        </div>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <StyleProfilePreview profile={result} />
         </div>
       </div>
     );

@@ -96,8 +96,15 @@ export default function StyleProfilePreview({
         {profile.rhetoricalApproach && (
           <Pill label="Rhetoric" value={profile.rhetoricalApproach} />
         )}
-        {profile.citationStyle && (
-          <Pill label="Citation Style" value={profile.citationStyle} />
+        {(profile.citationApproach ??
+          (profile as { citationStyle?: string }).citationStyle) && (
+          <Pill
+            label="Citation Approach"
+            value={
+              profile.citationApproach ??
+              (profile as { citationStyle?: string }).citationStyle!
+            }
+          />
         )}
         {profile.usesFirstPerson !== undefined && (
           <Pill
