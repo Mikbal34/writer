@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import path from 'node:path'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { startLibraryEmbedBatch, downloadLibraryPdf } from '@/lib/library-pipeline'
+import { processLibraryPdfFromUrl } from '@/lib/library-pipeline'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
 /**
  * POST /api/library/entries/:id/reprocess
- * Re-runs the chunk+embed pipeline for a library entry that already has a
- * PDF on disk, or retries a failed download if only openAccessUrl is set.
+ * Retries the chunk+embed pipeline for a library entry that has an
+ * openAccessUrl. Manual-upload entries without openAccessUrl must be
+ * re-uploaded via attach-pdf.
  */
 export async function POST(_req: NextRequest, ctx: RouteContext) {
   try {
@@ -18,39 +18,31 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
 
     const entry = await prisma.libraryEntry.findFirst({
       where: { id, userId: session.user.id },
-      select: { id: true, filePath: true, openAccessUrl: true },
+      select: { id: true, openAccessUrl: true },
     })
     if (!entry) {
       return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
     }
 
-    if (entry.filePath) {
-      const fullPath = path.join(process.cwd(), entry.filePath)
-      await prisma.libraryEntry.update({
-        where: { id },
-        data: { pdfStatus: 'extracting', pdfError: null },
-      })
-      startLibraryEmbedBatch([{ entryId: id, filePath: fullPath }])
-      return NextResponse.json({ status: 'extracting' })
+    if (!entry.openAccessUrl) {
+      return NextResponse.json(
+        { error: 'No open-access URL. Upload a PDF via attach-pdf instead.' },
+        { status: 400 }
+      )
     }
 
-    if (entry.openAccessUrl) {
-      await prisma.libraryEntry.update({
-        where: { id },
-        data: { pdfStatus: 'pending', pdfError: null },
-      })
-      setImmediate(() => {
-        downloadLibraryPdf(id, entry.openAccessUrl!).catch((err) => {
-          console.error('[reprocess] download failed:', id, err)
-        })
-      })
-      return NextResponse.json({ status: 'pending' })
-    }
+    await prisma.libraryEntry.update({
+      where: { id },
+      data: { pdfStatus: 'pending', pdfError: null },
+    })
 
-    return NextResponse.json(
-      { error: 'No PDF available — upload one via attach-pdf first' },
-      { status: 400 }
-    )
+    setImmediate(() => {
+      processLibraryPdfFromUrl(id, entry.openAccessUrl!).catch((err) => {
+        console.error('[reprocess] pipeline failed:', id, err)
+      })
+    })
+
+    return NextResponse.json({ status: 'pending' })
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
