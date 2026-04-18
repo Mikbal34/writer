@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { startLibraryEmbedBatch } from '@/lib/library-pipeline'
 
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads')
 const LIBRARY_DIR = path.join(UPLOADS_DIR, 'library')
@@ -61,16 +62,21 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     const relPath = path.relative(process.cwd(), fullPath)
 
+    // File is on disk — flip to "extracting" and hand off to the background
+    // pipeline (chunks + embeddings). Status becomes 'ready' once the chunks
+    // are embedded and persisted, so the caller should poll /pdf-status.
     const updated = await prisma.libraryEntry.update({
       where: { id: entry.id },
       data: {
         filePath: relPath,
         fileType: 'pdf',
-        pdfStatus: 'ready',
+        pdfStatus: 'extracting',
         pdfError: null,
       },
       select: { id: true, pdfStatus: true, filePath: true },
     })
+
+    startLibraryEmbedBatch([{ entryId: entry.id, filePath: fullPath }])
 
     return NextResponse.json(updated)
   } catch (err) {

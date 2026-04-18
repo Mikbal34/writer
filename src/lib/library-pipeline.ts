@@ -1,13 +1,16 @@
 /**
  * Library-level PDF pipeline.
  *
- * After a user adds a literature-search result to their library, this module
- * downloads the open-access PDF, stores it under uploads/library/<userId>/, and
- * updates the LibraryEntry's pdfStatus. Chunking + embedding happen lazily the
- * first time the entry is referenced from a project (see writing pipeline).
+ * After a user adds a literature-search result to their library (or attaches
+ * a PDF manually), this module:
+ *   1. Downloads the PDF (if needed) into uploads/library/<userId>/
+ *   2. Calls the Python service to extract + chunk the text
+ *   3. Generates embeddings via the Python service
+ *   4. Persists chunks + embeddings to LibraryChunk (pgvector)
+ *   5. Transitions pdfStatus: pending → downloading → extracting → embedding → ready
  *
- * All jobs are fire-and-forget; callers should not await them unless they want
- * synchronous behaviour (e.g. in tests).
+ * All jobs are fire-and-forget; callers should not await them unless they
+ * want synchronous behaviour (e.g. in tests).
  */
 
 import { writeFile, mkdir } from 'node:fs/promises'
@@ -16,6 +19,10 @@ import { prisma } from '@/lib/db'
 
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads')
 const LIBRARY_DIR = path.join(UPLOADS_DIR, 'library')
+
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8001'
+
+const EMBED_BATCH_SIZE = 100
 
 async function setStatus(
   entryId: string,
@@ -35,6 +42,130 @@ function safeSlug(str: string, max = 80): string {
     .slice(0, max)
 }
 
+interface ProcessResponse {
+  sourceId: string
+  totalPages: number
+  extractedText: string
+  chunks: Array<{ pageNumber: number; chunkIndex: number; content: string }>
+  ocrPending: boolean
+}
+
+/**
+ * Call Python /process to extract + chunk a PDF. Returns chunks (may be empty
+ * for scanned PDFs whose OCR is still running in the background — caller
+ * should handle that). Returns null on hard failure.
+ */
+async function extractChunks(
+  entryId: string,
+  filePath: string
+): Promise<ProcessResponse | null> {
+  try {
+    const res = await fetch(`${PYTHON_SERVICE_URL}/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceId: entryId, filePath, fileType: 'pdf' }),
+    })
+    if (!res.ok) {
+      console.error(`[library-pipeline] Python /process returned ${res.status}`)
+      return null
+    }
+    return (await res.json()) as ProcessResponse
+  } catch (err) {
+    console.error('[library-pipeline] Python /process failed:', err)
+    return null
+  }
+}
+
+async function embedBatch(texts: string[]): Promise<number[][] | null> {
+  try {
+    const res = await fetch(`${PYTHON_SERVICE_URL}/embed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts }),
+    })
+    if (!res.ok) {
+      console.error(`[library-pipeline] Python /embed returned ${res.status}`)
+      return null
+    }
+    const data = (await res.json()) as { embeddings: number[][] }
+    return data.embeddings
+  } catch (err) {
+    console.error('[library-pipeline] Python /embed failed:', err)
+    return null
+  }
+}
+
+/**
+ * Full pipeline for an already-saved PDF at `filePath`: extract chunks,
+ * embed them, persist to LibraryChunk, set pdfStatus='ready'.
+ *
+ * Idempotent — if chunks already exist for this entry, they're wiped and
+ * rebuilt.
+ */
+export async function processAndEmbedLibraryPdf(entryId: string, filePath: string): Promise<void> {
+  try {
+    // Wipe any previous chunks (in case this is a reprocess).
+    await prisma.libraryChunk.deleteMany({ where: { libraryEntryId: entryId } })
+
+    await setStatus(entryId, 'extracting')
+
+    const proc = await extractChunks(entryId, filePath)
+    if (!proc) {
+      await setStatus(entryId, 'failed', { pdfError: 'Extraction failed' })
+      return
+    }
+
+    if (!proc.chunks || proc.chunks.length === 0) {
+      if (proc.ocrPending) {
+        // Scanned PDF — OCR running in the background. Mark as ready so the
+        // user can still reference metadata; chunking will land later.
+        await setStatus(entryId, 'ready')
+      } else {
+        await setStatus(entryId, 'failed', { pdfError: 'No text extracted' })
+      }
+      return
+    }
+
+    // Insert chunks first, then embed in batches and update.
+    const created = await prisma.$transaction(
+      proc.chunks.map((c) =>
+        prisma.libraryChunk.create({
+          data: {
+            libraryEntryId: entryId,
+            pageNumber: c.pageNumber,
+            chunkIndex: c.chunkIndex,
+            content: c.content,
+          },
+        })
+      )
+    )
+
+    await setStatus(entryId, 'embedding')
+
+    for (let i = 0; i < created.length; i += EMBED_BATCH_SIZE) {
+      const batch = created.slice(i, i + EMBED_BATCH_SIZE)
+      const vectors = await embedBatch(batch.map((c) => c.content))
+      if (!vectors || vectors.length !== batch.length) continue
+      for (let j = 0; j < batch.length; j++) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE "LibraryChunk" SET embedding = $1::vector WHERE id = $2`,
+          JSON.stringify(vectors[j]),
+          batch[j].id
+        )
+      }
+    }
+
+    await setStatus(entryId, 'ready')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[library-pipeline] processAndEmbed failed for ${entryId}:`, err)
+    await setStatus(entryId, 'failed', { pdfError: message })
+  }
+}
+
+/**
+ * Full pipeline for an open-access URL: download → save → extract → embed.
+ */
 export async function downloadLibraryPdf(entryId: string, pdfUrl: string): Promise<void> {
   const entry = await prisma.libraryEntry.findUnique({
     where: { id: entryId },
@@ -72,7 +203,15 @@ export async function downloadLibraryPdf(entryId: string, pdfUrl: string): Promi
     await writeFile(fullPath, buf)
 
     const relPath = path.relative(process.cwd(), fullPath)
-    await setStatus(entryId, 'ready', { filePath: relPath, fileType: 'pdf' })
+
+    // File is on disk — now extract + embed. The helper itself handles
+    // status transitions past this point.
+    await prisma.libraryEntry.update({
+      where: { id: entryId },
+      data: { filePath: relPath, fileType: 'pdf' },
+    })
+
+    await processAndEmbedLibraryPdf(entryId, fullPath)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     await setStatus(entryId, 'failed', { pdfError: message })
@@ -81,13 +220,27 @@ export async function downloadLibraryPdf(entryId: string, pdfUrl: string): Promi
 
 /**
  * Kick off background downloads for multiple entries. Returns immediately;
- * the caller can poll /api/library/entries/:id/status for progress.
+ * callers can poll /api/library/pdf-status.
  */
 export function startLibraryPdfBatch(jobs: Array<{ entryId: string; pdfUrl: string }>): void {
   for (const job of jobs) {
     setImmediate(() => {
       downloadLibraryPdf(job.entryId, job.pdfUrl).catch((err) => {
         console.error('[library-pipeline] download failed:', job.entryId, err)
+      })
+    })
+  }
+}
+
+/**
+ * Kick off background extract+embed for already-saved PDFs. Used by the
+ * attach-pdf manual-upload path.
+ */
+export function startLibraryEmbedBatch(jobs: Array<{ entryId: string; filePath: string }>): void {
+  for (const job of jobs) {
+    setImmediate(() => {
+      processAndEmbedLibraryPdf(job.entryId, job.filePath).catch((err) => {
+        console.error('[library-pipeline] extract/embed failed:', job.entryId, err)
       })
     })
   }

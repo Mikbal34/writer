@@ -409,6 +409,7 @@ model LibraryEntry {
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   bibliographies Bibliography[]
   tags           LibraryEntryTag[]
+  chunks         LibraryChunk[]
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -416,6 +417,20 @@ model LibraryEntry {
   @@unique([userId, authorSurname, title])
   @@index([userId])
   @@index([userId, pdfStatus])
+}
+
+model LibraryChunk {
+  id             String                       @id @default(cuid())
+  libraryEntryId String
+  pageNumber     Int?
+  chunkIndex     Int
+  content        String                       @db.Text
+  embedding      Unsupported("vector(768)")?
+  metadata       Json?
+
+  libraryEntry   LibraryEntry @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
+
+  @@index([libraryEntryId])
 }
 
 model LiteratureSearchCache {
