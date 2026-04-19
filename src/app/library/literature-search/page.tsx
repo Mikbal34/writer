@@ -357,7 +357,7 @@ export default function LiteratureSearchPage() {
               Literatür Tara
             </h1>
             <p className="font-body text-sm text-[#6b5a45] mt-1">
-              Konunu yaz, 4 akademik veritabanında aranır ve kütüphanene eklenmeye hazır en alakalı 15 kaynak listelenir.
+              Konunu yaz, 8 akademik veritabanında (OpenAlex, Semantic Scholar, CrossRef, Google Books, arXiv, PMC, DOAJ, bioRxiv) paralel tarama yapılır; skorlanıp en alakalı 25 kaynak listelenir.
             </p>
           </div>
         </div>
