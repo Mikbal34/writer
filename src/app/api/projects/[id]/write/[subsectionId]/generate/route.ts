@@ -38,6 +38,7 @@ async function embedQueryText(text: string): Promise<number[] | null> {
 
 async function fetchRagChunks(
   projectId: string,
+  subsectionId: string,
   subsection: { title: string; description: string | null; keyPoints: string[] }
 ): Promise<RagChunk[]> {
   const queryText = [subsection.title, subsection.description, ...(subsection.keyPoints ?? [])]
@@ -47,47 +48,92 @@ async function fetchRagChunks(
 
   if (queryText.length === 0) return []
 
+  // Subsection-scoped: only look inside bibliographies the AI explicitly
+  // mapped to THIS subsection during roadmap planning. Falls back to
+  // project-wide search when the subsection has no mappings yet.
+  const mappedBibs = await prisma.sourceMapping.findMany({
+    where: { subsectionId },
+    select: { bibliography: { select: { id: true, sourceId: true, libraryEntryId: true } } },
+  })
+  const bibIds = mappedBibs.map((m) => m.bibliography.id)
+  const mappedSourceIds = mappedBibs
+    .map((m) => m.bibliography.sourceId)
+    .filter((id): id is string => !!id)
+  const mappedLibraryEntryIds = mappedBibs
+    .map((m) => m.bibliography.libraryEntryId)
+    .filter((id): id is string => !!id)
+
+  const hasSubsectionScope = bibIds.length > 0
+
   // Ideal path: embed the subsection query, then semantic-search both tables.
   const queryVector = await embedQueryText(queryText)
 
   if (queryVector) {
     const vecLiteral = JSON.stringify(queryVector)
 
-    // Project's own uploaded sources (proje-specific PDF chunks).
-    const projectChunks = await prisma.$queryRaw<
-      Array<{ content: string; pageNumber: number | null; sourceTitle: string }>
-    >`
-      SELECT sc.content,
-             sc."pageNumber",
-             COALESCE(b.title, s.filename) as "sourceTitle"
-      FROM "SourceChunk" sc
-      JOIN "Source" s ON sc."sourceId" = s.id
-      LEFT JOIN "Bibliography" b ON sc."bibliographyId" = b.id
-      WHERE s."projectId" = ${projectId}
-        AND sc.embedding IS NOT NULL
-      ORDER BY sc.embedding <-> ${vecLiteral}::vector
-      LIMIT ${TOP_PROJECT_CHUNKS}
-    `.catch(() => [] as Array<{ content: string; pageNumber: number | null; sourceTitle: string }>)
+    // Project sources (proje-specific PDF chunks). Narrow to sources mapped
+    // to this subsection when we have mappings; else fall back to project
+    // scope so a subsection with no mappings still has something to cite.
+    const projectChunks = hasSubsectionScope && mappedSourceIds.length > 0
+      ? await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; sourceTitle: string }>>`
+          SELECT sc.content,
+                 sc."pageNumber",
+                 COALESCE(b.title, s.filename) as "sourceTitle"
+          FROM "SourceChunk" sc
+          JOIN "Source" s ON sc."sourceId" = s.id
+          LEFT JOIN "Bibliography" b ON sc."bibliographyId" = b.id
+          WHERE s.id = ANY(${mappedSourceIds}::text[])
+            AND sc.embedding IS NOT NULL
+          ORDER BY sc.embedding <-> ${vecLiteral}::vector
+          LIMIT ${TOP_PROJECT_CHUNKS}
+        `.catch(() => [])
+      : hasSubsectionScope
+      ? [] // subsection has mappings but none of them have uploaded Source files
+      : await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; sourceTitle: string }>>`
+          SELECT sc.content,
+                 sc."pageNumber",
+                 COALESCE(b.title, s.filename) as "sourceTitle"
+          FROM "SourceChunk" sc
+          JOIN "Source" s ON sc."sourceId" = s.id
+          LEFT JOIN "Bibliography" b ON sc."bibliographyId" = b.id
+          WHERE s."projectId" = ${projectId}
+            AND sc.embedding IS NOT NULL
+          ORDER BY sc.embedding <-> ${vecLiteral}::vector
+          LIMIT ${TOP_PROJECT_CHUNKS}
+        `.catch(() => [])
 
-    // Library entries linked to this project via Bibliography.libraryEntryId.
-    const libraryChunks = await prisma.$queryRaw<
-      Array<{ content: string; pageNumber: number | null; sourceTitle: string }>
-    >`
-      SELECT lc.content,
-             lc."pageNumber",
-             le.title as "sourceTitle"
-      FROM "LibraryChunk" lc
-      JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
-      WHERE le.id IN (
-        SELECT DISTINCT b."libraryEntryId"
-        FROM "Bibliography" b
-        WHERE b."projectId" = ${projectId}
-          AND b."libraryEntryId" IS NOT NULL
-      )
-      AND lc.embedding IS NOT NULL
-      ORDER BY lc.embedding <-> ${vecLiteral}::vector
-      LIMIT ${TOP_LIBRARY_CHUNKS}
-    `.catch(() => [] as Array<{ content: string; pageNumber: number | null; sourceTitle: string }>)
+    // Library entries linked via Bibliography. Same logic: narrow to those
+    // mapped to this subsection; fall back to project scope otherwise.
+    const libraryChunks = hasSubsectionScope && mappedLibraryEntryIds.length > 0
+      ? await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; sourceTitle: string }>>`
+          SELECT lc.content,
+                 lc."pageNumber",
+                 le.title as "sourceTitle"
+          FROM "LibraryChunk" lc
+          JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
+          WHERE le.id = ANY(${mappedLibraryEntryIds}::text[])
+            AND lc.embedding IS NOT NULL
+          ORDER BY lc.embedding <-> ${vecLiteral}::vector
+          LIMIT ${TOP_LIBRARY_CHUNKS}
+        `.catch(() => [])
+      : hasSubsectionScope
+      ? []
+      : await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; sourceTitle: string }>>`
+          SELECT lc.content,
+                 lc."pageNumber",
+                 le.title as "sourceTitle"
+          FROM "LibraryChunk" lc
+          JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
+          WHERE le.id IN (
+            SELECT DISTINCT b."libraryEntryId"
+            FROM "Bibliography" b
+            WHERE b."projectId" = ${projectId}
+              AND b."libraryEntryId" IS NOT NULL
+          )
+          AND lc.embedding IS NOT NULL
+          ORDER BY lc.embedding <-> ${vecLiteral}::vector
+          LIMIT ${TOP_LIBRARY_CHUNKS}
+        `.catch(() => [])
 
     const merged = [...projectChunks, ...libraryChunks]
     if (merged.length > 0) return merged
@@ -108,27 +154,39 @@ async function fetchRagChunks(
       content: { contains: term, mode: 'insensitive' as const },
     }))
 
-    const [projectChunks, libraryChunks] = await Promise.all([
-      prisma.sourceChunk.findMany({
-        where: { source: { projectId }, OR: conditions },
-        include: {
-          source: { select: { filename: true } },
-          bibliography: { select: { title: true } },
-        },
-        take: TOP_PROJECT_CHUNKS,
-      }),
-      prisma.libraryChunk.findMany({
-        where: {
+    const sourceFilter = hasSubsectionScope && mappedSourceIds.length > 0
+      ? { sourceId: { in: mappedSourceIds }, OR: conditions }
+      : hasSubsectionScope
+      ? null
+      : { source: { projectId }, OR: conditions }
+
+    const libraryFilter = hasSubsectionScope && mappedLibraryEntryIds.length > 0
+      ? { libraryEntryId: { in: mappedLibraryEntryIds }, OR: conditions }
+      : hasSubsectionScope
+      ? null
+      : {
           OR: conditions,
-          libraryEntry: {
-            bibliographies: {
-              some: { projectId },
+          libraryEntry: { bibliographies: { some: { projectId } } },
+        }
+
+    const [projectChunks, libraryChunks] = await Promise.all([
+      sourceFilter
+        ? prisma.sourceChunk.findMany({
+            where: sourceFilter,
+            include: {
+              source: { select: { filename: true } },
+              bibliography: { select: { title: true } },
             },
-          },
-        },
-        include: { libraryEntry: { select: { title: true } } },
-        take: TOP_LIBRARY_CHUNKS,
-      }),
+            take: TOP_PROJECT_CHUNKS,
+          })
+        : Promise.resolve([]),
+      libraryFilter
+        ? prisma.libraryChunk.findMany({
+            where: libraryFilter,
+            include: { libraryEntry: { select: { title: true } } },
+            take: TOP_LIBRARY_CHUNKS,
+          })
+        : Promise.resolve([]),
     ])
 
     return [
@@ -183,7 +241,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
 
     // RAG chunks — skip for non-academic projects
     const needsSources = project.projectType === 'ACADEMIC'
-    const ragChunks = needsSources ? await fetchRagChunks(projectId, subsection) : []
+    const ragChunks = needsSources ? await fetchRagChunks(projectId, subsectionId, subsection) : []
     const ragBlock =
       ragChunks.length > 0
         ? `\n\nRELEVANT SOURCE EXCERPTS:\n${ragChunks

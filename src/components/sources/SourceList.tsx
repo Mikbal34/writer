@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, FileType, Loader2, CheckCircle2, XCircle, ChevronRight, Trash2 } from "lucide-react";
+import { FileText, FileType, Loader2, CheckCircle2, XCircle, ChevronRight, Trash2, Library as LibraryIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -63,6 +63,7 @@ export default function SourceList({
  selectedSourceId,
 }: SourceListProps) {
  const [deletingId, setDeletingId] = useState<string | null>(null);
+ const [promotingId, setPromotingId] = useState<string | null>(null);
 
  async function handleDelete(e: React.MouseEvent, sourceId: string) {
   e.stopPropagation();
@@ -79,6 +80,30 @@ export default function SourceList({
    toast.error("Failed to delete source");
   } finally {
    setDeletingId(null);
+  }
+ }
+
+ async function handlePromote(e: React.MouseEvent, sourceId: string) {
+  e.stopPropagation();
+  setPromotingId(sourceId);
+  try {
+   const res = await fetch(`/api/library/promote-from-source/${sourceId}`, {
+    method: "POST",
+   });
+   const data = await res.json().catch(() => ({}));
+   if (!res.ok) {
+    toast.error(data.error ?? "Kütüphaneye ekleme başarısız");
+    return;
+   }
+   if (data.created) {
+    toast.success(`Kütüphaneye eklendi (${data.chunksCopied} chunk kopyalandı)`);
+   } else {
+    toast.success("Zaten kütüphanede — bağlantı kuruldu");
+   }
+  } catch {
+   toast.error("Bağlantı hatası");
+  } finally {
+   setPromotingId(null);
   }
  }
  if (sources.length === 0) {
@@ -143,6 +168,25 @@ export default function SourceList({
         <div className="flex items-center gap-1">
          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
          <span className="text-xs text-muted-foreground">Processing</span>
+        </div>
+       )}
+       {hasBibliography && source.processed && (
+        <div
+         role="button"
+         tabIndex={0}
+         onClick={(e) => handlePromote(e, source.id)}
+         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handlePromote(e as unknown as React.MouseEvent, source.id); }}
+         className={cn(
+          "p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all cursor-pointer",
+          promotingId === source.id && "pointer-events-none opacity-100"
+         )}
+         title="Kütüphaneme ekle"
+        >
+         {promotingId === source.id ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600" />
+         ) : (
+          <LibraryIcon className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+         )}
         </div>
        )}
        <div

@@ -228,6 +228,44 @@ export default function WritingWorkspace({
  async function handleWriteWithAI() {
   if (!selectedSubsectionId) return;
 
+  // Preflight: check source readiness. If any mapped source lacks a
+  // usable PDF, warn the user before burning credits on a generation
+  // that would have to fall back to the AI's generic knowledge.
+  try {
+   const pre = await fetch(
+    `/api/projects/${projectId}/write/${selectedSubsectionId}/readiness`
+   );
+   if (pre.ok) {
+    const r = await pre.json() as {
+     total: number; usable: number; missing: number;
+     mappings: Array<{ title: string; usable: boolean }>
+    };
+    if (r.total > 0 && r.missing > 0) {
+     const missingTitles = r.mappings
+      .filter((m) => !m.usable)
+      .map((m) => `• ${m.title}`)
+      .slice(0, 5)
+      .join("\n");
+     const ok = confirm(
+      `Bu altbölüme bağlı ${r.total} kaynaktan ${r.missing} tanesinin PDF'i yok.\n\n` +
+      `${missingTitles}\n\n` +
+      `Bu kaynaklardan gerçek içerik çekemeyeceğim — halüsinasyon riski var.\n\n` +
+      `Yine de yazayım mı?`
+     );
+     if (!ok) return;
+    }
+    if (r.total === 0) {
+     const ok = confirm(
+      `Bu altbölüme hiç kaynak bağlanmamış. AI sadece başlıktan yazacak — halüsinasyon riski yüksek.\n\n` +
+      `Yine de yazayım mı?`
+     );
+     if (!ok) return;
+    }
+   }
+  } catch {
+   // non-fatal: preflight is advisory, continue on error
+  }
+
   const abortController = new AbortController();
   streamAbortRef.current = abortController;
 
