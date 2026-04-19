@@ -5,6 +5,7 @@ import { streamChatWithUsage } from '@/lib/claude'
 import { checkCredits, deductCredits } from '@/lib/credits'
 import { buildSessionContext } from '@/lib/prompts/session-context'
 import { getWritingPrompt } from '@/lib/prompts/writing'
+import { startJob, completeJob, failJob } from '@/lib/jobs'
 
 type RouteContext = { params: Promise<{ id: string; subsectionId: string }> }
 
@@ -281,70 +282,148 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
       )
     }
 
-    // Stream response via SSE
+    // Create a BackgroundJob so the bell can surface progress / completion.
+    const jobId = await startJob({
+      userId: session.user.id,
+      type: 'subsection',
+      title: subsection.title,
+      projectId,
+      subsectionId,
+      resultUrl: `/projects/${projectId}/write?subsection=${subsectionId}`,
+      message: 'Yazılıyor…',
+    })
+
+    // Detached LLM worker — keeps running even if the client disconnects.
+    // We buffer chunks so the SSE stream (if still connected) can emit them,
+    // but the work itself is not tied to the request lifecycle.
+    let bufferedText = ''
+    let finalResult:
+      | { fullText: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }
+      | null = null
+    let workError: string | null = null
+    let workDone = false
+    let creditInfo: { newBalance: number; creditsUsed: number } | null = null
+
+    // Kick off the LLM work. We intentionally do NOT await this; it runs
+    // alongside the SSE controller below and survives client disconnect.
+    const workPromise = (async () => {
+      try {
+        await prisma.subsection.update({
+          where: { id: subsectionId },
+          data: { status: 'in_progress' },
+        })
+
+        const result = await streamChatWithUsage(
+          [{ role: 'user', content: fullUserPrompt }],
+          systemPromptParts,
+          (chunk) => {
+            bufferedText += chunk
+          }
+        )
+        finalResult = result
+
+        const wordCount = result.fullText.trim().split(/\s+/).filter(Boolean).length
+
+        await prisma.subsection.update({
+          where: { id: subsectionId },
+          data: {
+            content: result.fullText,
+            wordCount,
+            status: 'completed',
+          },
+        })
+
+        await prisma.writingSession.update({
+          where: { id: writingSession.id },
+          data: {
+            responseReceived: result.fullText,
+            status: 'completed',
+          },
+        })
+
+        const { newBalance, creditsUsed } = await deductCredits(
+          session.user.id,
+          'write_subsection_alt',
+          result.inputTokens,
+          result.outputTokens,
+          'sonnet',
+          { projectId, subsectionId },
+          { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
+        )
+        creditInfo = { newBalance, creditsUsed }
+
+        await completeJob(jobId, { message: `${wordCount} kelime yazıldı` })
+      } catch (err) {
+        workError = err instanceof Error ? err.message : String(err)
+        await prisma.writingSession
+          .update({ where: { id: writingSession.id }, data: { status: 'failed' } })
+          .catch(() => {})
+        await prisma.subsection
+          .update({ where: { id: subsectionId }, data: { status: 'pending' } })
+          .catch(() => {})
+        await failJob(jobId, workError).catch(() => {})
+      } finally {
+        workDone = true
+      }
+    })()
+
+    // Surface unhandled rejections to the log (the promise is intentionally
+    // not awaited by the response path).
+    workPromise.catch((err) => console.error('[generate] detached worker:', err))
+
+    // SSE stream: polls the buffer every 80ms and enqueues any new text.
+    // If the client disconnects, enqueue throws — we swallow the error and
+    // the loop exits, but the workPromise keeps running until completion.
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
-        try {
-          await prisma.subsection.update({
-            where: { id: subsectionId },
-            data: { status: 'in_progress' },
-          })
+        let sentChars = 0
+        let connected = true
+        const tryEnqueue = (payload: string): boolean => {
+          if (!connected) return false
+          try {
+            controller.enqueue(encoder.encode(payload))
+            return true
+          } catch {
+            connected = false
+            return false
+          }
+        }
 
-          const result = await streamChatWithUsage(
-            [{ role: 'user', content: fullUserPrompt }],
-            systemPromptParts,
-            (chunk) => {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta: chunk })}\n\n`))
-            }
-          )
+        while (connected) {
+          if (bufferedText.length > sentChars) {
+            const delta = bufferedText.slice(sentChars)
+            sentChars = bufferedText.length
+            if (!tryEnqueue(`data: ${JSON.stringify({ delta })}\n\n`)) break
+          }
+          if (workDone) break
+          await new Promise((r) => setTimeout(r, 80))
+        }
 
-          const wordCount = result.fullText.trim().split(/\s+/).filter(Boolean).length
+        if (!connected) {
+          // Client left. Work continues; the bell will announce completion.
+          return
+        }
 
-          await prisma.subsection.update({
-            where: { id: subsectionId },
-            data: {
-              content: result.fullText,
+        if (workError) {
+          tryEnqueue(`data: ${JSON.stringify({ error: workError })}\n\n`)
+        } else if (finalResult) {
+          const wordCount = finalResult.fullText.trim().split(/\s+/).filter(Boolean).length
+          tryEnqueue(
+            `data: ${JSON.stringify({
+              done: true,
               wordCount,
-              status: 'completed',
-            },
-          })
-
-          await prisma.writingSession.update({
-            where: { id: writingSession.id },
-            data: {
-              responseReceived: result.fullText,
-              status: 'completed',
-            },
-          })
-
-          const { newBalance, creditsUsed } = await deductCredits(
-            session.user.id,
-            'write_subsection_alt',
-            result.inputTokens,
-            result.outputTokens,
-            'sonnet',
-            { projectId, subsectionId },
-            { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
+              sessionId: writingSession.id,
+              creditsUsed: creditInfo?.creditsUsed,
+              balance: creditInfo?.newBalance,
+            })}\n\n`
           )
-
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ done: true, wordCount, sessionId: writingSession.id, creditsUsed, balance: newBalance })}\n\n`
-            )
-          )
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          tryEnqueue('data: [DONE]\n\n')
+        }
+        try {
           controller.close()
-        } catch (streamErr) {
-          await prisma.writingSession.update({
-            where: { id: writingSession.id },
-            data: { status: 'failed' },
-          }).catch(() => {})
-
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ error: String(streamErr) })}\n\n`)
-          )
-          controller.close()
+        } catch {
+          // already closed
         }
       },
     })
