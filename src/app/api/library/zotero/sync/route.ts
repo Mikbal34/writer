@@ -2,17 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { getCollectionItems, getItemAttachments, downloadAttachment } from '@/lib/zotero'
-import { writeFile, mkdir } from 'fs/promises'
-import path from 'path'
-
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads')
-
-const CONTENT_TYPE_EXT: Record<string, string> = {
-  'application/pdf': 'pdf',
-  'application/msword': 'doc',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-  'text/plain': 'txt',
-}
+import { processLibraryPdfFromBytes } from '@/lib/library-pipeline'
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,13 +35,8 @@ export async function POST(req: NextRequest) {
     let created = 0
     let updated = 0
     let skipped = 0
-    let filesDownloaded = 0
-
-    // Prepare library uploads dir for this user
-    const libraryUploadsDir = path.join(UPLOADS_DIR, 'library', userId)
-    if (downloadFiles) {
-      await mkdir(libraryUploadsDir, { recursive: true })
-    }
+    let filesQueued = 0
+    const pdfJobs: Array<{ entryId: string; filename: string; bytes: Buffer }> = []
 
     for (const collKey of keys) {
       const items = await getCollectionItems(conn.zoteroUserId, conn.apiKey, collKey)
@@ -143,14 +128,18 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Download PDF attachment if entry doesn't already have a file
+        // Queue PDF attachment → library pipeline (chunk + embed + enrich).
+        // Only PDFs participate in RAG, so we ignore .doc/.docx/.txt here.
         if (downloadFiles && entryId) {
           const entry = await prisma.libraryEntry.findUnique({
             where: { id: entryId },
-            select: { filePath: true },
+            select: { filePath: true, pdfStatus: true },
           })
 
-          if (!entry?.filePath) {
+          const alreadyProcessed =
+            entry?.filePath || (entry?.pdfStatus && entry.pdfStatus !== 'none' && entry.pdfStatus !== 'failed')
+
+          if (!alreadyProcessed) {
             try {
               const attachments = await getItemAttachments(
                 conn.zoteroUserId,
@@ -158,10 +147,9 @@ export async function POST(req: NextRequest) {
                 item.zoteroKey
               )
 
-              // Pick first PDF, fallback to first attachment
               const pdfAttachment = attachments.find(
                 (a) => a.contentType === 'application/pdf'
-              ) ?? attachments[0]
+              )
 
               if (pdfAttachment) {
                 const fileBuffer = await downloadAttachment(
@@ -171,26 +159,25 @@ export async function POST(req: NextRequest) {
                 )
 
                 if (fileBuffer) {
-                  const ext = CONTENT_TYPE_EXT[pdfAttachment.contentType] ?? 'pdf'
-                  const safeFilename = pdfAttachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_')
-                  const savedFilename = `${Date.now()}_${safeFilename}`
-                  const filePath = path.join(libraryUploadsDir, savedFilename)
-
-                  await writeFile(filePath, fileBuffer)
+                  const safeFilename =
+                    pdfAttachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_') || `${item.zoteroKey}.pdf`
 
                   await prisma.libraryEntry.update({
                     where: { id: entryId },
-                    data: {
-                      filePath: path.relative(process.cwd(), filePath),
-                      fileType: ext,
-                    },
+                    data: { pdfStatus: 'pending', pdfError: null, filePath: null },
                   })
-                  filesDownloaded++
+
+                  pdfJobs.push({
+                    entryId,
+                    filename: safeFilename,
+                    bytes: fileBuffer,
+                  })
+                  filesQueued++
                 }
               }
             } catch (dlErr) {
               console.error(
-                `[zotero/sync] Failed to download attachment for ${item.zoteroKey}:`,
+                `[zotero/sync] Failed to fetch attachment for ${item.zoteroKey}:`,
                 dlErr
               )
             }
@@ -204,7 +191,23 @@ export async function POST(req: NextRequest) {
       data: { lastSyncAt: new Date() },
     })
 
-    return NextResponse.json({ created, updated, skipped, filesDownloaded })
+    // Fire-and-forget: run PDF pipeline for each queued attachment in the
+    // background so the sync response returns quickly.
+    if (pdfJobs.length > 0) {
+      setImmediate(() => {
+        void (async () => {
+          for (const job of pdfJobs) {
+            try {
+              await processLibraryPdfFromBytes(job.entryId, job.filename, job.bytes)
+            } catch (err) {
+              console.error('[zotero/sync] pipeline failed:', job.entryId, err)
+            }
+          }
+        })()
+      })
+    }
+
+    return NextResponse.json({ created, updated, skipped, filesQueued })
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

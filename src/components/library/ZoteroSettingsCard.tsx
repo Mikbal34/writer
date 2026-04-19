@@ -178,7 +178,7 @@ export default function ZoteroSettingsCard({ onSynced }: ZoteroSettingsCardProps
       }
       const data = await res.json();
       const parts = [`${data.created} new`, `${data.updated} updated`];
-      if (data.filesDownloaded > 0) parts.push(`${data.filesDownloaded} files downloaded`);
+      if (data.filesQueued > 0) parts.push(`${data.filesQueued} PDF kuyruğa alındı`);
       toast.success(`Sync complete: ${parts.join(", ")}`);
       setLastSyncAt(new Date().toLocaleString("en-US"));
       onSynced?.();
