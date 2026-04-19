@@ -74,6 +74,13 @@ export default function LiteratureSearchPage() {
   const [cached, setCached] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
 
+  // Live search progress
+  type Stage = 'idle' | 'expanding' | 'searching' | 'dedupe' | 'scoring' | 'done'
+  const [stage, setStage] = useState<Stage>('idle')
+  type ProviderStatus = 'pending' | 'searching' | 'done'
+  const [providerState, setProviderState] = useState<Record<string, { status: ProviderStatus; count: number }>>({})
+  const [dedupStats, setDedupStats] = useState<{ before: number; after: number } | null>(null)
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [expandedAbstracts, setExpandedAbstracts] = useState<Set<string>>(new Set())
   const [isAdding, setIsAdding] = useState(false)
@@ -90,6 +97,11 @@ export default function LiteratureSearchPage() {
     setIsSearching(true)
     setResults([])
     setSelectedIds(new Set())
+    setStage('expanding')
+    setProviderState({})
+    setDedupStats(null)
+    setGeneratedQueries([])
+    setCached(false)
 
     try {
       const res = await fetch("/api/library/literature-search", {
@@ -109,22 +121,100 @@ export default function LiteratureSearchPage() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         toast.error(err.error ?? "Arama başarısız")
+        setStage('idle')
         return
       }
 
-      const data = await res.json()
-      setResults(data.results ?? [])
-      setGeneratedQueries(data.queries ?? [])
-      setCached(!!data.cached)
-      if ((data.results ?? []).length === 0) {
-        toast.info("Sonuç bulunamadı. Filtreleri değiştirip tekrar dene.")
-      } else if (data.cached) {
-        toast.success(`${data.results.length} sonuç (cache'den)`, { duration: 2000 })
+      if (!res.body) {
+        toast.error("Arama sonucu alınamadı")
+        setStage('idle')
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split("\n")
+        buffer = lines.pop() ?? ""
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          const payload = line.slice(6).trim()
+          if (payload === "[DONE]") continue
+          try {
+            const evt = JSON.parse(payload) as { type: string } & Record<string, unknown>
+            handleSearchEvent(evt)
+          } catch {
+            // malformed chunk — ignore
+          }
+        }
       }
     } catch {
       toast.error("Bağlantı hatası")
     } finally {
       setIsSearching(false)
+      setStage('done')
+    }
+  }
+
+  function handleSearchEvent(evt: { type: string } & Record<string, unknown>) {
+    switch (evt.type) {
+      case 'cached': {
+        const results = (evt.results as SearchResult[]) ?? []
+        setResults(results)
+        setCached(true)
+        setStage('done')
+        toast.success(`${results.length} sonuç (cache'den)`, { duration: 2000 })
+        break
+      }
+      case 'expanding':
+        setStage('expanding')
+        break
+      case 'queries':
+        setGeneratedQueries((evt.queries as Array<{ text: string; reasoning?: string }>) ?? [])
+        setStage('searching')
+        break
+      case 'provider_start':
+        setProviderState((prev) => ({
+          ...prev,
+          [evt.provider as string]: { status: 'searching', count: 0 },
+        }))
+        break
+      case 'provider_done':
+        setProviderState((prev) => ({
+          ...prev,
+          [evt.provider as string]: { status: 'done', count: Number(evt.count ?? 0) },
+        }))
+        break
+      case 'dedupe':
+        setDedupStats({ before: Number(evt.before ?? 0), after: Number(evt.after ?? 0) })
+        setStage('dedupe')
+        break
+      case 'pdf_filter':
+        // we just let the UI advance to scoring without a dedicated stage
+        break
+      case 'scoring':
+        setStage('scoring')
+        break
+      case 'results': {
+        const results = (evt.results as SearchResult[]) ?? []
+        setResults(results)
+        setStage('done')
+        if (results.length === 0) {
+          toast.info("Sonuç bulunamadı. Filtreleri değiştirip tekrar dene.")
+        }
+        break
+      }
+      case 'error':
+        toast.error(String(evt.message ?? 'Arama hatası'))
+        setStage('idle')
+        break
     }
   }
 
@@ -354,6 +444,62 @@ export default function LiteratureSearchPage() {
             </div>
           )}
         </form>
+
+        {/* Live progress — shown while stage !== idle/done */}
+        {stage !== 'idle' && stage !== 'done' && (
+          <div className="mb-5 p-4 rounded-sm bg-[#FAF7F0] border border-[#d4c9b5]">
+            <div className="flex items-center gap-2 mb-3">
+              <Loader2 className="h-4 w-4 animate-spin text-[#C9A84C]" />
+              <span className="font-ui text-sm font-medium text-[#2D1F0E]">
+                {stage === 'expanding' && "AI sorguyu genişletiyor..."}
+                {stage === 'searching' && "Akademik kaynaklar taranıyor..."}
+                {stage === 'dedupe' && "Sonuçlar tekilleştiriliyor..."}
+                {stage === 'scoring' && "AI alaka skorlaması yapıyor..."}
+              </span>
+            </div>
+
+            {/* Provider checklist */}
+            {(stage === 'searching' || stage === 'dedupe' || stage === 'scoring') &&
+              Object.keys(providerState).length > 0 && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {Object.entries(providerState).map(([provider, { status, count }]) => {
+                  const label = PROVIDER_LABELS[provider] ?? provider
+                  const isDone = status === 'done'
+                  return (
+                    <div
+                      key={provider}
+                      className="flex items-center gap-2 p-2 rounded-sm border transition-colors"
+                      style={{
+                        borderColor: isDone ? '#d4c9b5' : '#e8e2d8',
+                        backgroundColor: isDone ? 'rgba(45,139,78,0.04)' : 'transparent',
+                      }}
+                    >
+                      {isDone ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-[#2D8B4E] shrink-0" />
+                      ) : (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#C9A84C] shrink-0" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="font-ui text-xs text-[#2D1F0E] truncate">{label}</div>
+                        {isDone && (
+                          <div className="font-ui text-[10px] text-[#8a7a65] tabular-nums">
+                            {count} sonuç
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {dedupStats && (stage === 'dedupe' || stage === 'scoring') && (
+              <p className="font-ui text-[11px] text-[#8a7a65] mt-3">
+                {dedupStats.before} ham sonuç → {dedupStats.after} tekil
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Bulk-add bar */}
         {selectableCount > 0 && (

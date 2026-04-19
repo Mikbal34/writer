@@ -1,17 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { createHash } from 'node:crypto'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
 import { checkCredits, deductCredits } from '@/lib/credits'
-import { searchAcademic, type AcademicSearchResult } from '@/lib/academic-search'
+import {
+  searchAcademic,
+  type AcademicSearchResult,
+  type SearchParams as AcademicSearchParams,
+} from '@/lib/academic-search'
 import { buildResearchPrompt } from '@/lib/prompts/research'
 
 interface LiteratureSearchFilters {
   type?: 'kitap' | 'makale' | 'tez'
   yearFrom?: number
   yearTo?: number
-  requirePdf?: boolean // default true — user wants usable content
+  requirePdf?: boolean
 }
 
 interface AIQuery {
@@ -29,6 +33,20 @@ interface ScoringResponse {
 }
 
 const CACHE_TTL_DAYS = 7
+const TOP_N_RESULTS = 25
+const PER_PROVIDER_LIMIT = 12
+const SCORING_CAP = 40
+
+const ALL_PROVIDERS = [
+  'openalex',
+  'semantic_scholar',
+  'crossref',
+  'google_books',
+  'arxiv',
+  'pmc',
+  'doaj',
+  'biorxiv',
+] as const
 
 function hashQuery(query: string, filters: LiteratureSearchFilters): string {
   const key = JSON.stringify({
@@ -43,9 +61,19 @@ function hashQuery(query: string, filters: LiteratureSearchFilters): string {
 
 /**
  * POST /api/library/literature-search
- * Body: { query: string, filters?: LiteratureSearchFilters }
- * Returns the ranked & scored top results. Results are not yet saved —
- * the UI picks what to add via /api/library/bulk-add-from-search.
+ *
+ * Body: { query, filters? }
+ * Returns an SSE stream that emits:
+ *   - {type:'cached', results}            → cache hit, done
+ *   - {type:'expanding'}                  → Haiku query expansion started
+ *   - {type:'queries', queries:[...]}     → expanded queries ready
+ *   - {type:'provider_start', provider}   → began hitting provider
+ *   - {type:'provider_done', provider, count}
+ *   - {type:'dedupe', before, after}
+ *   - {type:'pdf_filter', kept, total}
+ *   - {type:'scoring', total}             → Haiku abstract scoring started
+ *   - {type:'results', results:[...]}     → final ranked list
+ *   - {type:'error', message}             → fatal
  */
 export async function POST(req: NextRequest) {
   try {
@@ -57,153 +85,242 @@ export async function POST(req: NextRequest) {
     }
 
     if (!query?.trim()) {
-      return NextResponse.json({ error: 'query is required' }, { status: 400 })
+      return new Response(JSON.stringify({ error: 'query is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
 
     const requirePdf = filters.requirePdf ?? true
     const effectiveFilters = { ...filters, requirePdf }
     const queryHash = hashQuery(query, effectiveFilters)
 
-    // ── Cache lookup ────────────────────────────────────────────────
+    // ── Cache lookup (fast path) ─────────────────────────────────────
     const cached = await prisma.literatureSearchCache.findFirst({
       where: { userId, queryHash, expiresAt: { gt: new Date() } },
     })
     if (cached) {
-      return NextResponse.json({
-        results: cached.results,
-        cached: true,
-        queries: [],
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const encoder = new TextEncoder()
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: 'cached', results: cached.results })}\n\n`)
+          )
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      })
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+        },
       })
     }
 
-    // ── Credit check ────────────────────────────────────────────────
+    // ── Credit preflight ─────────────────────────────────────────────
     const credits = await checkCredits(userId, 'research_ai_search')
     if (!credits.allowed) {
-      return NextResponse.json(
-        { error: 'Insufficient credits', balance: credits.balance, cost: credits.estimatedCost },
-        { status: 402 }
+      return new Response(
+        JSON.stringify({ error: 'Insufficient credits', balance: credits.balance, cost: credits.estimatedCost }),
+        { status: 402, headers: { 'Content-Type': 'application/json' } }
       )
     }
 
-    // ── 1. AI query expansion (Haiku, ~5 credits) ────────────────────
-    const { system, user } = buildResearchPrompt(query)
-    const expansion = await generateJSONWithUsage<AIResponse>(user, system, { model: HAIKU })
-    await deductCredits(userId, 'research_ai_search', expansion.inputTokens, expansion.outputTokens, 'haiku', {
-      stage: 'query_expansion',
-    })
-    const queries = expansion.data.queries ?? []
+    // ── SSE stream ───────────────────────────────────────────────────
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const emit = (payload: Record<string, unknown>) => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`))
+          } catch {
+            // downstream closed — ignore
+          }
+        }
+        const done = () => {
+          try {
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+            controller.close()
+          } catch {
+            // already closed
+          }
+        }
 
-    if (queries.length === 0) {
-      queries.push({ text: query })
-    }
+        try {
+          // Step 1 — Haiku query expansion.
+          emit({ type: 'expanding' })
+          const { system, user } = buildResearchPrompt(query)
+          const expansion = await generateJSONWithUsage<AIResponse>(user, system, { model: HAIKU })
+          await deductCredits(
+            userId,
+            'research_ai_search',
+            expansion.inputTokens,
+            expansion.outputTokens,
+            'haiku',
+            { stage: 'query_expansion' }
+          ).catch(() => {})
+          const queries = (expansion.data.queries ?? []).length > 0
+            ? expansion.data.queries
+            : [{ text: query } as AIQuery]
+          emit({
+            type: 'queries',
+            queries: queries.map((q) => ({ text: q.text, reasoning: q.reasoning })),
+          })
 
-    // ── 2. Parallel multi-provider search ────────────────────────────
-    const searchPromises = queries.map((q) =>
-      searchAcademic({
-        query: q.text,
-        providers: q.providers,
-        type: filters.type,
-        yearFrom: filters.yearFrom,
-        yearTo: filters.yearTo,
-        limit: 10,
-      })
-    )
-    const settled = await Promise.allSettled(searchPromises)
-    const raw: AcademicSearchResult[] = []
-    for (const r of settled) {
-      if (r.status === 'fulfilled') raw.push(...r.value.results)
-    }
+          // Step 2 — fan out across every provider for every expanded query,
+          // but emit one completion event per provider so the UI can light
+          // them up one by one. Each provider sees all queries merged so the
+          // progress bar advances 8 times (not 8 × queries.length).
+          const providerResults = new Map<string, AcademicSearchResult[]>()
+          for (const p of ALL_PROVIDERS) providerResults.set(p, [])
 
-    // ── 3. Dedupe (DOI first, title+author fallback) ─────────────────
-    const seen = new Set<string>()
-    const deduped: AcademicSearchResult[] = []
-    for (const result of raw) {
-      const doiKey = result.doi?.toLowerCase()
-      const titleKey = `${result.title.toLowerCase().slice(0, 60)}|${result.authorSurname.toLowerCase()}`
-      if (doiKey && seen.has(doiKey)) continue
-      if (seen.has(titleKey)) continue
-      if (doiKey) seen.add(doiKey)
-      seen.add(titleKey)
-      deduped.push(result)
-    }
+          const providerPromises: Promise<void>[] = []
+          for (const providerName of ALL_PROVIDERS) {
+            emit({ type: 'provider_start', provider: providerName })
+            providerPromises.push(
+              (async () => {
+                const bucket: AcademicSearchResult[] = []
+                for (const q of queries) {
+                  try {
+                    const params: AcademicSearchParams = {
+                      query: q.text,
+                      providers: [providerName],
+                      type: filters.type,
+                      yearFrom: filters.yearFrom,
+                      yearTo: filters.yearTo,
+                      limit: PER_PROVIDER_LIMIT,
+                    }
+                    const { results } = await searchAcademic(params)
+                    bucket.push(...results)
+                  } catch {
+                    // single-provider/query failures are expected for niche
+                    // endpoints (bioRxiv fuzzy, etc.) — swallow and continue
+                  }
+                }
+                providerResults.set(providerName, bucket)
+                emit({ type: 'provider_done', provider: providerName, count: bucket.length })
+              })()
+            )
+          }
 
-    // ── 4. Optional PDF availability filter ──────────────────────────
-    let candidates = deduped
-    if (requirePdf) {
-      const withPdf = deduped.filter((r) => !!r.openAccessUrl)
-      // If the filter would empty the list, fall back to the full list so we
-      // can still surface results (flagged as "pdf not found").
-      candidates = withPdf.length > 0 ? withPdf : deduped
-    }
+          await Promise.all(providerPromises)
 
-    // Cap at 30 before scoring — Haiku cost grows with abstract volume
-    candidates = candidates.slice(0, 30)
+          // Step 3 — flatten + dedupe.
+          const raw: AcademicSearchResult[] = []
+          for (const list of providerResults.values()) raw.push(...list)
 
-    // ── 5. Already-in-library flag ───────────────────────────────────
-    if (candidates.length > 0) {
-      const titles = candidates.map((r) => r.title)
-      const existing = await prisma.libraryEntry.findMany({
-        where: { userId, title: { in: titles } },
-        select: { title: true, authorSurname: true },
-      })
-      const existingSet = new Set(
-        existing.map((e) => `${e.title.toLowerCase()}|${e.authorSurname.toLowerCase()}`)
-      )
-      for (const r of candidates) {
-        const key = `${r.title.toLowerCase()}|${r.authorSurname.toLowerCase()}`
-        r.alreadyInLibrary = existingSet.has(key)
-      }
-    }
+          const seen = new Set<string>()
+          const deduped: AcademicSearchResult[] = []
+          for (const result of raw) {
+            const doiKey = result.doi?.toLowerCase()
+            const titleKey = `${result.title.toLowerCase().slice(0, 60)}|${result.authorSurname.toLowerCase()}`
+            if (doiKey && seen.has(doiKey)) continue
+            if (seen.has(titleKey)) continue
+            if (doiKey) seen.add(doiKey)
+            seen.add(titleKey)
+            deduped.push(result)
+          }
+          emit({ type: 'dedupe', before: raw.length, after: deduped.length })
 
-    // ── 6. Haiku abstract-based relevance scoring ────────────────────
-    const scored = await scoreCandidates(userId, query, candidates)
+          // Step 4 — PDF filter.
+          let candidates = deduped
+          if (requirePdf) {
+            const withPdf = deduped.filter((r) => !!r.openAccessUrl)
+            candidates = withPdf.length > 0 ? withPdf : deduped
+            emit({ type: 'pdf_filter', kept: withPdf.length, total: deduped.length })
+          }
 
-    // ── 7. Rank: 0.6 × relevance + 0.25 × citation_norm + 0.15 × recency ──
-    const maxCitation = Math.max(1, ...scored.map((r) => r.citationCount ?? 0))
-    const thisYear = new Date().getFullYear()
-    const ranked = scored
-      .map((r) => {
-        const rel = r.relevanceScore ?? 5
-        const citNorm = (r.citationCount ?? 0) / maxCitation
-        const yearNum = r.year ? parseInt(r.year, 10) : thisYear - 30
-        const age = Math.max(0, thisYear - yearNum)
-        const recency = Math.max(0, 1 - age / 30)
-        const score = rel * 0.6 + citNorm * 10 * 0.25 + recency * 10 * 0.15
-        return { ...r, _finalScore: score }
-      })
-      .sort((a, b) => b._finalScore - a._finalScore)
-      .slice(0, 15)
+          candidates = candidates.slice(0, SCORING_CAP)
 
-    // ── 8. Cache the ranked results ──────────────────────────────────
-    const expiresAt = new Date(Date.now() + CACHE_TTL_DAYS * 24 * 60 * 60 * 1000)
-    await prisma.literatureSearchCache.upsert({
-      where: { userId_queryHash: { userId, queryHash } },
-      create: {
-        userId,
-        queryHash,
-        query,
-        filters: effectiveFilters as object,
-        results: ranked as unknown as object,
-        expiresAt,
+          // Step 5 — already-in-library flag.
+          if (candidates.length > 0) {
+            const titles = candidates.map((r) => r.title)
+            const existing = await prisma.libraryEntry.findMany({
+              where: { userId, title: { in: titles } },
+              select: { title: true, authorSurname: true },
+            })
+            const existingSet = new Set(
+              existing.map((e) => `${e.title.toLowerCase()}|${e.authorSurname.toLowerCase()}`)
+            )
+            for (const r of candidates) {
+              const key = `${r.title.toLowerCase()}|${r.authorSurname.toLowerCase()}`
+              r.alreadyInLibrary = existingSet.has(key)
+            }
+          }
+
+          // Step 6 — Haiku abstract scoring.
+          emit({ type: 'scoring', total: candidates.length })
+          const scored = await scoreCandidates(userId, query, candidates)
+
+          // Step 7 — final ranking (weighted blend).
+          const maxCitation = Math.max(1, ...scored.map((r) => r.citationCount ?? 0))
+          const thisYear = new Date().getFullYear()
+          const ranked = scored
+            .map((r) => {
+              const rel = r.relevanceScore ?? 5
+              const citNorm = (r.citationCount ?? 0) / maxCitation
+              const yearNum = r.year ? parseInt(r.year, 10) : thisYear - 30
+              const age = Math.max(0, thisYear - yearNum)
+              const recency = Math.max(0, 1 - age / 30)
+              const score = rel * 0.6 + citNorm * 10 * 0.25 + recency * 10 * 0.15
+              return { ...r, _finalScore: score }
+            })
+            .sort((a, b) => b._finalScore - a._finalScore)
+            .slice(0, TOP_N_RESULTS)
+
+          // Step 8 — persist cache.
+          const expiresAt = new Date(Date.now() + CACHE_TTL_DAYS * 24 * 60 * 60 * 1000)
+          await prisma.literatureSearchCache
+            .upsert({
+              where: { userId_queryHash: { userId, queryHash } },
+              create: {
+                userId,
+                queryHash,
+                query,
+                filters: effectiveFilters as object,
+                results: ranked as unknown as object,
+                expiresAt,
+              },
+              update: {
+                results: ranked as unknown as object,
+                createdAt: new Date(),
+                expiresAt,
+              },
+            })
+            .catch(() => {})
+
+          emit({ type: 'results', results: ranked })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          console.error('[literature-search stream] failed:', err)
+          emit({ type: 'error', message })
+        } finally {
+          done()
+        }
       },
-      update: {
-        results: ranked as unknown as object,
-        createdAt: new Date(),
-        expiresAt,
-      },
     })
 
-    return NextResponse.json({
-      results: ranked,
-      cached: false,
-      queries: queries.map((q) => ({ text: q.text, reasoning: q.reasoning })),
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      },
     })
   } catch (err) {
     if (err instanceof AuthError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
     console.error('[POST /api/library/literature-search]', err)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
 }
 
@@ -215,7 +332,6 @@ async function scoreCandidates(
 ): Promise<Array<AcademicSearchResult & { relevanceScore?: number }>> {
   if (candidates.length === 0) return []
 
-  // Build a compact payload: id + short abstract/title
   const payload = candidates.map((r, i) => ({
     id: String(i),
     title: r.title,
@@ -245,7 +361,7 @@ ${JSON.stringify(payload, null, 2)}`
     const result = await generateJSONWithUsage<ScoringResponse>(userPrompt, system, { model: HAIKU })
     await deductCredits(userId, 'research_ai_search', result.inputTokens, result.outputTokens, 'haiku', {
       stage: 'scoring',
-    })
+    }).catch(() => {})
 
     const scoreById = new Map<string, number>()
     for (const s of result.data.scores ?? []) {
