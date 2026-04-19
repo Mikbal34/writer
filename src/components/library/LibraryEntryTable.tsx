@@ -296,9 +296,16 @@ export default function LibraryEntryTable({
       baseDelay={0.1}
       stagger={0.04}
      >
-     <button
-      type="button"
+     <div
+      role="button"
+      tabIndex={0}
       onClick={() => onEdit(entry)}
+      onKeyDown={(e) => {
+       if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onEdit(entry);
+       }
+      }}
       className="group flex items-center gap-3 py-3.5 border-b border-dashed border-[#d4c9b5]/40 hover:bg-[#e8dfd0]/15 px-4 w-full text-left transition-colors last:border-b-0 cursor-pointer"
      >
       {/* Vertical accent bar */}
@@ -517,7 +524,7 @@ export default function LibraryEntryTable({
       >
        <Trash2 className="h-3.5 w-3.5 text-red-400" />
       </div>
-     </button>
+     </div>
      </StaggerItem>
     );
    })}
