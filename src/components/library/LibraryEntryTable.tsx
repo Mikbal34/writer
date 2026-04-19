@@ -103,7 +103,15 @@ export default function LibraryEntryTable({
 
  useEffect(() => {
   if (!findMenuOpenId) return;
-  const close = () => setFindMenuOpenId(null);
+  // Native document listener — React's synthetic stopPropagation can't
+  // block it, so we check the click target's ancestry and ignore clicks
+  // that landed inside the dropdown. Otherwise the dropdown would close
+  // before the link's default navigation fires.
+  const close = (e: MouseEvent) => {
+   const target = e.target as Element | null;
+   if (target?.closest?.("[data-pdf-find-menu]")) return;
+   setFindMenuOpenId(null);
+  };
   document.addEventListener("click", close);
   return () => document.removeEventListener("click", close);
  }, [findMenuOpenId]);
@@ -402,8 +410,11 @@ export default function LibraryEntryTable({
         </div>
         {findMenuOpenId === entry.id && (
          <div
+          data-pdf-find-menu
           onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full mt-1 z-30 w-64 bg-[#FAF7F0] border border-[#d4c9b5] rounded-sm shadow-lg p-2 space-y-0.5"
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{ backgroundColor: "#FAF7F0" }}
+          className="absolute right-0 top-full mt-1 z-50 w-64 border border-[#d4c9b5] rounded-sm shadow-xl p-2 space-y-0.5 isolate"
          >
           <p className="font-ui text-[10px] text-[#8a7a65] px-2 pb-1 border-b border-[#d4c9b5]/60 mb-1">
            Dış kaynakta PDF ara
