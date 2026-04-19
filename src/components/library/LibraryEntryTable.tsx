@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown } from "lucide-react";
 import { StaggerItem, FadeUpLarge } from "@/components/shared/Animations";
 import { toast } from "sonner";
@@ -100,21 +101,31 @@ export default function LibraryEntryTable({
  const fileInputRef = useRef<HTMLInputElement>(null);
  const [pendingEntryId, setPendingEntryId] = useState<string | null>(null);
  const [findMenuOpenId, setFindMenuOpenId] = useState<string | null>(null);
+ const [findMenuAnchor, setFindMenuAnchor] = useState<{ x: number; y: number } | null>(null);
+ const [portalReady, setPortalReady] = useState(false);
+
+ useEffect(() => {
+  setPortalReady(true);
+ }, []);
 
  useEffect(() => {
   if (!findMenuOpenId) return;
-  // Native document listener — React's synthetic stopPropagation can't
-  // block it, so we check the click target's ancestry and ignore clicks
-  // that landed inside the dropdown. Otherwise the dropdown would close
-  // before the link's default navigation fires.
-  const close = (e: MouseEvent) => {
-   const target = e.target as Element | null;
-   if (target?.closest?.("[data-pdf-find-menu]")) return;
-   setFindMenuOpenId(null);
+  const onScroll = () => setFindMenuOpenId(null);
+  window.addEventListener("scroll", onScroll, true);
+  window.addEventListener("resize", onScroll);
+  return () => {
+   window.removeEventListener("scroll", onScroll, true);
+   window.removeEventListener("resize", onScroll);
   };
-  document.addEventListener("click", close);
-  return () => document.removeEventListener("click", close);
  }, [findMenuOpenId]);
+
+ const openFindMenu = (entryId: string, triggerEl: HTMLElement) => {
+  const rect = triggerEl.getBoundingClientRect();
+  setFindMenuAnchor({ x: rect.right, y: rect.bottom + 6 });
+  setFindMenuOpenId(entryId);
+ };
+
+ const currentFindEntry = findMenuOpenId ? entries.find((e) => e.id === findMenuOpenId) : null;
 
  async function handleFileSelected(entryId: string, file: File) {
   setUploadingId(entryId);
@@ -387,19 +398,16 @@ export default function LibraryEntryTable({
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
        </span>
       ) : entry.pdfStatus === "failed" ? (
-       <div className="flex items-center gap-1 shrink-0 relative">
-        <div
-         role="button"
-         tabIndex={0}
+       <div className="flex items-center gap-1 shrink-0">
+        <button
+         type="button"
          title={entry.pdfError ? `PDF bul\n\n${entry.pdfError}` : "PDF bul"}
          onClick={(e) => {
           e.stopPropagation();
-          setFindMenuOpenId((prev) => (prev === entry.id ? null : entry.id));
-         }}
-         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-           e.stopPropagation();
-           setFindMenuOpenId((prev) => (prev === entry.id ? null : entry.id));
+          if (findMenuOpenId === entry.id) {
+           setFindMenuOpenId(null);
+          } else {
+           openFindMenu(entry.id, e.currentTarget);
           }
          }}
          className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#8a5a1a] bg-[#C9A84C]/15 hover:bg-[#C9A84C]/30 cursor-pointer transition-colors"
@@ -407,87 +415,7 @@ export default function LibraryEntryTable({
          <SearchIcon className="h-3 w-3" />
          <span className="font-ui text-[10px]">PDF Bul</span>
          <ChevronDown className="h-2.5 w-2.5" />
-        </div>
-        {findMenuOpenId === entry.id && (
-         <>
-          {/* Fullscreen backdrop: absorbs outside clicks and guarantees the
-              menu sits above every row/hover/nav bar beneath. */}
-          <div
-           onClick={(e) => {
-            e.stopPropagation();
-            setFindMenuOpenId(null);
-           }}
-           style={{ position: "fixed", inset: 0, zIndex: 999, backgroundColor: "transparent" }}
-          />
-          <div
-           data-pdf-find-menu
-           onClick={(e) => e.stopPropagation()}
-           onPointerDown={(e) => e.stopPropagation()}
-           style={{
-            position: "absolute",
-            right: 0,
-            top: "100%",
-            marginTop: 4,
-            width: 260,
-            zIndex: 1000,
-            backgroundColor: "#ffffff",
-            border: "1px solid #d4c9b5",
-            borderRadius: 3,
-            boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
-            padding: 8,
-           }}
-          >
-           <p className="font-ui text-[10px] text-[#8a7a65] px-2 pb-1 border-b border-[#d4c9b5]/60 mb-1">
-            Dış kaynakta PDF ara
-           </p>
-           {buildSearchLinks(entry).map((link) => (
-            <a
-             key={link.label}
-             href={link.href}
-             target="_blank"
-             rel="noreferrer"
-             className="block px-2 py-1.5 rounded-sm hover:bg-[#C9A84C]/10 transition-colors"
-             onClick={(e) => {
-              e.stopPropagation();
-              // Navigate explicitly so React re-renders can't race the
-              // default action.
-              e.preventDefault();
-              window.open(link.href, "_blank", "noopener,noreferrer");
-              setFindMenuOpenId(null);
-             }}
-             title={link.hint}
-            >
-             <div className="flex items-center gap-1.5">
-              <ExternalLink className="h-2.5 w-2.5 text-[#8a7a65]" />
-              <span className="font-ui text-xs text-[#2D1F0E]">{link.label}</span>
-             </div>
-             {link.hint && (
-              <p className="font-ui text-[10px] text-[#8a7a65] mt-0.5 ml-4">{link.hint}</p>
-             )}
-            </a>
-           ))}
-           <div className="border-t border-[#d4c9b5]/60 mt-1 pt-1">
-            <button
-             type="button"
-             onClick={(e) => {
-              e.stopPropagation();
-              setFindMenuOpenId(null);
-              handleReprocess(entry.id);
-             }}
-             className="flex items-center gap-1.5 px-2 py-1.5 w-full text-left rounded-sm hover:bg-[#C9A84C]/10 transition-colors"
-            >
-             <RotateCw className="h-2.5 w-2.5 text-[#8a7a65]" />
-             <span className="font-ui text-xs text-[#2D1F0E]">Pipeline ile tekrar dene</span>
-            </button>
-            {entry.pdfError && (
-             <p className="font-ui text-[9px] text-[#a89a82] mt-1 px-2 pb-1 leading-snug whitespace-pre-wrap">
-              {entry.pdfError.slice(0, 200)}
-             </p>
-            )}
-           </div>
-          </div>
-         </>
-        )}
+        </button>
         <div
          role="button"
          tabIndex={0}
@@ -576,6 +504,98 @@ export default function LibraryEntryTable({
      e.target.value = "";
     }}
    />
+   {portalReady && currentFindEntry && findMenuAnchor && createPortal(
+    <div
+     onClick={() => setFindMenuOpenId(null)}
+     style={{
+      position: "fixed",
+      inset: 0,
+      zIndex: 9998,
+      backgroundColor: "rgba(20, 15, 8, 0.55)",
+      backdropFilter: "blur(2px)",
+     }}
+    >
+     <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+       position: "fixed",
+       left: Math.max(12, findMenuAnchor.x - 280),
+       top: findMenuAnchor.y,
+       width: 280,
+       maxWidth: "calc(100vw - 24px)",
+       zIndex: 9999,
+       backgroundColor: "#ffffff",
+       border: "1px solid #d4c9b5",
+       borderRadius: 4,
+       boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+       padding: 10,
+      }}
+     >
+      <p className="font-ui text-[11px] text-[#8a7a65] px-1 pb-2 border-b border-[#d4c9b5]/60 mb-2">
+       Dış kaynakta PDF ara
+      </p>
+      {buildSearchLinks(currentFindEntry).map((link) => (
+       <a
+        key={link.label}
+        href={link.href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={() => setFindMenuOpenId(null)}
+        title={link.hint}
+        style={{
+         display: "block",
+         padding: "8px 10px",
+         borderRadius: 3,
+         textDecoration: "none",
+         color: "#2D1F0E",
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(201,168,76,0.12)")}
+        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+       >
+        <div className="flex items-center gap-1.5">
+         <ExternalLink className="h-3 w-3 text-[#8a7a65]" />
+         <span className="font-ui text-xs">{link.label}</span>
+        </div>
+        {link.hint && (
+         <p className="font-ui text-[10px] text-[#8a7a65] mt-0.5 ml-4">{link.hint}</p>
+        )}
+       </a>
+      ))}
+      <div style={{ borderTop: "1px solid rgba(212,201,181,0.6)", marginTop: 6, paddingTop: 6 }}>
+       <button
+        type="button"
+        onClick={() => {
+         setFindMenuOpenId(null);
+         handleReprocess(currentFindEntry.id);
+        }}
+        style={{
+         display: "flex",
+         alignItems: "center",
+         gap: 6,
+         padding: "8px 10px",
+         width: "100%",
+         textAlign: "left",
+         borderRadius: 3,
+         background: "transparent",
+         border: "none",
+         cursor: "pointer",
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(201,168,76,0.12)")}
+        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+       >
+        <RotateCw className="h-3 w-3 text-[#8a7a65]" />
+        <span className="font-ui text-xs text-[#2D1F0E]">Pipeline ile tekrar dene</span>
+       </button>
+       {currentFindEntry.pdfError && (
+        <p className="font-ui text-[9px] text-[#a89a82] mt-1 px-2 pb-1 leading-snug whitespace-pre-wrap">
+         {currentFindEntry.pdfError.slice(0, 200)}
+        </p>
+       )}
+      </div>
+     </div>
+    </div>,
+    document.body,
+   )}
   </div>
  );
 }
