@@ -19,9 +19,188 @@
 
 import { prisma } from '@/lib/db'
 import { findPdf } from '@/lib/pdf-finder'
+import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
+import { deductCredits } from '@/lib/credits'
+import { EntryType } from '@prisma/client'
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
 const EMBED_BATCH_SIZE = 100
+const VALID_ENTRY_TYPES = new Set(Object.values(EntryType))
+
+interface PdfMetadataExtraction {
+  entryType: string | null
+  authorSurname: string | null
+  authorName: string | null
+  title: string | null
+  editor: string | null
+  translator: string | null
+  publisher: string | null
+  publishPlace: string | null
+  year: string | null
+  volume: string | null
+  edition: string | null
+  journalName: string | null
+  journalVolume: string | null
+  journalIssue: string | null
+  pageRange: string | null
+  doi: string | null
+  url: string | null
+  abstract: string | null
+  keywords: string[] | null
+}
+
+/**
+ * Ask Haiku to pull bibliography metadata + abstract out of the extracted
+ * PDF text, and then update the LibraryEntry *only for fields the entry
+ * doesn't already have*. Literature-search entries already carry rich
+ * metadata — we don't want to overwrite it with a weaker PDF-derived guess.
+ */
+async function enrichLibraryEntryFromPdfText(
+  entryId: string,
+  extractedText: string
+): Promise<void> {
+  const text = (extractedText ?? '').trim()
+  if (text.length < 200) return
+
+  const entry = await prisma.libraryEntry.findUnique({
+    where: { id: entryId },
+    select: {
+      userId: true,
+      entryType: true,
+      authorSurname: true,
+      authorName: true,
+      title: true,
+      editor: true,
+      translator: true,
+      publisher: true,
+      publishPlace: true,
+      year: true,
+      volume: true,
+      edition: true,
+      journalName: true,
+      journalVolume: true,
+      journalIssue: true,
+      pageRange: true,
+      doi: true,
+      url: true,
+      abstract: true,
+      keywords: true,
+    },
+  })
+  if (!entry) return
+
+  try {
+    const result = await generateJSONWithUsage<PdfMetadataExtraction>(
+      `Analyze the text extracted from the first pages of the following PDF and return bibliography metadata plus an abstract as JSON.
+
+Text:
+---
+${text.slice(0, 8000)}
+---
+
+Return in this JSON format:
+{
+  "entryType": "kitap" | "makale" | "nesir" | "ceviri" | "tez" | "ansiklopedi" | "web",
+  "authorSurname": "Author's surname",
+  "authorName": "Author's first name or null",
+  "title": "Full title of the work",
+  "editor": "Editor or null",
+  "translator": "Translator or null",
+  "publisher": "Publisher or null",
+  "publishPlace": "Place of publication or null",
+  "year": "Publication year or null",
+  "volume": "Volume or null",
+  "edition": "Edition or null",
+  "journalName": "Journal name or null",
+  "journalVolume": "Journal volume or null",
+  "journalIssue": "Journal issue or null",
+  "pageRange": "Page range or null",
+  "doi": "DOI or null",
+  "url": "URL or null",
+  "abstract": "Concise abstract / summary of the work (around 150-300 words). If a formal abstract section is present, use it verbatim. Otherwise summarize the first pages.",
+  "keywords": ["up to 6 subject keywords derived from the text"] or null
+}
+
+Rules:
+- Leave fields you cannot extract as null.
+- Determine entryType from the document style (academic article → "makale", book → "kitap").
+- If no clear author is found, use "Unknown".
+- Abstract must be in the document's original language.
+- Return ONLY the JSON, no commentary.`,
+      'You are a bibliography + abstract extraction assistant. Respond with valid JSON only.',
+      { model: HAIKU }
+    )
+
+    const extracted = result.data
+
+    // Charge credits (non-fatal if it fails).
+    deductCredits(
+      entry.userId,
+      'source_upload_extract',
+      result.inputTokens,
+      result.outputTokens,
+      'haiku',
+      { libraryEntryId: entryId }
+    ).catch((e) => console.error('[library-pipeline] extract credit deduction failed:', e))
+
+    // Only fill fields the entry doesn't already have — never overwrite
+    // literature-search-derived metadata.
+    const data: Record<string, unknown> = {}
+    const maybe = <K extends keyof typeof entry>(
+      key: K,
+      candidate: string | null | undefined
+    ) => {
+      const existing = entry[key]
+      if (existing && String(existing).trim().length > 0) return
+      if (!candidate || candidate === 'null' || candidate === 'Unknown') return
+      data[key as string] = candidate
+    }
+
+    maybe('authorSurname', extracted.authorSurname)
+    maybe('authorName', extracted.authorName)
+    maybe('title', extracted.title)
+    maybe('editor', extracted.editor)
+    maybe('translator', extracted.translator)
+    maybe('publisher', extracted.publisher)
+    maybe('publishPlace', extracted.publishPlace)
+    maybe('year', extracted.year)
+    maybe('volume', extracted.volume)
+    maybe('edition', extracted.edition)
+    maybe('journalName', extracted.journalName)
+    maybe('journalVolume', extracted.journalVolume)
+    maybe('journalIssue', extracted.journalIssue)
+    maybe('pageRange', extracted.pageRange)
+    maybe('doi', extracted.doi)
+    maybe('url', extracted.url)
+    maybe('abstract', extracted.abstract)
+
+    // Keywords: only fill if empty.
+    if ((!entry.keywords || entry.keywords.length === 0) && Array.isArray(extracted.keywords)) {
+      const clean = extracted.keywords.filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
+      if (clean.length > 0) data.keywords = clean.slice(0, 6)
+    }
+
+    // entryType — only if not manually set to something specific, and the
+    // extracted value is a valid enum value.
+    if (extracted.entryType && VALID_ENTRY_TYPES.has(extracted.entryType as EntryType)) {
+      // Always trust the PDF-derived type more than the default "kitap", but
+      // not when the entry already has a non-default type.
+      if (entry.entryType === 'kitap' || !entry.entryType) {
+        data.entryType = extracted.entryType
+      }
+    }
+
+    if (Object.keys(data).length > 0) {
+      await prisma.libraryEntry.update({
+        where: { id: entryId },
+        data,
+      })
+    }
+  } catch (err) {
+    console.warn('[library-pipeline] metadata extraction failed:', err)
+    // Non-fatal — chunking still proceeds.
+  }
+}
 
 /**
  * Normalize a PMC article page URL to its direct PDF URL.
@@ -209,6 +388,7 @@ export async function processLibraryPdfFromUrl(entryId: string, pdfUrl: string):
         where: { id: entryId },
         data: { openAccessUrl: url, fileType: 'pdf' },
       })
+      await enrichLibraryEntryFromPdfText(entryId, data.extractedText)
       await persistChunks(entryId, data.chunks)
       await setStatus(entryId, 'ready')
       return
@@ -280,6 +460,7 @@ export async function processLibraryPdfFromBytes(
       data: { fileType: 'pdf' },
     })
 
+    await enrichLibraryEntryFromPdfText(entryId, data.extractedText)
     await persistChunks(entryId, data.chunks)
     await setStatus(entryId, 'ready')
   } catch (err) {
