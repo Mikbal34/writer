@@ -55,7 +55,7 @@ interface PdfMetadataExtraction {
  * doesn't already have*. Literature-search entries already carry rich
  * metadata — we don't want to overwrite it with a weaker PDF-derived guess.
  */
-async function enrichLibraryEntryFromPdfText(
+export async function enrichLibraryEntryFromPdfText(
   entryId: string,
   extractedText: string
 ): Promise<void> {

@@ -357,15 +357,23 @@ export default function LibraryEntryTable({
        style={{ backgroundColor: colorScheme.color }}
       />
 
-      {/* Checkbox icon */}
+      {/* PDF status indicator — not interactive; visual only */}
       {entry.filePath ? (
-       <div className="w-5 h-5 rounded-sm bg-forest flex items-center justify-center shrink-0">
+       <div
+        className="w-5 h-5 rounded-sm bg-forest flex items-center justify-center shrink-0"
+        title="PDF yüklü — RAG için hazır"
+        aria-label="PDF yüklü"
+       >
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
          <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#F5EDE0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
        </div>
       ) : (
-       <div className="w-5 h-5 rounded-sm border-2 border-[#d4c9b5]/60 shrink-0" />
+       <div
+        className="w-5 h-5 rounded-sm border-2 border-[#d4c9b5]/60 shrink-0"
+        title="PDF yok — yazımda bu kaynak kullanılamaz"
+        aria-label="PDF yok"
+       />
       )}
 
       {/* Author + Title + Tags */}
