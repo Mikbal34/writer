@@ -409,58 +409,84 @@ export default function LibraryEntryTable({
          <ChevronDown className="h-2.5 w-2.5" />
         </div>
         {findMenuOpenId === entry.id && (
-         <div
-          data-pdf-find-menu
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          style={{ backgroundColor: "#FAF7F0" }}
-          className="absolute right-0 top-full mt-1 z-50 w-64 border border-[#d4c9b5] rounded-sm shadow-xl p-2 space-y-0.5 isolate"
-         >
-          <p className="font-ui text-[10px] text-[#8a7a65] px-2 pb-1 border-b border-[#d4c9b5]/60 mb-1">
-           Dış kaynakta PDF ara
-          </p>
-          {buildSearchLinks(entry).map((link) => (
-           <a
-            key={link.label}
-            href={link.href}
-            target="_blank"
-            rel="noreferrer"
-            className="block px-2 py-1.5 rounded-sm hover:bg-[#C9A84C]/10 transition-colors"
-            onClick={(e) => {
-             e.stopPropagation();
-             setFindMenuOpenId(null);
-            }}
-            title={link.hint}
-           >
-            <div className="flex items-center gap-1.5">
-             <ExternalLink className="h-2.5 w-2.5 text-[#8a7a65]" />
-             <span className="font-ui text-xs text-[#2D1F0E]">{link.label}</span>
-            </div>
-            {link.hint && (
-             <p className="font-ui text-[10px] text-[#8a7a65] mt-0.5 ml-4">{link.hint}</p>
+         <>
+          {/* Fullscreen backdrop: absorbs outside clicks and guarantees the
+              menu sits above every row/hover/nav bar beneath. */}
+          <div
+           onClick={(e) => {
+            e.stopPropagation();
+            setFindMenuOpenId(null);
+           }}
+           style={{ position: "fixed", inset: 0, zIndex: 999, backgroundColor: "transparent" }}
+          />
+          <div
+           data-pdf-find-menu
+           onClick={(e) => e.stopPropagation()}
+           onPointerDown={(e) => e.stopPropagation()}
+           style={{
+            position: "absolute",
+            right: 0,
+            top: "100%",
+            marginTop: 4,
+            width: 260,
+            zIndex: 1000,
+            backgroundColor: "#ffffff",
+            border: "1px solid #d4c9b5",
+            borderRadius: 3,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
+            padding: 8,
+           }}
+          >
+           <p className="font-ui text-[10px] text-[#8a7a65] px-2 pb-1 border-b border-[#d4c9b5]/60 mb-1">
+            Dış kaynakta PDF ara
+           </p>
+           {buildSearchLinks(entry).map((link) => (
+            <a
+             key={link.label}
+             href={link.href}
+             target="_blank"
+             rel="noreferrer"
+             className="block px-2 py-1.5 rounded-sm hover:bg-[#C9A84C]/10 transition-colors"
+             onClick={(e) => {
+              e.stopPropagation();
+              // Navigate explicitly so React re-renders can't race the
+              // default action.
+              e.preventDefault();
+              window.open(link.href, "_blank", "noopener,noreferrer");
+              setFindMenuOpenId(null);
+             }}
+             title={link.hint}
+            >
+             <div className="flex items-center gap-1.5">
+              <ExternalLink className="h-2.5 w-2.5 text-[#8a7a65]" />
+              <span className="font-ui text-xs text-[#2D1F0E]">{link.label}</span>
+             </div>
+             {link.hint && (
+              <p className="font-ui text-[10px] text-[#8a7a65] mt-0.5 ml-4">{link.hint}</p>
+             )}
+            </a>
+           ))}
+           <div className="border-t border-[#d4c9b5]/60 mt-1 pt-1">
+            <button
+             type="button"
+             onClick={(e) => {
+              e.stopPropagation();
+              setFindMenuOpenId(null);
+              handleReprocess(entry.id);
+             }}
+             className="flex items-center gap-1.5 px-2 py-1.5 w-full text-left rounded-sm hover:bg-[#C9A84C]/10 transition-colors"
+            >
+             <RotateCw className="h-2.5 w-2.5 text-[#8a7a65]" />
+             <span className="font-ui text-xs text-[#2D1F0E]">Pipeline ile tekrar dene</span>
+            </button>
+            {entry.pdfError && (
+             <p className="font-ui text-[9px] text-[#a89a82] mt-1 px-2 pb-1 leading-snug whitespace-pre-wrap">
+              {entry.pdfError.slice(0, 200)}
+             </p>
             )}
-           </a>
-          ))}
-          <div className="border-t border-[#d4c9b5]/60 mt-1 pt-1">
-           <button
-            type="button"
-            onClick={(e) => {
-             e.stopPropagation();
-             setFindMenuOpenId(null);
-             handleReprocess(entry.id);
-            }}
-            className="flex items-center gap-1.5 px-2 py-1.5 w-full text-left rounded-sm hover:bg-[#C9A84C]/10 transition-colors"
-           >
-            <RotateCw className="h-2.5 w-2.5 text-[#8a7a65]" />
-            <span className="font-ui text-xs text-[#2D1F0E]">Pipeline ile tekrar dene</span>
-           </button>
-           {entry.pdfError && (
-            <p className="font-ui text-[9px] text-[#a89a82] mt-1 px-2 pb-1 leading-snug whitespace-pre-wrap">
-             {entry.pdfError.slice(0, 200)}
-            </p>
-           )}
+           </div>
           </div>
-         </div>
+         </>
         )}
         <div
          role="button"
