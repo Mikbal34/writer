@@ -1040,8 +1040,29 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     let workDone = false
     let workError: string | null = null
 
+    // Signal-based coordination so chunks reach the client immediately
+    // instead of waiting for the next poll tick.
+    let wakeResolve: (() => void) | null = null
+    const wake = () => {
+      const r = wakeResolve
+      wakeResolve = null
+      if (r) r()
+    }
+    const waitForUpdate = (maxMs: number) =>
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          wakeResolve = null
+          resolve()
+        }, maxMs)
+        wakeResolve = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+
     const enqueueEvent = (payload: unknown) => {
       events.push(`data: ${JSON.stringify(payload)}\n\n`)
+      wake()
     }
 
     // Detached LLM worker — survives client disconnect.
@@ -1134,6 +1155,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         await failJob(jobId, workError).catch(() => {})
       } finally {
         workDone = true
+        wake()
       }
     })()
     workPromise.catch((err) => console.error('[roadmap/chat] detached worker:', err))
@@ -1160,7 +1182,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             sentCount++
           }
           if (workDone) break
-          await new Promise((r) => setTimeout(r, 80))
+          await waitForUpdate(500)
         }
 
         if (connected) {

@@ -20,7 +20,6 @@ import NewProjectDialog from "@/components/NewProjectDialog";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import SignOutButton from "@/components/shared/SignOutButton";
-import NotificationBell from "@/components/shared/NotificationBell";
 import { FadeUp, FadeUpLarge, FadeIn, ScrollFadeUp, ScrollFadeIn, AnimatedBar } from "@/components/shared/Animations";
 
 const TEXTURE_URL =
@@ -138,7 +137,6 @@ export default async function HomePage() {
               <Feather className="h-3.5 w-3.5" />
               <span className="hidden sm:block">Writing Twin</span>
             </Link>
-            <NotificationBell />
             <SignOutButton
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-sm font-ui transition-colors duration-150"
               style={{ color: "rgba(250,247,240,0.55)" }}

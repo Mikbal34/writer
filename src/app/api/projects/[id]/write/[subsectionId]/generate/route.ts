@@ -304,6 +304,26 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
     let workDone = false
     let creditInfo: { newBalance: number; creditsUsed: number } | null = null
 
+    // Signal-based coordination: onChunk wakes the SSE loop immediately
+    // so users see the same character-by-character typing as before.
+    let wakeResolve: (() => void) | null = null
+    const wake = () => {
+      const r = wakeResolve
+      wakeResolve = null
+      if (r) r()
+    }
+    const waitForUpdate = (maxMs: number) =>
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          wakeResolve = null
+          resolve()
+        }, maxMs)
+        wakeResolve = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+
     // Kick off the LLM work. We intentionally do NOT await this; it runs
     // alongside the SSE controller below and survives client disconnect.
     const workPromise = (async () => {
@@ -318,6 +338,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
           systemPromptParts,
           (chunk) => {
             bufferedText += chunk
+            wake()
           }
         )
         finalResult = result
@@ -364,6 +385,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
         await failJob(jobId, workError).catch(() => {})
       } finally {
         workDone = true
+        wake()
       }
     })()
 
@@ -397,7 +419,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
             if (!tryEnqueue(`data: ${JSON.stringify({ delta })}\n\n`)) break
           }
           if (workDone) break
-          await new Promise((r) => setTimeout(r, 80))
+          await waitForUpdate(500)
         }
 
         if (!connected) {
