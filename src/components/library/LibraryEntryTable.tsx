@@ -1,9 +1,46 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, Upload, AlertTriangle, Loader2, RotateCw } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown } from "lucide-react";
 import { StaggerItem, FadeUpLarge } from "@/components/shared/Animations";
 import { toast } from "sonner";
+
+function buildSearchLinks(entry: {
+ title: string;
+ authorSurname: string;
+ authorName: string | null;
+ doi?: string | null;
+ url?: string | null;
+ openAccessUrl?: string | null;
+}): Array<{ label: string; href: string; hint?: string }> {
+ const fullAuthor = entry.authorName
+  ? `${entry.authorName} ${entry.authorSurname}`
+  : entry.authorSurname;
+ const q = encodeURIComponent(`${entry.title} ${fullAuthor}`);
+ const links: Array<{ label: string; href: string; hint?: string }> = [
+  {
+   label: "Google Scholar",
+   href: `https://scholar.google.com/scholar?q=${q}`,
+   hint: "All versions → genelde OA PDF bulunur",
+  },
+  {
+   label: "ResearchGate",
+   href: `https://www.researchgate.net/search/publication?q=${encodeURIComponent(entry.title)}`,
+   hint: "Yazarlar sıklıkla buraya upload eder",
+  },
+ ];
+ if (entry.doi) {
+  links.push({
+   label: "DOI (yayıncı)",
+   href: `https://doi.org/${entry.doi}`,
+   hint: "Kurumsal aboneliğinle açılabilir",
+  });
+ }
+ if (entry.url && entry.url !== entry.openAccessUrl) {
+  links.push({ label: "Orijinal sayfa", href: entry.url });
+ }
+ return links;
+}
 
 export interface LibraryEntryRow {
  id: string;
@@ -18,6 +55,8 @@ export interface LibraryEntryRow {
  pdfStatus?: string | null;
  pdfError?: string | null;
  openAccessUrl?: string | null;
+ doi?: string | null;
+ url?: string | null;
  tags: Array<{ tag: { id: string; name: string } }>;
  _count?: { bibliographies: number };
 }
@@ -60,6 +99,14 @@ export default function LibraryEntryTable({
  const [uploadingId, setUploadingId] = useState<string | null>(null);
  const fileInputRef = useRef<HTMLInputElement>(null);
  const [pendingEntryId, setPendingEntryId] = useState<string | null>(null);
+ const [findMenuOpenId, setFindMenuOpenId] = useState<string | null>(null);
+
+ useEffect(() => {
+  if (!findMenuOpenId) return;
+  const close = () => setFindMenuOpenId(null);
+  document.addEventListener("click", close);
+  return () => document.removeEventListener("click", close);
+ }, [findMenuOpenId]);
 
  async function handleFileSelected(entryId: string, file: File) {
   setUploadingId(entryId);
@@ -325,36 +372,82 @@ export default function LibraryEntryTable({
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
        </span>
       ) : entry.pdfStatus === "failed" ? (
-       <div className="flex items-center gap-1 shrink-0">
-        {entry.openAccessUrl && (
-         <div
-          role="button"
-          tabIndex={0}
-          title={entry.pdfError ? `Yeniden dene\n\n${entry.pdfError}` : "Yeniden dene"}
-          onClick={(e) => {
+       <div className="flex items-center gap-1 shrink-0 relative">
+        <div
+         role="button"
+         tabIndex={0}
+         title={entry.pdfError ? `PDF bul\n\n${entry.pdfError}` : "PDF bul"}
+         onClick={(e) => {
+          e.stopPropagation();
+          setFindMenuOpenId((prev) => (prev === entry.id ? null : entry.id));
+         }}
+         onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
            e.stopPropagation();
-           handleReprocess(entry.id);
-          }}
-          onKeyDown={(e) => {
-           if (e.key === "Enter" || e.key === " ") {
-            e.stopPropagation();
-            handleReprocess(entry.id);
-           }
-          }}
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#c44] bg-[#c44]/10 hover:bg-[#c44]/20 cursor-pointer transition-colors"
+           setFindMenuOpenId((prev) => (prev === entry.id ? null : entry.id));
+          }
+         }}
+         className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#8a5a1a] bg-[#C9A84C]/15 hover:bg-[#C9A84C]/30 cursor-pointer transition-colors"
+        >
+         <SearchIcon className="h-3 w-3" />
+         <span className="font-ui text-[10px]">PDF Bul</span>
+         <ChevronDown className="h-2.5 w-2.5" />
+        </div>
+        {findMenuOpenId === entry.id && (
+         <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute right-0 top-full mt-1 z-30 w-64 bg-[#FAF7F0] border border-[#d4c9b5] rounded-sm shadow-lg p-2 space-y-0.5"
          >
-          {uploadingId === entry.id ? (
-           <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-           <RotateCw className="h-3 w-3" />
-          )}
-          <span className="font-ui text-[10px]">Tekrar</span>
+          <p className="font-ui text-[10px] text-[#8a7a65] px-2 pb-1 border-b border-[#d4c9b5]/60 mb-1">
+           Dış kaynakta PDF ara
+          </p>
+          {buildSearchLinks(entry).map((link) => (
+           <a
+            key={link.label}
+            href={link.href}
+            target="_blank"
+            rel="noreferrer"
+            className="block px-2 py-1.5 rounded-sm hover:bg-[#C9A84C]/10 transition-colors"
+            onClick={(e) => {
+             e.stopPropagation();
+             setFindMenuOpenId(null);
+            }}
+            title={link.hint}
+           >
+            <div className="flex items-center gap-1.5">
+             <ExternalLink className="h-2.5 w-2.5 text-[#8a7a65]" />
+             <span className="font-ui text-xs text-[#2D1F0E]">{link.label}</span>
+            </div>
+            {link.hint && (
+             <p className="font-ui text-[10px] text-[#8a7a65] mt-0.5 ml-4">{link.hint}</p>
+            )}
+           </a>
+          ))}
+          <div className="border-t border-[#d4c9b5]/60 mt-1 pt-1">
+           <button
+            type="button"
+            onClick={(e) => {
+             e.stopPropagation();
+             setFindMenuOpenId(null);
+             handleReprocess(entry.id);
+            }}
+            className="flex items-center gap-1.5 px-2 py-1.5 w-full text-left rounded-sm hover:bg-[#C9A84C]/10 transition-colors"
+           >
+            <RotateCw className="h-2.5 w-2.5 text-[#8a7a65]" />
+            <span className="font-ui text-xs text-[#2D1F0E]">Pipeline ile tekrar dene</span>
+           </button>
+           {entry.pdfError && (
+            <p className="font-ui text-[9px] text-[#a89a82] mt-1 px-2 pb-1 leading-snug whitespace-pre-wrap">
+             {entry.pdfError.slice(0, 200)}
+            </p>
+           )}
+          </div>
          </div>
         )}
         <div
          role="button"
          tabIndex={0}
-         title="PDF yükle"
+         title="PDF yükle (elinde dosya varsa)"
          onClick={(e) => {
           e.stopPropagation();
           setPendingEntryId(entry.id);
@@ -367,10 +460,14 @@ export default function LibraryEntryTable({
            fileInputRef.current?.click();
           }
          }}
-         className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#c44] bg-[#c44]/10 hover:bg-[#c44]/20 cursor-pointer transition-colors"
+         className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#2D8B4E] bg-[#2D8B4E]/10 hover:bg-[#2D8B4E]/20 cursor-pointer transition-colors"
         >
-         <Upload className="h-3 w-3" />
-         <span className="font-ui text-[10px]">PDF</span>
+         {uploadingId === entry.id ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+         ) : (
+          <Upload className="h-3 w-3" />
+         )}
+         <span className="font-ui text-[10px]">Yükle</span>
         </div>
        </div>
       ) : (
