@@ -50,6 +50,10 @@ const PROVIDER_LABELS: Record<string, string> = {
   semantic_scholar: "Semantic Scholar",
   crossref: "CrossRef",
   google_books: "Google Books",
+  arxiv: "arXiv",
+  pmc: "PubMed Central",
+  doaj: "DOAJ",
+  biorxiv: "bioRxiv",
 }
 
 const TYPE_LABELS: Record<string, string> = {

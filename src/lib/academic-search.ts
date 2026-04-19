@@ -14,7 +14,7 @@ const POLITE_EMAIL = process.env.UNPAYWALL_EMAIL || 'quilpen@example.com'
 
 export interface AcademicSearchResult {
   externalId: string
-  provider: 'openalex' | 'semantic_scholar' | 'crossref' | 'google_books'
+  provider: 'openalex' | 'semantic_scholar' | 'crossref' | 'google_books' | 'arxiv' | 'pmc' | 'doaj' | 'biorxiv'
   title: string
   authorSurname: string
   authorName: string | null
@@ -347,6 +347,315 @@ async function searchGoogleBooks(params: SearchParams): Promise<AcademicSearchRe
   return results
 }
 
+// ─── arXiv ───────────────────────────────────────────────────
+// STEM preprints. Free, no auth. Returns Atom XML. Every result is
+// open-access with a direct PDF URL.
+
+async function searchArxiv(params: SearchParams): Promise<AcademicSearchResult[]> {
+  const { query, type, yearFrom, yearTo, limit = 10 } = params
+  const results: AcademicSearchResult[] = []
+
+  // arXiv is STEM preprints — skip for book searches.
+  if (type === 'kitap') return results
+
+  try {
+    const search = `all:${encodeURIComponent(query)}`
+    const url = `http://export.arxiv.org/api/query?search_query=${search}&start=0&max_results=${limit}&sortBy=relevance`
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+      headers: { 'User-Agent': `Quilpen/1.0 (mailto:${POLITE_EMAIL})` },
+    })
+    if (!res.ok) return results
+    const xml = await res.text()
+
+    // Very lightweight Atom parse — arXiv returns consistent XML.
+    const entryBlocks = xml.split('<entry>').slice(1)
+    for (const raw of entryBlocks) {
+      const entry = raw.split('</entry>')[0]
+      const grab = (tag: string): string | null => {
+        const m = entry.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`))
+        return m ? m[1].trim() : null
+      }
+
+      const arxivId = grab('id')?.replace(/^http[s]?:\/\/arxiv\.org\/abs\//, '') ?? null
+      if (!arxivId) continue
+
+      const title = grab('title')?.replace(/\s+/g, ' ').trim() ?? ''
+      const abstract = grab('summary')?.replace(/\s+/g, ' ').trim() ?? null
+      const published = grab('published')
+      const year = published ? published.slice(0, 4) : null
+      if (yearFrom && year && parseInt(year, 10) < yearFrom) continue
+      if (yearTo && year && parseInt(year, 10) > yearTo) continue
+
+      // Authors
+      const authorBlocks = entry.match(/<author>[\s\S]*?<\/author>/g) ?? []
+      const authors: string[] = []
+      for (const ab of authorBlocks) {
+        const nameMatch = ab.match(/<name>([^<]+)<\/name>/)
+        if (nameMatch) authors.push(nameMatch[1].trim())
+      }
+      const firstAuthor = authors[0] ?? 'Unknown'
+      const { surname, firstName } = splitAuthorName(firstAuthor)
+
+      // DOI (if cross-listed to a journal)
+      const doi = grab('arxiv:doi')
+
+      // PDF link — always present for arXiv
+      const pdfUrl = `https://arxiv.org/pdf/${arxivId.split('v')[0]}.pdf`
+
+      results.push({
+        externalId: `arxiv:${arxivId}`,
+        provider: 'arxiv',
+        title,
+        authorSurname: surname,
+        authorName: firstName,
+        authors,
+        year,
+        publisher: null,
+        journalName: 'arXiv',
+        journalVolume: null,
+        journalIssue: null,
+        pageRange: null,
+        doi,
+        url: `https://arxiv.org/abs/${arxivId}`,
+        abstract,
+        citationCount: null,
+        entryType: 'makale',
+        openAccessUrl: pdfUrl,
+      })
+    }
+  } catch (err) {
+    console.warn('[academic-search] arXiv error:', err)
+  }
+
+  return results
+}
+
+// ─── PubMed Central (NCBI E-utilities) ────────────────────────
+// Biomedical literature. esearch returns IDs; esummary returns metadata.
+// Only full-text OA results are surfaced (we resolve their PDF URL
+// via the standard /pdf/ path which NCBI preserves).
+
+async function searchPmc(params: SearchParams): Promise<AcademicSearchResult[]> {
+  const { query, type, yearFrom, yearTo, limit = 10 } = params
+  const results: AcademicSearchResult[] = []
+
+  if (type === 'kitap') return results
+
+  try {
+    const apiBase = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils'
+    let termQuery = `${query}[All Fields]`
+    if (yearFrom || yearTo) {
+      const from = yearFrom ?? 1900
+      const to = yearTo ?? new Date().getFullYear()
+      termQuery += ` AND (${from}:${to}[PDAT])`
+    }
+    // Only OA full-text records
+    termQuery += ' AND "open access"[filter]'
+
+    const esearchUrl = `${apiBase}/esearch.fcgi?db=pmc&retmode=json&retmax=${limit}&term=${encodeURIComponent(termQuery)}`
+    const esRes = await fetch(esearchUrl, {
+      signal: AbortSignal.timeout(15000),
+      headers: { 'User-Agent': `Quilpen/1.0 (mailto:${POLITE_EMAIL})` },
+    })
+    if (!esRes.ok) return results
+    const esData = await esRes.json()
+    const ids: string[] = esData.esearchresult?.idlist ?? []
+    if (ids.length === 0) return results
+
+    const esummaryUrl = `${apiBase}/esummary.fcgi?db=pmc&retmode=json&id=${ids.join(',')}`
+    const sumRes = await fetch(esummaryUrl, {
+      signal: AbortSignal.timeout(15000),
+      headers: { 'User-Agent': `Quilpen/1.0 (mailto:${POLITE_EMAIL})` },
+    })
+    if (!sumRes.ok) return results
+    const sumData = await sumRes.json()
+    const resultMap = sumData.result ?? {}
+
+    for (const id of ids) {
+      const doc = resultMap[id]
+      if (!doc) continue
+
+      const authors: string[] = (doc.authors ?? []).map((a: { name: string }) => a.name).filter(Boolean)
+      const firstAuthor = authors[0] ?? 'Unknown'
+      const { surname, firstName } = splitAuthorName(firstAuthor)
+
+      const year = doc.pubdate ? doc.pubdate.slice(0, 4) : null
+
+      const articleIds = doc.articleids ?? []
+      const doi = articleIds.find((a: { idtype: string }) => a.idtype === 'doi')?.value ?? null
+      const pmcid = articleIds.find((a: { idtype: string }) => a.idtype === 'pmc')?.value ?? null
+      const pmcNumeric = pmcid?.replace(/^PMC/i, '') ?? id
+
+      // NCBI's canonical PDF URL for a PMC article — bypass the HTML
+      // landing-page issue we were seeing from search-result URLs.
+      const pdfUrl = `https://www.ncbi.nlm.nih.gov/pmc/articles/PMC${pmcNumeric}/pdf/`
+
+      results.push({
+        externalId: `pmc:${pmcNumeric}`,
+        provider: 'pmc',
+        title: doc.title ?? '',
+        authorSurname: surname,
+        authorName: firstName,
+        authors,
+        year,
+        publisher: null,
+        journalName: doc.fulljournalname ?? doc.source ?? null,
+        journalVolume: doc.volume ?? null,
+        journalIssue: doc.issue ?? null,
+        pageRange: doc.pages ?? null,
+        doi,
+        url: `https://www.ncbi.nlm.nih.gov/pmc/articles/PMC${pmcNumeric}/`,
+        abstract: null, // esummary doesn't return abstract; efetch would
+        citationCount: null,
+        entryType: 'makale',
+        openAccessUrl: pdfUrl,
+      })
+    }
+  } catch (err) {
+    console.warn('[academic-search] PMC error:', err)
+  }
+
+  return results
+}
+
+// ─── DOAJ (Directory of Open Access Journals) ─────────────────
+// Curated OA journals — every article is guaranteed full OA, no paywall,
+// no bot blocking.
+
+async function searchDoaj(params: SearchParams): Promise<AcademicSearchResult[]> {
+  const { query, type, yearFrom, yearTo, limit = 10 } = params
+  const results: AcademicSearchResult[] = []
+
+  if (type === 'kitap') return results
+
+  try {
+    let searchQuery = `bibjson.title:"${query}" OR bibjson.abstract:"${query}"`
+    if (yearFrom || yearTo) {
+      const from = yearFrom ?? 1900
+      const to = yearTo ?? new Date().getFullYear()
+      searchQuery += ` AND bibjson.year:[${from} TO ${to}]`
+    }
+    const url = `https://doaj.org/api/search/articles/${encodeURIComponent(searchQuery)}?pageSize=${limit}`
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+      headers: { Accept: 'application/json', 'User-Agent': `Quilpen/1.0 (mailto:${POLITE_EMAIL})` },
+    })
+    if (!res.ok) return results
+    const data = await res.json()
+
+    for (const item of data.results ?? []) {
+      const bib = item.bibjson ?? {}
+      const authors: string[] = (bib.author ?? []).map((a: { name: string }) => a.name).filter(Boolean)
+      const firstAuthor = authors[0] ?? 'Unknown'
+      const { surname, firstName } = splitAuthorName(firstAuthor)
+
+      const doi =
+        (bib.identifier ?? []).find((i: { type: string }) => i.type === 'doi')?.id ?? null
+
+      const fulltextLink = (bib.link ?? []).find(
+        (l: { type?: string; content_type?: string }) => l.type === 'fulltext'
+      )
+      const pdfLink = (bib.link ?? []).find(
+        (l: { content_type?: string }) => (l.content_type ?? '').toLowerCase().includes('pdf')
+      )
+
+      const openAccessUrl = pdfLink?.url ?? fulltextLink?.url ?? null
+      if (!openAccessUrl) continue
+
+      const journalName = bib.journal?.title ?? null
+
+      results.push({
+        externalId: `doaj:${item.id}`,
+        provider: 'doaj',
+        title: bib.title ?? '',
+        authorSurname: surname,
+        authorName: firstName,
+        authors,
+        year: bib.year ?? null,
+        publisher: bib.journal?.publisher ?? null,
+        journalName,
+        journalVolume: bib.journal?.volume ?? null,
+        journalIssue: bib.journal?.number ?? null,
+        pageRange: bib.start_page && bib.end_page ? `${bib.start_page}-${bib.end_page}` : null,
+        doi,
+        url: openAccessUrl,
+        abstract: bib.abstract ?? null,
+        citationCount: null,
+        entryType: 'makale',
+        openAccessUrl,
+      })
+    }
+  } catch (err) {
+    console.warn('[academic-search] DOAJ error:', err)
+  }
+
+  return results
+}
+
+// ─── bioRxiv / medRxiv ────────────────────────────────────────
+// Biomedical preprints. Their public API only supports DOI + date
+// lookups; title search is done via an undocumented endpoint that
+// can be flaky. Skip silently when it fails.
+
+async function searchBiorxiv(params: SearchParams): Promise<AcademicSearchResult[]> {
+  const { query, type, limit = 10 } = params
+  const results: AcademicSearchResult[] = []
+
+  if (type === 'kitap') return results
+
+  try {
+    // This search endpoint isn't formally documented; we accept best-effort.
+    const url = `https://api.biorxiv.org/details/biorxiv/fuzzy/${encodeURIComponent(query)}/na/json`
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+      headers: { 'User-Agent': `Quilpen/1.0 (mailto:${POLITE_EMAIL})` },
+    })
+    if (!res.ok) return results
+    const data = await res.json()
+
+    const items = (data.collection ?? []).slice(0, limit)
+    for (const item of items) {
+      const authorsRaw: string = item.authors ?? ''
+      const authors = authorsRaw
+        .split(';')
+        .map((a: string) => a.trim())
+        .filter(Boolean)
+      const firstAuthor = authors[0] ?? 'Unknown'
+      const { surname, firstName } = splitAuthorName(firstAuthor)
+
+      const doi: string | null = item.doi ?? null
+      const year: string | null = item.date ? String(item.date).slice(0, 4) : null
+      const pdfUrl = doi ? `https://www.biorxiv.org/content/${doi}v1.full.pdf` : null
+
+      results.push({
+        externalId: `biorxiv:${doi ?? item.title?.slice(0, 40)}`,
+        provider: 'biorxiv',
+        title: item.title ?? '',
+        authorSurname: surname,
+        authorName: firstName,
+        authors,
+        year,
+        publisher: null,
+        journalName: item.server ?? 'bioRxiv',
+        journalVolume: null,
+        journalIssue: null,
+        pageRange: null,
+        doi,
+        url: doi ? `https://www.biorxiv.org/content/${doi}` : '',
+        abstract: item.abstract ?? null,
+        citationCount: null,
+        entryType: 'makale',
+        openAccessUrl: pdfUrl,
+      })
+    }
+  } catch (err) {
+    console.warn('[academic-search] bioRxiv error:', err)
+  }
+
+  return results
+}
+
 // ─── Unified search ──────────────────────────────────────────
 
 const PROVIDER_MAP: Record<string, (params: SearchParams) => Promise<AcademicSearchResult[]>> = {
@@ -354,6 +663,10 @@ const PROVIDER_MAP: Record<string, (params: SearchParams) => Promise<AcademicSea
   semantic_scholar: searchSemanticScholar,
   crossref: searchCrossRef,
   google_books: searchGoogleBooks,
+  arxiv: searchArxiv,
+  pmc: searchPmc,
+  doaj: searchDoaj,
+  biorxiv: searchBiorxiv,
 }
 
 /**
