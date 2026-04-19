@@ -298,8 +298,20 @@ async function persistChunks(entryId: string, chunks: ProcessResponse['chunks'])
   await prisma.libraryChunk.deleteMany({ where: { libraryEntryId: entryId } })
   if (chunks.length === 0) return
 
+  // Defence-in-depth: strip NUL bytes (0x00) that Postgres refuses to store
+  // in UTF-8 TEXT columns. Python already scrubs these in the chunker, but
+  // older/unusual PDFs can still slip one through.
+  const safeChunks = chunks
+    .map((c) => ({
+      ...c,
+      content: (c.content ?? '').replace(/\u0000/g, '').trim(),
+    }))
+    .filter((c) => c.content.length > 0)
+
+  if (safeChunks.length === 0) return
+
   const created = await prisma.$transaction(
-    chunks.map((c) =>
+    safeChunks.map((c) =>
       prisma.libraryChunk.create({
         data: {
           libraryEntryId: entryId,

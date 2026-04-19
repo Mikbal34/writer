@@ -87,6 +87,18 @@ export default function LibraryPage() {
     fetchEntries();
   }, [fetchEntries]);
 
+  // Auto-refresh while any entry is still processing. Stops polling as soon
+  // as all visible entries reach a terminal state (ready / failed / none).
+  useEffect(() => {
+    const IN_PROGRESS = new Set(["pending", "downloading", "extracting", "embedding"]);
+    const anyInProgress = entries.some((e) => IN_PROGRESS.has(e.pdfStatus ?? ""));
+    if (!anyInProgress) return;
+    const timer = setInterval(() => {
+      fetchEntries();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [entries, fetchEntries]);
+
   // Debounce search
   const [searchInput, setSearchInput] = useState("");
   useEffect(() => {

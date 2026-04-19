@@ -28,7 +28,9 @@ def chunk_by_page(
 
     for page in pages:
         page_number = page["page_number"]
-        text = page["content"]
+        # Strip NUL bytes that some PDFs contain — Postgres UTF-8 columns
+        # reject them and the whole chunk insert fails.
+        text = (page["content"] or "").replace("\x00", "")
 
         if not text.strip():
             continue
@@ -36,10 +38,15 @@ def chunk_by_page(
         page_chunks = _split_text(text, chunk_size, overlap)
 
         for idx, chunk_text in enumerate(page_chunks):
+            # Double-check after the split — _split_text returns substrings
+            # of the input but belt + braces against any stray NULs.
+            cleaned = chunk_text.replace("\x00", "")
+            if not cleaned.strip():
+                continue
             all_chunks.append({
                 "page_number": page_number,
                 "chunk_index": idx,
-                "content": chunk_text,
+                "content": cleaned,
             })
 
     return all_chunks
