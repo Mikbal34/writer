@@ -6,6 +6,7 @@ import { compressHistory, type ChatType } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 import { getFormatSettings } from '@/lib/constants'
 import { findOrCreateBibliography } from '@/lib/bibliography'
+import { startJob, completeJob, failJob } from '@/lib/jobs'
 import type { Prisma } from '@prisma/client'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -1023,111 +1024,158 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       )
     }
 
+    // Surface in the navbar bell.
+    const jobId = await startJob({
+      userId: session.user.id,
+      type: 'roadmap',
+      title: project.title,
+      projectId,
+      resultUrl: `/projects/${projectId}/roadmap`,
+      message: isCreationMode ? 'Roadmap oluşturuluyor…' : 'Roadmap güncelleniyor…',
+    })
+
+    // Buffered events the SSE poller forwards to the client. Each entry is
+    // already-encoded SSE payload ("data: ...\n\n").
+    const events: string[] = []
+    let workDone = false
+    let workError: string | null = null
+
+    const enqueueEvent = (payload: unknown) => {
+      events.push(`data: ${JSON.stringify(payload)}\n\n`)
+    }
+
+    // Detached LLM worker — survives client disconnect.
+    const workPromise = (async () => {
+      try {
+        const result = await streamChatWithTools(
+          compressedMessages,
+          systemPrompt,
+          tools,
+          (toolName, toolInput) => handleToolCallFn(toolName, toolInput, projectId, session.user.id),
+          (chunk) => enqueueEvent({ chunk }),
+          (toolName) => enqueueEvent({ step: 'thinking', tool: toolName }),
+          { cacheTools: true }
+        )
+
+        const { newBalance, creditsUsed } = await deductCredits(
+          session.user.id,
+          'roadmap_chat',
+          result.inputTokens,
+          result.outputTokens,
+          'sonnet',
+          { projectId },
+          { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
+        )
+
+        const commands = parseCommands(result.fullText)
+        let commandsApplied = false
+
+        if (commands.length > 0) {
+          enqueueEvent({ step: 'applying' })
+          try {
+            await prisma.$transaction(async (tx) => {
+              await applyCommands(tx, projectId, commands, session.user.id)
+            })
+            commandsApplied = true
+          } catch (cmdErr) {
+            console.error('[roadmap/chat] Failed to apply commands:', cmdErr)
+            enqueueEvent({
+              chunk: '\n\n[An error occurred while applying commands. Please try again.]',
+            })
+          }
+          enqueueEvent({ step: 'applied' })
+        }
+
+        enqueueEvent({
+          done: true,
+          commandsApplied,
+          commandCount: commands.length,
+          creditsUsed,
+          balance: newBalance,
+        })
+
+        const strippedContent = result.fullText
+          .replace(/<roadmap_commands>[\s\S]*?<\/roadmap_commands>/g, '')
+          .replace(/<roadmap_commands>[\s\S]*$/g, '')
+          .replace(/<roadmap_c[^>]*$/g, '')
+          .trim()
+        try {
+          await prisma.roadmapChatMessage.createMany({
+            data: [
+              { projectId, sessionId, role: 'user', content: userContent },
+              {
+                projectId,
+                sessionId,
+                role: 'assistant',
+                content: strippedContent,
+                commands:
+                  commands.length > 0 ? (commands as unknown as Prisma.InputJsonValue) : undefined,
+                commandsApplied,
+              },
+            ],
+          })
+        } catch (saveErr) {
+          console.error('[roadmap/chat] Failed to save chat messages:', saveErr)
+        }
+
+        events.push('data: [DONE]\n\n')
+
+        await completeJob(jobId, {
+          message: commandsApplied
+            ? `${commands.length} değişiklik uygulandı`
+            : isCreationMode
+            ? 'Roadmap oluşturuldu'
+            : 'Güncelleme hazır',
+        })
+      } catch (err) {
+        workError = err instanceof Error ? err.message : String(err)
+        console.error('[roadmap/chat] Stream error:', err)
+        enqueueEvent({ error: 'Stream failed' })
+        await failJob(jobId, workError).catch(() => {})
+      } finally {
+        workDone = true
+      }
+    })()
+    workPromise.catch((err) => console.error('[roadmap/chat] detached worker:', err))
+
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
-        try {
-          const result = await streamChatWithTools(
-            compressedMessages,
-            systemPrompt,
-            tools,
-            (toolName, toolInput) => handleToolCallFn(toolName, toolInput, projectId, session.user.id),
-            (chunk) => {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`)
-              )
-            },
-            (toolName) => {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ step: 'thinking', tool: toolName })}\n\n`)
-              )
-            },
-            { cacheTools: true }
-          )
-
-          // Deduct credits based on actual usage
-          const { newBalance, creditsUsed } = await deductCredits(
-            session.user.id,
-            'roadmap_chat',
-            result.inputTokens,
-            result.outputTokens,
-            'sonnet',
-            { projectId },
-            { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
-          )
-
-          // Parse and apply commands
-          const commands = parseCommands(result.fullText)
-          let commandsApplied = false
-
-          if (commands.length > 0) {
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ step: "applying" })}\n\n`)
-            )
-            try {
-              await prisma.$transaction(async (tx) => {
-                await applyCommands(tx, projectId, commands, session.user.id)
-              })
-              commandsApplied = true
-            } catch (cmdErr) {
-              console.error('[roadmap/chat] Failed to apply commands:', cmdErr)
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ chunk: '\n\n[An error occurred while applying commands. Please try again.]' })}\n\n`
-                )
-              )
-            }
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ step: "applied" })}\n\n`)
-            )
-          }
-
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ done: true, commandsApplied, commandCount: commands.length, creditsUsed, balance: newBalance })}\n\n`
-            )
-          )
-
-          // Persist chat messages to DB — strip completed AND partial command tags
-          const strippedContent = result.fullText
-            .replace(/<roadmap_commands>[\s\S]*?<\/roadmap_commands>/g, '')
-            .replace(/<roadmap_commands>[\s\S]*$/g, '')
-            .replace(/<roadmap_c[^>]*$/g, '')
-            .trim()
+        let sentCount = 0
+        let connected = true
+        const tryEnqueue = (payload: string): boolean => {
+          if (!connected) return false
           try {
-            await prisma.roadmapChatMessage.createMany({
-              data: [
-                {
-                  projectId,
-                  sessionId,
-                  role: 'user',
-                  content: userContent,
-                },
-                {
-                  projectId,
-                  sessionId,
-                  role: 'assistant',
-                  content: strippedContent,
-                  commands: commands.length > 0 ? (commands as unknown as Prisma.InputJsonValue) : undefined,
-                  commandsApplied,
-                },
-              ],
-            })
-          } catch (saveErr) {
-            console.error('[roadmap/chat] Failed to save chat messages:', saveErr)
+            controller.enqueue(encoder.encode(payload))
+            return true
+          } catch {
+            connected = false
+            return false
           }
-
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-        } catch (streamErr) {
-          console.error('[roadmap/chat] Stream error:', streamErr)
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ error: 'Stream failed' })}\n\n`
-            )
-          )
-        } finally {
-          controller.close()
         }
+
+        while (connected) {
+          while (sentCount < events.length) {
+            if (!tryEnqueue(events[sentCount])) break
+            sentCount++
+          }
+          if (workDone) break
+          await new Promise((r) => setTimeout(r, 80))
+        }
+
+        if (connected) {
+          // Drain any final events written after the loop exit.
+          while (sentCount < events.length) {
+            if (!tryEnqueue(events[sentCount])) break
+            sentCount++
+          }
+          try {
+            controller.close()
+          } catch {
+            // already closed
+          }
+        }
+        // If !connected, work continues; the bell will announce completion.
       },
     })
 
