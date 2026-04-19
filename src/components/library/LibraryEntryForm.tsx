@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Save, X, Sparkles, FileCheck } from "lucide-react";
+import { Loader2, Save, X, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 type EntryType = "kitap" | "makale" | "nesir" | "ceviri" | "tez" | "ansiklopedi" | "web";
@@ -109,89 +109,82 @@ export default function LibraryEntryForm({
     ...initialData,
   });
   const [isSaving, setIsSaving] = useState(false);
-  const [isEnriching, setIsEnriching] = useState(false);
-  const [isLoadingFull, setIsLoadingFull] = useState(false);
-  const [hasReadyPdf, setHasReadyPdf] = useState(false);
+  const [isAutoEnriching, setIsAutoEnriching] = useState(false);
 
   // When editing, fetch the full entry so all fields (journal, volume,
   // issue, pages, DOI, etc.) populate — the list view only carries a
-  // shallow projection.
+  // shallow projection. If the PDF is ready but key fields are still
+  // missing, silently enrich in the background and re-merge.
   useEffect(() => {
     if (!entryId) return;
     let cancelled = false;
+
+    const applyFull = (full: Record<string, unknown>) => {
+      if (cancelled) return;
+      setForm((prev) => ({
+        ...prev,
+        entryType: (full.entryType as EntryType) ?? prev.entryType,
+        authorSurname: (full.authorSurname as string) ?? "",
+        authorName: (full.authorName as string) ?? "",
+        title: (full.title as string) ?? "",
+        shortTitle: (full.shortTitle as string) ?? "",
+        editor: (full.editor as string) ?? "",
+        translator: (full.translator as string) ?? "",
+        publisher: (full.publisher as string) ?? "",
+        publishPlace: (full.publishPlace as string) ?? "",
+        year: (full.year as string) ?? "",
+        volume: (full.volume as string) ?? "",
+        edition: (full.edition as string) ?? "",
+        journalName: (full.journalName as string) ?? "",
+        journalVolume: (full.journalVolume as string) ?? "",
+        journalIssue: (full.journalIssue as string) ?? "",
+        pageRange: (full.pageRange as string) ?? "",
+        doi: (full.doi as string) ?? "",
+        url: (full.url as string) ?? "",
+      }));
+    };
+
     (async () => {
-      setIsLoadingFull(true);
       try {
         const res = await fetch(`/api/library/${entryId}`);
         if (!res.ok) return;
         const full = await res.json();
-        if (cancelled) return;
-        setForm((prev) => ({
-          ...prev,
-          entryType: (full.entryType as EntryType) ?? prev.entryType,
-          authorSurname: full.authorSurname ?? "",
-          authorName: full.authorName ?? "",
-          title: full.title ?? "",
-          shortTitle: full.shortTitle ?? "",
-          editor: full.editor ?? "",
-          translator: full.translator ?? "",
-          publisher: full.publisher ?? "",
-          publishPlace: full.publishPlace ?? "",
-          year: full.year ?? "",
-          volume: full.volume ?? "",
-          edition: full.edition ?? "",
-          journalName: full.journalName ?? "",
-          journalVolume: full.journalVolume ?? "",
-          journalIssue: full.journalIssue ?? "",
-          pageRange: full.pageRange ?? "",
-          doi: full.doi ?? "",
-          url: full.url ?? "",
-        }));
-        setHasReadyPdf(full.pdfStatus === "ready");
+        applyFull(full);
+
+        // Auto-enrich: PDF ready + at least one core metadata field missing
+        // (journal/doi/pages) + not already filled on every slot.
+        const needsEnrich =
+          full.pdfStatus === "ready" &&
+          (!full.journalName || !full.doi || !full.pageRange || !full.abstract);
+
+        if (needsEnrich) {
+          setIsAutoEnriching(true);
+          try {
+            const er = await fetch(`/api/library/entries/${entryId}/enrich`, {
+              method: "POST",
+            });
+            if (er.ok) {
+              // Re-fetch full so the merge picks up abstract/keywords too.
+              const again = await fetch(`/api/library/${entryId}`);
+              if (again.ok) applyFull(await again.json());
+            }
+          } catch {
+            // Non-fatal.
+          } finally {
+            if (!cancelled) setIsAutoEnriching(false);
+          }
+        }
       } catch {
         // Non-fatal — user can still edit with whatever initialData had.
-      } finally {
-        if (!cancelled) setIsLoadingFull(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [entryId]);
 
   function update(field: keyof LibraryFormData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
-  }
-
-  async function handleEnrich() {
-    if (!entryId) return;
-    setIsEnriching(true);
-    try {
-      const res = await fetch(`/api/library/entries/${entryId}/enrich`, { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(body.error ?? "Enrichment failed.");
-        return;
-      }
-      // Merge enriched fields back into form (only fill empty slots so we
-      // don't wipe edits in progress).
-      const refreshed = body.entry as Partial<LibraryFormData> | undefined;
-      if (refreshed) {
-        setForm((prev) => {
-          const next = { ...prev };
-          (Object.keys(refreshed) as Array<keyof LibraryFormData>).forEach((k) => {
-            const candidate = (refreshed as Record<string, unknown>)[k];
-            if (typeof candidate === "string" && candidate.trim() && !next[k]) {
-              (next as Record<string, string>)[k] = candidate;
-            }
-          });
-          return next;
-        });
-      }
-      toast.success("Bilgiler PDF'ten tamamlandı.");
-    } catch {
-      toast.error("Enrichment failed.");
-    } finally {
-      setIsEnriching(false);
-    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -239,32 +232,10 @@ export default function LibraryEntryForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {entryId && hasReadyPdf && (
-        <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded border border-[#d4c9b5] bg-[#FAF3E3]">
-          <div className="flex items-center gap-2 min-w-0">
-            <FileCheck className="h-4 w-4 shrink-0 text-[#2D8B4E]" />
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-[#2D1F0E]">PDF yüklü</div>
-              <div className="text-[11px] text-[#8a7a65] truncate">
-                Boş alanları PDF'in ilk sayfalarından otomatik tamamla
-              </div>
-            </div>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleEnrich}
-            disabled={isEnriching || isLoadingFull}
-            className="gap-1.5 shrink-0 border-[#C9A84C] text-[#8a5a1a] hover:bg-[#C9A84C]/15"
-          >
-            {isEnriching ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5" />
-            )}
-            {isEnriching ? "Tamamlanıyor…" : "PDF'ten doldur"}
-          </Button>
+      {isAutoEnriching && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded border border-[#d4c9b5] bg-[#FAF3E3] text-[11px] text-[#8a5a1a]">
+          <Sparkles className="h-3 w-3 animate-pulse" />
+          <span>PDF'ten boş alanlar tamamlanıyor…</span>
         </div>
       )}
       <Field id="entryType" label="Type" required>
