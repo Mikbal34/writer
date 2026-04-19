@@ -200,12 +200,19 @@ export default function WritingWorkspace({
    setSelectedSubsectionId(sid);
    fetchContext(sid);
   } else {
-   // auto-select first subsection
-   const first = chapters[0]?.sections[0]?.subsections[0];
-   if (first) {
-    setSelectedSubsectionId(first.id);
-    fetchContext(first.id);
-    router.replace(`?subsection=${first.id}`);
+   // Resume where the user left off: prefer in_progress, then draft, then
+   // the first pending. Only fall back to the very first subsection if the
+   // whole project is still untouched.
+   const all = chapters.flatMap((c) => c.sections.flatMap((s) => s.subsections));
+   const resume =
+    all.find((s) => s.status === "in_progress") ??
+    all.find((s) => s.status === "draft") ??
+    all.find((s) => s.status === "pending") ??
+    all[0];
+   if (resume) {
+    setSelectedSubsectionId(resume.id);
+    fetchContext(resume.id);
+    router.replace(`?subsection=${resume.id}`);
    }
   }
  }, [searchParams, chapters, fetchContext, router]);
