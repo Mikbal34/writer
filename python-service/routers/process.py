@@ -254,19 +254,14 @@ async def ocr_status(source_id: str):
 
 
 def _process_local_path(source_id: str, file_path: str) -> ProcessResponse:
-    """Same logic as /process but split so /process-url and /process-bytes
-    can call it after writing the content to a temp file."""
-    scanned = is_scanned_pdf(file_path)
+    """Shared extract+chunk path used by /process-url and /process-bytes.
+    Extracts every page (OCR'd synchronously if the PDF is scanned) and
+    returns the lot as chunks plus a bibliography-page preview."""
     total_pages = get_total_pages(file_path)
 
-    # For URL/bytes paths we run OCR synchronously too (no background task
-    # because the temp file is deleted after we return). Callers that want
-    # very-long OCR jobs should use the filesystem variant on a persistent volume.
-    pages = extract_text_by_page(file_path, max_pages=_BIB_PAGES if scanned else None)
-    if scanned:
-        # Still extract all pages for chunks — slower but simple. TODO: if this
-        # blocks too long in production, restore background OCR.
-        pages = extract_text_by_page(file_path)
+    # Single pass over the whole document — we always want all chunks for
+    # embedding, and the first N pages are enough for a bibliography preview.
+    pages = extract_text_by_page(file_path)
 
     first_pages = pages[: _BIB_PAGES]
     extracted_text = "\n\n---\n\n".join(
