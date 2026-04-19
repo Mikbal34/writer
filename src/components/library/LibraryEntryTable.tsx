@@ -2,9 +2,17 @@
 
 import { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown } from "lucide-react";
+import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown, X, GraduationCap, Users, Link as LinkIcon, Globe } from "lucide-react";
 import { StaggerItem, FadeUpLarge } from "@/components/shared/Animations";
 import { toast } from "sonner";
+
+type SearchLink = {
+ label: string;
+ href: string;
+ hint?: string;
+ iconKey: "scholar" | "rgate" | "doi" | "web";
+ accent: string;
+};
 
 function buildSearchLinks(entry: {
  title: string;
@@ -13,21 +21,25 @@ function buildSearchLinks(entry: {
  doi?: string | null;
  url?: string | null;
  openAccessUrl?: string | null;
-}): Array<{ label: string; href: string; hint?: string }> {
+}): SearchLink[] {
  const fullAuthor = entry.authorName
   ? `${entry.authorName} ${entry.authorSurname}`
   : entry.authorSurname;
  const q = encodeURIComponent(`${entry.title} ${fullAuthor}`);
- const links: Array<{ label: string; href: string; hint?: string }> = [
+ const links: SearchLink[] = [
   {
    label: "Google Scholar",
    href: `https://scholar.google.com/scholar?q=${q}`,
    hint: "All versions → genelde OA PDF bulunur",
+   iconKey: "scholar",
+   accent: "#4285F4",
   },
   {
    label: "ResearchGate",
    href: `https://www.researchgate.net/search/publication?q=${encodeURIComponent(entry.title)}`,
    hint: "Yazarlar sıklıkla buraya upload eder",
+   iconKey: "rgate",
+   accent: "#00CCBB",
   },
  ];
  if (entry.doi) {
@@ -35,12 +47,28 @@ function buildSearchLinks(entry: {
    label: "DOI (yayıncı)",
    href: `https://doi.org/${entry.doi}`,
    hint: "Kurumsal aboneliğinle açılabilir",
+   iconKey: "doi",
+   accent: "#FAB005",
   });
  }
  if (entry.url && entry.url !== entry.openAccessUrl) {
-  links.push({ label: "Orijinal sayfa", href: entry.url });
+  links.push({
+   label: "Orijinal sayfa",
+   href: entry.url,
+   hint: "Yayının kendi sayfasına git",
+   iconKey: "web",
+   accent: "#8a7a65",
+  });
  }
  return links;
+}
+
+function SearchLinkIcon({ iconKey, color }: { iconKey: SearchLink["iconKey"]; color: string }) {
+ const props = { className: "h-4 w-4", style: { color } };
+ if (iconKey === "scholar") return <GraduationCap {...props} />;
+ if (iconKey === "rgate") return <Users {...props} />;
+ if (iconKey === "doi") return <LinkIcon {...props} />;
+ return <Globe {...props} />;
 }
 
 export interface LibraryEntryRow {
@@ -101,7 +129,6 @@ export default function LibraryEntryTable({
  const fileInputRef = useRef<HTMLInputElement>(null);
  const [pendingEntryId, setPendingEntryId] = useState<string | null>(null);
  const [findMenuOpenId, setFindMenuOpenId] = useState<string | null>(null);
- const [findMenuAnchor, setFindMenuAnchor] = useState<{ x: number; y: number } | null>(null);
  const [portalReady, setPortalReady] = useState(false);
 
  useEffect(() => {
@@ -110,20 +137,17 @@ export default function LibraryEntryTable({
 
  useEffect(() => {
   if (!findMenuOpenId) return;
-  const onScroll = () => setFindMenuOpenId(null);
-  window.addEventListener("scroll", onScroll, true);
-  window.addEventListener("resize", onScroll);
+  const onKey = (e: KeyboardEvent) => {
+   if (e.key === "Escape") setFindMenuOpenId(null);
+  };
+  window.addEventListener("keydown", onKey);
+  const prev = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
   return () => {
-   window.removeEventListener("scroll", onScroll, true);
-   window.removeEventListener("resize", onScroll);
+   window.removeEventListener("keydown", onKey);
+   document.body.style.overflow = prev;
   };
  }, [findMenuOpenId]);
-
- const openFindMenu = (entryId: string, triggerEl: HTMLElement) => {
-  const rect = triggerEl.getBoundingClientRect();
-  setFindMenuAnchor({ x: rect.right, y: rect.bottom + 6 });
-  setFindMenuOpenId(entryId);
- };
 
  const currentFindEntry = findMenuOpenId ? entries.find((e) => e.id === findMenuOpenId) : null;
 
@@ -404,11 +428,7 @@ export default function LibraryEntryTable({
          title={entry.pdfError ? `PDF bul\n\n${entry.pdfError}` : "PDF bul"}
          onClick={(e) => {
           e.stopPropagation();
-          if (findMenuOpenId === entry.id) {
-           setFindMenuOpenId(null);
-          } else {
-           openFindMenu(entry.id, e.currentTarget);
-          }
+          setFindMenuOpenId((prev) => (prev === entry.id ? null : entry.id));
          }}
          className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#8a5a1a] bg-[#C9A84C]/15 hover:bg-[#C9A84C]/30 cursor-pointer transition-colors"
         >
@@ -504,64 +524,179 @@ export default function LibraryEntryTable({
      e.target.value = "";
     }}
    />
-   {portalReady && currentFindEntry && findMenuAnchor && createPortal(
+   {portalReady && currentFindEntry && createPortal(
     <div
      onClick={() => setFindMenuOpenId(null)}
      style={{
       position: "fixed",
       inset: 0,
       zIndex: 9998,
-      backgroundColor: "rgba(20, 15, 8, 0.55)",
-      backdropFilter: "blur(2px)",
+      backgroundColor: "rgba(20, 15, 8, 0.6)",
+      backdropFilter: "blur(4px)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 16,
      }}
     >
      <div
       onClick={(e) => e.stopPropagation()}
+      role="dialog"
+      aria-modal="true"
       style={{
-       position: "fixed",
-       left: Math.max(12, findMenuAnchor.x - 280),
-       top: findMenuAnchor.y,
-       width: 280,
-       maxWidth: "calc(100vw - 24px)",
-       zIndex: 9999,
-       backgroundColor: "#ffffff",
+       width: "100%",
+       maxWidth: 460,
+       maxHeight: "calc(100vh - 64px)",
+       overflowY: "auto",
+       backgroundColor: "#FAF7F0",
        border: "1px solid #d4c9b5",
-       borderRadius: 4,
-       boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
-       padding: 10,
+       borderRadius: 6,
+       boxShadow: "0 30px 80px rgba(0,0,0,0.45)",
+       position: "relative",
       }}
      >
-      <p className="font-ui text-[11px] text-[#8a7a65] px-1 pb-2 border-b border-[#d4c9b5]/60 mb-2">
-       Dış kaynakta PDF ara
-      </p>
-      {buildSearchLinks(currentFindEntry).map((link) => (
-       <a
-        key={link.label}
-        href={link.href}
-        target="_blank"
-        rel="noreferrer"
-        onClick={() => setFindMenuOpenId(null)}
-        title={link.hint}
-        style={{
-         display: "block",
-         padding: "8px 10px",
-         borderRadius: 3,
-         textDecoration: "none",
-         color: "#2D1F0E",
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(201,168,76,0.12)")}
-        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-       >
-        <div className="flex items-center gap-1.5">
-         <ExternalLink className="h-3 w-3 text-[#8a7a65]" />
-         <span className="font-ui text-xs">{link.label}</span>
+      {/* Decorative top rule */}
+      <div
+       style={{
+        height: 3,
+        background: "linear-gradient(90deg, #C9A84C 0%, #d4b76a 50%, #C9A84C 100%)",
+       }}
+      />
+
+      {/* Header */}
+      <div style={{ padding: "18px 22px 14px", borderBottom: "1px solid rgba(212,201,181,0.6)" }}>
+       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <div
+           style={{
+            width: 28,
+            height: 28,
+            borderRadius: 4,
+            backgroundColor: "rgba(201,168,76,0.18)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+           }}
+          >
+           <SearchIcon className="h-3.5 w-3.5" style={{ color: "#8a5a1a" }} />
+          </div>
+          <span className="font-ui text-[11px] uppercase tracking-widest" style={{ color: "#8a7a65", letterSpacing: "0.14em" }}>
+           Dış kaynakta PDF ara
+          </span>
+         </div>
+         <h3 className="font-serif text-base leading-snug" style={{ color: "#2D1F0E", fontWeight: 500 }}>
+          {currentFindEntry.title}
+         </h3>
+         <p className="font-ui text-xs mt-1" style={{ color: "#8a7a65" }}>
+          {currentFindEntry.authorName
+           ? `${currentFindEntry.authorName} ${currentFindEntry.authorSurname}`
+           : currentFindEntry.authorSurname}
+         </p>
         </div>
-        {link.hint && (
-         <p className="font-ui text-[10px] text-[#8a7a65] mt-0.5 ml-4">{link.hint}</p>
-        )}
-       </a>
-      ))}
-      <div style={{ borderTop: "1px solid rgba(212,201,181,0.6)", marginTop: 6, paddingTop: 6 }}>
+        <button
+         type="button"
+         onClick={() => setFindMenuOpenId(null)}
+         aria-label="Kapat"
+         style={{
+          width: 28,
+          height: 28,
+          borderRadius: 4,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "transparent",
+          border: "1px solid rgba(212,201,181,0.6)",
+          cursor: "pointer",
+          color: "#8a7a65",
+          flexShrink: 0,
+         }}
+         onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = "rgba(212,201,181,0.3)";
+          e.currentTarget.style.color = "#2D1F0E";
+         }}
+         onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "transparent";
+          e.currentTarget.style.color = "#8a7a65";
+         }}
+        >
+         <X className="h-3.5 w-3.5" />
+        </button>
+       </div>
+      </div>
+
+      {/* Body: source cards */}
+      <div style={{ padding: "14px 16px" }}>
+       <div style={{ display: "grid", gap: 8 }}>
+        {buildSearchLinks(currentFindEntry).map((link) => (
+         <a
+          key={link.label}
+          href={link.href}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => setFindMenuOpenId(null)}
+          style={{
+           display: "flex",
+           alignItems: "center",
+           gap: 12,
+           padding: "12px 14px",
+           borderRadius: 5,
+           backgroundColor: "#ffffff",
+           border: "1px solid rgba(212,201,181,0.7)",
+           textDecoration: "none",
+           color: "#2D1F0E",
+           transition: "all 0.15s ease",
+          }}
+          onMouseEnter={(e) => {
+           e.currentTarget.style.borderColor = link.accent;
+           e.currentTarget.style.transform = "translateX(2px)";
+           e.currentTarget.style.boxShadow = `0 2px 10px ${link.accent}22`;
+          }}
+          onMouseLeave={(e) => {
+           e.currentTarget.style.borderColor = "rgba(212,201,181,0.7)";
+           e.currentTarget.style.transform = "translateX(0)";
+           e.currentTarget.style.boxShadow = "none";
+          }}
+         >
+          <div
+           style={{
+            width: 36,
+            height: 36,
+            borderRadius: 4,
+            backgroundColor: `${link.accent}15`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+           }}
+          >
+           <SearchLinkIcon iconKey={link.iconKey} color={link.accent} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+           <div className="font-ui text-sm" style={{ fontWeight: 500, color: "#2D1F0E" }}>
+            {link.label}
+           </div>
+           {link.hint && (
+            <div className="font-ui text-[11px] mt-0.5" style={{ color: "#8a7a65" }}>
+             {link.hint}
+            </div>
+           )}
+          </div>
+          <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" style={{ color: "#a89a82" }} />
+         </a>
+        ))}
+       </div>
+      </div>
+
+      {/* Footer: retry pipeline */}
+      <div
+       style={{
+        padding: "12px 16px 16px",
+        borderTop: "1px solid rgba(212,201,181,0.6)",
+        backgroundColor: "rgba(212,201,181,0.15)",
+       }}
+      >
        <button
         type="button"
         onClick={() => {
@@ -571,25 +706,47 @@ export default function LibraryEntryTable({
         style={{
          display: "flex",
          alignItems: "center",
-         gap: 6,
-         padding: "8px 10px",
+         justifyContent: "center",
+         gap: 8,
          width: "100%",
-         textAlign: "left",
-         borderRadius: 3,
+         padding: "10px 14px",
+         borderRadius: 4,
          background: "transparent",
-         border: "none",
+         border: "1px solid rgba(138,122,101,0.4)",
          cursor: "pointer",
+         color: "#2D1F0E",
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(201,168,76,0.12)")}
-        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+        onMouseEnter={(e) => {
+         e.currentTarget.style.backgroundColor = "#ffffff";
+         e.currentTarget.style.borderColor = "#8a7a65";
+        }}
+        onMouseLeave={(e) => {
+         e.currentTarget.style.backgroundColor = "transparent";
+         e.currentTarget.style.borderColor = "rgba(138,122,101,0.4)";
+        }}
        >
-        <RotateCw className="h-3 w-3 text-[#8a7a65]" />
-        <span className="font-ui text-xs text-[#2D1F0E]">Pipeline ile tekrar dene</span>
+        <RotateCw className="h-3.5 w-3.5" style={{ color: "#8a7a65" }} />
+        <span className="font-ui text-xs" style={{ fontWeight: 500 }}>
+         Pipeline ile tekrar dene
+        </span>
        </button>
        {currentFindEntry.pdfError && (
-        <p className="font-ui text-[9px] text-[#a89a82] mt-1 px-2 pb-1 leading-snug whitespace-pre-wrap">
-         {currentFindEntry.pdfError.slice(0, 200)}
-        </p>
+        <div
+         style={{
+          marginTop: 10,
+          padding: "8px 10px",
+          borderRadius: 3,
+          backgroundColor: "rgba(201,100,76,0.08)",
+          border: "1px solid rgba(201,100,76,0.2)",
+         }}
+        >
+         <div className="flex items-start gap-1.5">
+          <AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" style={{ color: "#c96748" }} />
+          <p className="font-ui text-[10px] leading-snug" style={{ color: "#8a4b3a" }}>
+           {currentFindEntry.pdfError.slice(0, 240)}
+          </p>
+         </div>
+        </div>
        )}
       </div>
      </div>
