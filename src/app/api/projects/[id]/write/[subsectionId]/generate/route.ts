@@ -17,65 +17,134 @@ interface RagChunk {
   sourceTitle: string
 }
 
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
+const TOP_PROJECT_CHUNKS = 4
+const TOP_LIBRARY_CHUNKS = 4
+
+async function embedQueryText(text: string): Promise<number[] | null> {
+  try {
+    const res = await fetch(`${PYTHON_SERVICE_URL}/embed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts: [text] }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { embeddings: number[][] }
+    return data.embeddings?.[0] ?? null
+  } catch {
+    return null
+  }
+}
+
 async function fetchRagChunks(
   projectId: string,
   subsection: { title: string; description: string | null; keyPoints: string[] }
 ): Promise<RagChunk[]> {
-  const queryTerms = [subsection.title, ...(subsection.keyPoints ?? [])]
-    .join(' ')
+  const queryText = [subsection.title, subsection.description, ...(subsection.keyPoints ?? [])]
+    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    .join(' — ')
+    .trim()
+
+  if (queryText.length === 0) return []
+
+  // Ideal path: embed the subsection query, then semantic-search both tables.
+  const queryVector = await embedQueryText(queryText)
+
+  if (queryVector) {
+    const vecLiteral = JSON.stringify(queryVector)
+
+    // Project's own uploaded sources (proje-specific PDF chunks).
+    const projectChunks = await prisma.$queryRaw<
+      Array<{ content: string; pageNumber: number | null; sourceTitle: string }>
+    >`
+      SELECT sc.content,
+             sc."pageNumber",
+             COALESCE(b.title, s.filename) as "sourceTitle"
+      FROM "SourceChunk" sc
+      JOIN "Source" s ON sc."sourceId" = s.id
+      LEFT JOIN "Bibliography" b ON sc."bibliographyId" = b.id
+      WHERE s."projectId" = ${projectId}
+        AND sc.embedding IS NOT NULL
+      ORDER BY sc.embedding <-> ${vecLiteral}::vector
+      LIMIT ${TOP_PROJECT_CHUNKS}
+    `.catch(() => [] as Array<{ content: string; pageNumber: number | null; sourceTitle: string }>)
+
+    // Library entries linked to this project via Bibliography.libraryEntryId.
+    const libraryChunks = await prisma.$queryRaw<
+      Array<{ content: string; pageNumber: number | null; sourceTitle: string }>
+    >`
+      SELECT lc.content,
+             lc."pageNumber",
+             le.title as "sourceTitle"
+      FROM "LibraryChunk" lc
+      JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
+      WHERE le.id IN (
+        SELECT DISTINCT b."libraryEntryId"
+        FROM "Bibliography" b
+        WHERE b."projectId" = ${projectId}
+          AND b."libraryEntryId" IS NOT NULL
+      )
+      AND lc.embedding IS NOT NULL
+      ORDER BY lc.embedding <-> ${vecLiteral}::vector
+      LIMIT ${TOP_LIBRARY_CHUNKS}
+    `.catch(() => [] as Array<{ content: string; pageNumber: number | null; sourceTitle: string }>)
+
+    const merged = [...projectChunks, ...libraryChunks]
+    if (merged.length > 0) return merged
+  }
+
+  // Fallback path: crude keyword search across both tables when the embed
+  // call fails (e.g. Python service unreachable).
+  const queryTerms = queryText
     .toLowerCase()
     .split(/\s+/)
     .filter((t) => t.length > 3)
-    .slice(0, 10)
+    .slice(0, 3)
 
   if (queryTerms.length === 0) return []
 
   try {
-    const chunks = await prisma.$queryRaw<
-      Array<{ content: string; pageNumber: number | null; filename: string }>
-    >`
-      SELECT sc.content, sc."pageNumber", s.filename
-      FROM "SourceChunk" sc
-      JOIN "Source" s ON sc."sourceId" = s.id
-      WHERE s."projectId" = ${projectId}
-        AND sc.embedding IS NOT NULL
-      ORDER BY sc.embedding <-> (
-        SELECT embedding FROM "SourceChunk"
-        WHERE content ILIKE ${'%' + queryTerms[0] + '%'}
-          AND embedding IS NOT NULL
-        LIMIT 1
-      )
-      LIMIT 8
-    `
-
-    return chunks.map((c) => ({
-      content: c.content,
-      pageNumber: c.pageNumber,
-      sourceTitle: c.filename,
+    const conditions = queryTerms.map((term) => ({
+      content: { contains: term, mode: 'insensitive' as const },
     }))
-  } catch {
-    try {
-      const conditions = queryTerms.slice(0, 3).map((term) => ({
-        content: { contains: term, mode: 'insensitive' as const },
-      }))
 
-      const chunks = await prisma.sourceChunk.findMany({
-        where: {
-          source: { projectId },
-          OR: conditions,
+    const [projectChunks, libraryChunks] = await Promise.all([
+      prisma.sourceChunk.findMany({
+        where: { source: { projectId }, OR: conditions },
+        include: {
+          source: { select: { filename: true } },
+          bibliography: { select: { title: true } },
         },
-        include: { source: { select: { filename: true } } },
-        take: 8,
-      })
+        take: TOP_PROJECT_CHUNKS,
+      }),
+      prisma.libraryChunk.findMany({
+        where: {
+          OR: conditions,
+          libraryEntry: {
+            bibliographies: {
+              some: { projectId },
+            },
+          },
+        },
+        include: { libraryEntry: { select: { title: true } } },
+        take: TOP_LIBRARY_CHUNKS,
+      }),
+    ])
 
-      return chunks.map((c) => ({
+    return [
+      ...projectChunks.map((c) => ({
         content: c.content,
         pageNumber: c.pageNumber,
-        sourceTitle: c.source.filename,
-      }))
-    } catch {
-      return []
-    }
+        sourceTitle: c.bibliography?.title ?? c.source.filename,
+      })),
+      ...libraryChunks.map((c) => ({
+        content: c.content,
+        pageNumber: c.pageNumber,
+        sourceTitle: c.libraryEntry.title,
+      })),
+    ]
+  } catch {
+    return []
   }
 }
 

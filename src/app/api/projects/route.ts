@@ -73,16 +73,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid citationFormat' }, { status: 400 })
     }
 
-    // If a style profile is selected, fetch and copy it
-    let styleProfile = null
+    // Verify the chosen style profile belongs to the user; link it as a live
+    // FK (edits to the profile will flow through to future writing sessions).
+    let verifiedStyleProfileId: string | null = null
     if (styleProfileId) {
       const userStyle = await prisma.userStyleProfile.findFirst({
         where: { id: styleProfileId, userId },
-        select: { profile: true },
+        select: { id: true },
       })
-      if (userStyle?.profile) {
-        styleProfile = userStyle.profile
-      }
+      if (userStyle) verifiedStyleProfileId = userStyle.id
     }
 
     const validTypes: ProjectType[] = ['ACADEMIC', 'BOOK', 'STORY']
@@ -100,7 +99,7 @@ export async function POST(req: NextRequest) {
         citationFormat: resolvedType === 'ACADEMIC' ? (citationFormat ?? 'ISNAD') : 'ISNAD',
         language: language ?? 'en',
         status: 'roadmap',
-        ...(styleProfile && { styleProfile }),
+        ...(verifiedStyleProfileId && { styleProfileId: verifiedStyleProfileId }),
       },
     })
 

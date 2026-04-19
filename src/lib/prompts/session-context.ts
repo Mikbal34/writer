@@ -81,8 +81,13 @@ export async function buildSessionContext(
   })
 
   // --- Load the project for style/citation settings ---
+  // Includes the live-linked UserStyleProfile (via styleProfileId FK) so edits
+  // to the user's writing-twin profile flow through without re-saving the
+  // project. Legacy Project.styleProfile JSON stays as a fallback for older
+  // projects created before the FK existed.
   const project = await prisma.project.findUniqueOrThrow({
     where: { id: chapter.projectId },
+    include: { linkedStyleProfile: true },
   })
 
   // --- Build position info ---
@@ -105,7 +110,9 @@ export async function buildSessionContext(
     sources,
     citationFormat: project.citationFormat as CitationFormat,
     projectType: project.projectType,
-    styleProfile: project.styleProfile
+    styleProfile: project.linkedStyleProfile?.profile
+      ? (project.linkedStyleProfile.profile as Partial<StyleProfile>)
+      : project.styleProfile
       ? (project.styleProfile as Partial<StyleProfile>)
       : null,
     writingGuidelines: project.writingGuidelines
