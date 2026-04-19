@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
 
     // Fire-and-forget PDF downloads for entries that have an open-access URL.
     if (downloads.length > 0) {
-      startLibraryPdfBatch(downloads)
+      startLibraryPdfBatch(downloads, userId)
     }
 
     return NextResponse.json({

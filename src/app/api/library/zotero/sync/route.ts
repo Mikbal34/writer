@@ -3,6 +3,7 @@ import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { getCollectionItems, getItemAttachments, downloadAttachment } from '@/lib/zotero'
 import { processLibraryPdfFromBytes } from '@/lib/library-pipeline'
+import { startJob, completeJob, failJob, updateJob } from '@/lib/jobs'
 
 export async function POST(req: NextRequest) {
   try {
@@ -192,16 +193,40 @@ export async function POST(req: NextRequest) {
     })
 
     // Fire-and-forget: run PDF pipeline for each queued attachment in the
-    // background so the sync response returns quickly.
+    // background so the sync response returns quickly. Track as a background
+    // job so the navbar bell can surface completion.
     if (pdfJobs.length > 0) {
+      const jobId = await startJob({
+        userId,
+        type: 'zotero_sync',
+        title: `${pdfJobs.length} Zotero PDF işleniyor`,
+        resultUrl: '/library',
+        message: `0/${pdfJobs.length} tamamlandı`,
+      })
+
       setImmediate(() => {
         void (async () => {
+          let done = 0
           for (const job of pdfJobs) {
             try {
               await processLibraryPdfFromBytes(job.entryId, job.filename, job.bytes)
             } catch (err) {
               console.error('[zotero/sync] pipeline failed:', job.entryId, err)
             }
+            done++
+            try {
+              await updateJob(jobId, {
+                progress: Math.round((done / pdfJobs.length) * 100),
+                message: `${done}/${pdfJobs.length} tamamlandı`,
+              })
+            } catch {
+              // non-fatal
+            }
+          }
+          try {
+            await completeJob(jobId, { message: `${done} PDF işlendi` })
+          } catch (err) {
+            await failJob(jobId, err instanceof Error ? err.message : String(err))
           }
         })()
       })

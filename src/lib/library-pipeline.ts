@@ -484,13 +484,69 @@ export async function processLibraryPdfFromBytes(
 
 /**
  * Background kickoff for a batch of URL-based jobs (bulk-add-from-search).
+ * When userId is passed we also emit a BackgroundJob so the navbar bell
+ * can surface progress and completion.
  */
-export function startLibraryPdfBatch(jobs: Array<{ entryId: string; pdfUrl: string }>): void {
-  for (const job of jobs) {
-    setImmediate(() => {
-      processLibraryPdfFromUrl(job.entryId, job.pdfUrl).catch((err) => {
-        console.error('[library-pipeline] URL job failed:', job.entryId, err)
+export function startLibraryPdfBatch(
+  jobs: Array<{ entryId: string; pdfUrl: string }>,
+  userId?: string
+): void {
+  if (jobs.length === 0) return
+
+  if (!userId) {
+    for (const job of jobs) {
+      setImmediate(() => {
+        processLibraryPdfFromUrl(job.entryId, job.pdfUrl).catch((err) => {
+          console.error('[library-pipeline] URL job failed:', job.entryId, err)
+        })
       })
-    })
+    }
+    return
   }
+
+  setImmediate(() => {
+    void (async () => {
+      const { startJob, updateJob, completeJob, failJob } = await import('@/lib/jobs')
+      let jobId: string | null = null
+      try {
+        jobId = await startJob({
+          userId,
+          type: 'pdf_pipeline',
+          title: `${jobs.length} PDF işleniyor`,
+          resultUrl: '/library',
+          message: `0/${jobs.length} tamamlandı`,
+        })
+      } catch (err) {
+        console.error('[library-pipeline] startJob failed:', err)
+      }
+
+      let done = 0
+      for (const job of jobs) {
+        try {
+          await processLibraryPdfFromUrl(job.entryId, job.pdfUrl)
+        } catch (err) {
+          console.error('[library-pipeline] URL job failed:', job.entryId, err)
+        }
+        done++
+        if (jobId) {
+          try {
+            await updateJob(jobId, {
+              progress: Math.round((done / jobs.length) * 100),
+              message: `${done}/${jobs.length} tamamlandı`,
+            })
+          } catch {
+            // non-fatal
+          }
+        }
+      }
+
+      if (jobId) {
+        try {
+          await completeJob(jobId, { message: `${done} PDF tamamlandı` })
+        } catch (err) {
+          await failJob(jobId, err instanceof Error ? err.message : String(err))
+        }
+      }
+    })()
+  })
 }

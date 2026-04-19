@@ -19,6 +19,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Ornament } from "@/components/shared/BookElements";
 import { FadeUp } from "@/components/shared/Animations";
+import NotificationBell from "@/components/shared/NotificationBell";
 import StyleProfileCard from "@/components/style/StyleProfileCard";
 import StyleChat from "@/components/style/StyleChat";
 import StyleAnalyzeView from "@/components/style/StyleAnalyzeView";
@@ -62,6 +63,7 @@ function Navbar() {
             <Library className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">My Library</span>
           </Link>
+          <NotificationBell />
           <button
             onClick={() => signOut({ callbackUrl: "/" })}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"

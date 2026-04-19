@@ -53,6 +53,7 @@ model User {
   creditBalance       Int                 @default(1500)
   creditTransactions  CreditTransaction[]
   styleProfiles       UserStyleProfile[]
+  backgroundJobs      BackgroundJob[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -571,4 +572,30 @@ model IllustrationChatMessage {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, sessionId, createdAt])
+}
+
+// ==================== BACKGROUND JOBS ====================
+// Tracks long-running operations (roadmap generation, subsection writing,
+// literature search, zotero sync, etc.) so the UI can show progress in
+// a notification bell even after the user navigates away.
+
+model BackgroundJob {
+  id           String   @id @default(cuid())
+  userId       String
+  type         String   // 'roadmap' | 'subsection' | 'batch_writing' | 'literature_search' | 'zotero_sync' | 'pdf_pipeline'
+  status       String   @default("running") // 'running' | 'done' | 'failed'
+  title        String
+  projectId    String?  // optional — for deep-linking
+  subsectionId String?  // optional — for deep-linking
+  resultUrl    String?  // where to send the user on click
+  progress     Int?     // 0..100 when known
+  message      String?  // latest status message
+  error        String?  @db.Text
+  acknowledged Boolean  @default(false)
+  startedAt    DateTime @default(now())
+  finishedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, startedAt])
 }

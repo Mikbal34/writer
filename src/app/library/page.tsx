@@ -34,6 +34,7 @@ import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
 import { Ornament } from "@/components/shared/BookElements";
 import { FadeUp, FadeIn } from "@/components/shared/Animations";
+import NotificationBell from "@/components/shared/NotificationBell";
 
 const TEXTURE_URL =
   "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp";
@@ -166,6 +167,7 @@ export default function LibraryPage() {
               <Library className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">My Library</span>
             </Link>
+            <NotificationBell />
             <button
               onClick={() => signOut({ callbackUrl: "/" })}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
