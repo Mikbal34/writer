@@ -378,6 +378,34 @@ export default function ExportPage() {
             </div>
           </div>
 
+          {/* Citation format shortcut — only for ACADEMIC projects */}
+          {projectTypeState === "ACADEMIC" && (
+            <div className="border-t border-[#d4c9b5]/40 pt-4 mb-6">
+              <a
+                href={`/projects/${projectId}/settings/citations`}
+                className="flex items-center justify-between p-3 rounded-sm border border-[#d4c9b5] hover:border-[#C9A84C] hover:bg-[#FAF3E3] transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-sm flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: "rgba(201,168,76,0.18)" }}
+                  >
+                    <BookOpen className="h-4 w-4" style={{ color: "#8a5a1a" }} />
+                  </div>
+                  <div>
+                    <div className="font-ui text-xs font-medium text-[#2D1F0E]">
+                      Atıf Formatı
+                    </div>
+                    <div className="font-ui text-[11px] text-[#8a7a65] mt-0.5">
+                      Enstitü/dergi formatına uyarla — canlı önizleme
+                    </div>
+                  </div>
+                </div>
+                <span className="font-ui text-[10px] text-[#8a5a1a]">Aç →</span>
+              </a>
+            </div>
+          )}
+
           {/* Bibliography toggle — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
           <div className="border-t border-[#d4c9b5]/40 pt-4 mb-6">

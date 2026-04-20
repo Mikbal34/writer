@@ -106,7 +106,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       bookDesign?: Record<string, unknown>
     }
 
-    const validFormats: CitationFormat[] = ['ISNAD', 'APA', 'CHICAGO', 'MLA']
+    const validFormats: CitationFormat[] = ['ISNAD', 'APA', 'CHICAGO', 'MLA', 'HARVARD', 'VANCOUVER', 'IEEE', 'AMA', 'TURABIAN']
     if (citationFormat && !validFormats.includes(citationFormat)) {
       return NextResponse.json({ error: 'Invalid citationFormat' }, { status: 400 })
     }
