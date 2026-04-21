@@ -27,6 +27,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { StaggerItem } from "@/components/shared/Animations";
+import type { CitationFormat } from "@prisma/client";
+import {
+  FORMAT_LAYOUT_DEFAULTS,
+  type FormatDefaults,
+} from "@/lib/citations/format-defaults";
+import { CITATION_FORMAT_META } from "@/lib/citations/metadata";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -114,6 +120,18 @@ async function saveDesign(projectId: string, design: BookDesign): Promise<void> 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ bookDesign: design }),
   });
+}
+
+/**
+ * Merge citation-format layout defaults into an existing BookDesign. Fields
+ * the format spec doesn't govern (fonts, colors, image layout, etc.) are
+ * preserved from the user's current design. `description` is a UI-only
+ * field — not stored on the project.
+ */
+function mergeFormatDefaults(current: BookDesign, defaults: FormatDefaults): BookDesign {
+  const { description: _description, ...layout } = defaults;
+  void _description;
+  return { ...current, ...layout };
 }
 
 // ---------------------------------------------------------------------------
@@ -1144,9 +1162,10 @@ export default function DesignPage() {
 
   const [design, setDesign] = useState<BookDesign>(DEFAULT_DESIGN);
   const [isLoading, setIsLoading] = useState(true);
+  const [citationFormat, setCitationFormat] = useState<CitationFormat | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch current design from project
+  // Fetch current design + citation format from project
   const fetchDesign = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${projectId}`);
@@ -1154,6 +1173,9 @@ export default function DesignPage() {
       const data = await res.json();
       if (data.bookDesign && typeof data.bookDesign === "object") {
         setDesign({ ...DEFAULT_DESIGN, ...data.bookDesign });
+      }
+      if (data.citationFormat) {
+        setCitationFormat(data.citationFormat as CitationFormat);
       }
     } catch {
       // ignore
@@ -1267,6 +1289,47 @@ export default function DesignPage() {
                 </button>
               ))}
             </div>
+
+            {/* Citation format spec-based layout */}
+            {citationFormat && (
+              <div className="w-full space-y-2">
+                <p className="font-ui text-[10px] uppercase tracking-wide text-muted-foreground text-center">
+                  Citation Format Layout
+                </p>
+                <button
+                  onClick={async () => {
+                    const defaults = FORMAT_LAYOUT_DEFAULTS[citationFormat];
+                    const merged = mergeFormatDefaults(design, defaults);
+                    setDesign(merged);
+                    try {
+                      const res = await fetch(`/api/projects/${projectId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ bookDesign: merged }),
+                      });
+                      if (res.ok) {
+                        toast.success(
+                          `${CITATION_FORMAT_META[citationFormat].displayName} layout uygulandı`
+                        );
+                      } else {
+                        toast.error("Layout kaydedilemedi");
+                      }
+                    } catch {
+                      toast.error("Layout kaydedilemedi");
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-md border border-[#C9A84C] bg-[#FAF3E3] hover:bg-[#F5EDD8] transition-colors text-left"
+                  title={FORMAT_LAYOUT_DEFAULTS[citationFormat].description}
+                >
+                  <div className="font-ui text-xs font-semibold text-[#8a5a1a]">
+                    Apply {CITATION_FORMAT_META[citationFormat].displayName} defaults
+                  </div>
+                  <div className="font-body text-[10px] text-[#6b5a45] mt-0.5 leading-snug">
+                    {FORMAT_LAYOUT_DEFAULTS[citationFormat].description}
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

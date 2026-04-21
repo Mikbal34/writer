@@ -20,59 +20,20 @@ export interface CitationPreview {
 
 /**
  * Render an inline citation appropriate for the format's in-text style.
- * Author-date & parenthetical formats use the existing formatFootnoteFirst
- * or a hand-rolled rule; numeric formats show `[1]`; footnote formats show
- * a superscript cue. The full footnote/endnote body shows up in the
- * sample sentence's footer.
+ * Defers to the formatter's own `formatInline` (author-date, author-page,
+ * numeric) and renders a superscript cue for footnote formats — the
+ * sample-sentence footer below the preview carries the full note body.
  */
-function buildInline(formatter: CitationFormatter, format: CitationFormat, entry: BibliographyEntry, page?: string): string {
-  const surname = entry.authorSurname
-  const year = entry.year ?? 'n.d.'
-  const pageNum = page ?? entry.pageRange?.split('-')[0] ?? null
-
-  switch (format) {
-    case 'APA':
-    case 'HARVARD':
-      return pageNum ? `(${surname}, ${year}, s. ${pageNum})` : `(${surname}, ${year})`
-    case 'MLA':
-      return pageNum ? `(${surname} ${pageNum})` : `(${surname})`
-    case 'CHICAGO':
-    case 'TURABIAN':
-    case 'ISNAD':
-      // Footnote-style — UI will render ¹ as superscript and the full note
-      // in the sample sentence footer.
-      return '¹'
-    case 'IEEE':
-      return '[1]'
-    case 'VANCOUVER':
-    case 'AMA':
-      return '(1)'
-    default:
-      return `(${surname}, ${year})`
+function buildInline(
+  formatter: CitationFormatter,
+  entry: BibliographyEntry,
+  page: string | undefined,
+  refNumber: number
+): string {
+  if (formatter.inlineStyle === 'footnote') {
+    return refNumber === 1 ? '¹' : refNumber === 2 ? '²' : `^${refNumber}`
   }
-}
-
-function buildInlineSubsequent(formatter: CitationFormatter, format: CitationFormat, entry: BibliographyEntry): string {
-  const surname = entry.authorSurname
-  const year = entry.year ?? 'n.d.'
-  switch (format) {
-    case 'APA':
-    case 'HARVARD':
-      return `(${surname}, ${year})`
-    case 'MLA':
-      return `(${surname})`
-    case 'CHICAGO':
-    case 'TURABIAN':
-    case 'ISNAD':
-      return '²'
-    case 'IEEE':
-      return '[1]'
-    case 'VANCOUVER':
-    case 'AMA':
-      return '(1)'
-    default:
-      return `(${surname}, ${year})`
-  }
+  return formatter.formatInline(entry, page, undefined, refNumber)
 }
 
 /**
@@ -81,7 +42,7 @@ function buildInlineSubsequent(formatter: CitationFormatter, format: CitationFor
  * superscript cue and let the caller render the footnote text below the
  * paragraph.
  */
-function buildSampleSentence(format: CitationFormat, firstInline: string, secondInline: string): string {
+function buildSampleSentence(_format: CitationFormat, firstInline: string, secondInline: string): string {
   return (
     `Recent work in cognitive science has argued that quantum frameworks may ` +
     `offer a productive lens on decision-making${firstInline}. A broader ` +
@@ -99,11 +60,15 @@ export function buildCitationPreview(format: CitationFormat): CitationPreview {
   const meta = CITATION_FORMAT_META[format]
   const formatter = getCitationFormatter(format)
 
-  const samples: CitationPreviewSample[] = CITATION_EXAMPLES.map((entry) => ({
+  const samples: CitationPreviewSample[] = CITATION_EXAMPLES.map((entry, idx) => ({
     entry,
-    inline: buildInline(formatter, format, entry, '45'),
-    inlineSubsequent: buildInlineSubsequent(formatter, format, entry),
-    bibliography: formatter.formatBibliography(entry),
+    // Give each example a distinct reference number so numeric formats
+    // don't collapse them all into [1].
+    inline: buildInline(formatter, entry, '45', idx + 1),
+    inlineSubsequent: buildInline(formatter, entry, undefined, idx + 1),
+    // formatBibliographyEntry applies punctuation normalization; raw `entry`
+    // preserves the markdown italics (`*title*`) for the UI to render.
+    bibliography: formatter.formatBibliographyEntry(entry).entry,
   }))
 
   // The sample sentence uses the first two example entries' inline forms so

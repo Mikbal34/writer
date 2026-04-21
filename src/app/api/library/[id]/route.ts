@@ -67,6 +67,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         ...(body.pageRange !== undefined && { pageRange: body.pageRange?.trim() || null }),
         ...(body.doi !== undefined && { doi: body.doi?.trim() || null }),
         ...(body.url !== undefined && { url: body.url?.trim() || null }),
+        ...(body.accessDate !== undefined && { accessDate: body.accessDate?.trim() || null }),
       },
     })
 

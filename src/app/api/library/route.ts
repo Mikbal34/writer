@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
         pageRange: body.pageRange?.trim() || null,
         doi: body.doi?.trim() || null,
         url: body.url?.trim() || null,
+        accessDate: body.accessDate?.trim() || null,
         importSource: body.importSource ?? 'manual',
         bibtexKey: body.bibtexKey?.trim() || null,
       },

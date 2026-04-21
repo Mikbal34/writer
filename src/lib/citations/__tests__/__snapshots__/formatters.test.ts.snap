@@ -1,0 +1,505 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`bibliography output × entry type > AMA > ansiklopedi — Doe 1`] = `"Doe J. Heuristic. In: *Encyclopedia of Philosophy*. Routledge; 2019:312-318."`;
+
+exports[`bibliography output × entry type > AMA > ceviri — Kant 1`] = `"Kant I. *Critique of Pure Reason*. Paul Guyer, trans. Cambridge University Press; 1998."`;
+
+exports[`bibliography output × entry type > AMA > kitap — Smith 1`] = `"Smith JA. *The Theory of Everything*. 2nd ed. Oxford University Press; 2020."`;
+
+exports[`bibliography output × entry type > AMA > makale — Johnson 1`] = `"Johnson ER. A New Approach to Quantum Cognition. *Journal of Cognitive Science*. 2021;45(3):127-152. doi:10.1234/jcs.2021.045"`;
+
+exports[`bibliography output × entry type > AMA > nesir — Dostoyevski 1`] = `"Dostoyevski F. *Suç ve Ceza*. Can Yayınları; 2019."`;
+
+exports[`bibliography output × entry type > AMA > tez — Yılmaz 1`] = `"Yılmaz A. *Metin Üretiminde Büyük Dil Modelleri* [dissertation]. Boğaziçi Üniversitesi; 2023."`;
+
+exports[`bibliography output × entry type > AMA > web — Brown 1`] = `"Brown M. Climate Change in 2024: A Primer. *Example News*. Published 2024. Accessed May 12, 2024. https://www.example.org/climate-2024"`;
+
+exports[`bibliography output × entry type > APA > ansiklopedi — Doe 1`] = `"Doe, J. (2019). Heuristic. In Richard Roe (Ed.), *Encyclopedia of Philosophy* (Vol. 4, pp. 312-318). Routledge."`;
+
+exports[`bibliography output × entry type > APA > ceviri — Kant 1`] = `"Kant, I. (1998). *Critique of Pure Reason* (Paul Guyer, Trans.). Cambridge University Press."`;
+
+exports[`bibliography output × entry type > APA > kitap — Smith 1`] = `"Smith, J. A. (2020). *The Theory of Everything* (2nd ed.). Oxford University Press."`;
+
+exports[`bibliography output × entry type > APA > makale — Johnson 1`] = `"Johnson, E. R. (2021). A New Approach to Quantum Cognition. *Journal of Cognitive Science*, *45*(3), 127-152. https://doi.org/10.1234/jcs.2021.045"`;
+
+exports[`bibliography output × entry type > APA > nesir — Dostoyevski 1`] = `"Dostoyevski, F. (2019). *Suç ve Ceza*. Can Yayınları."`;
+
+exports[`bibliography output × entry type > APA > tez — Yılmaz 1`] = `"Yılmaz, A. (2023). *Metin Üretiminde Büyük Dil Modelleri* [Doctoral dissertation, Boğaziçi Üniversitesi]."`;
+
+exports[`bibliography output × entry type > APA > web — Brown 1`] = `"Brown, M. (2024). *Climate Change in 2024: A Primer*. Example News. Retrieved May 12, 2024, from https://www.example.org/climate-2024"`;
+
+exports[`bibliography output × entry type > CHICAGO > ansiklopedi — Doe 1`] = `"Doe, Jane. "Heuristic." *Encyclopedia of Philosophy* 4 (2019): 312-318."`;
+
+exports[`bibliography output × entry type > CHICAGO > ceviri — Kant 1`] = `"Kant, Immanuel. *Critique of Pure Reason*. Translated by Paul Guyer. Cambridge: Cambridge University Press, 1998."`;
+
+exports[`bibliography output × entry type > CHICAGO > kitap — Smith 1`] = `"Smith, John A. *The Theory of Everything*. 2nd ed. Oxford: Oxford University Press, 2020."`;
+
+exports[`bibliography output × entry type > CHICAGO > makale — Johnson 1`] = `"Johnson, Emily R. "A New Approach to Quantum Cognition." *Journal of Cognitive Science* 45, no. 3 (2021): 127-152. https://doi.org/10.1234/jcs.2021.045."`;
+
+exports[`bibliography output × entry type > CHICAGO > nesir — Dostoyevski 1`] = `"Dostoyevski, Fyodor. *Suç ve Ceza*. İstanbul: Can Yayınları, 2019."`;
+
+exports[`bibliography output × entry type > CHICAGO > tez — Yılmaz 1`] = `"Yılmaz, Ayşe. "Metin Üretiminde Büyük Dil Modelleri." PhD diss., Boğaziçi Üniversitesi, 2023."`;
+
+exports[`bibliography output × entry type > CHICAGO > web — Brown 1`] = `"Brown, Michael. "Climate Change in 2024: A Primer." *Example News*. 2024. https://www.example.org/climate-2024."`;
+
+exports[`bibliography output × entry type > HARVARD > ansiklopedi — Doe 1`] = `"Doe, J. (2019) 'Heuristic', *Encyclopedia of Philosophy*. Edited by Richard Roe. New York: Routledge, pp. 312-318."`;
+
+exports[`bibliography output × entry type > HARVARD > ceviri — Kant 1`] = `"Kant, I. (1998) *Critique of Pure Reason*. Translated by Paul Guyer. Cambridge: Cambridge University Press."`;
+
+exports[`bibliography output × entry type > HARVARD > kitap — Smith 1`] = `"Smith, J.A. (2020) *The Theory of Everything*. 2nd edn. Oxford: Oxford University Press."`;
+
+exports[`bibliography output × entry type > HARVARD > makale — Johnson 1`] = `"Johnson, E.R. (2021) 'A New Approach to Quantum Cognition', *Journal of Cognitive Science*, 45(3), pp. 127-152. doi:10.1234/jcs.2021.045."`;
+
+exports[`bibliography output × entry type > HARVARD > nesir — Dostoyevski 1`] = `"Dostoyevski, F. (2019) *Suç ve Ceza*. İstanbul: Can Yayınları."`;
+
+exports[`bibliography output × entry type > HARVARD > tez — Yılmaz 1`] = `"Yılmaz, A. (2023) *Metin Üretiminde Büyük Dil Modelleri*. PhD thesis. Boğaziçi Üniversitesi."`;
+
+exports[`bibliography output × entry type > HARVARD > web — Brown 1`] = `"Brown, M. (2024) *Climate Change in 2024: A Primer*. Available at: https://www.example.org/climate-2024 (Accessed: 12 May 2024)."`;
+
+exports[`bibliography output × entry type > IEEE > ansiklopedi — Doe 1`] = `"J. Doe, "Heuristic," in *Encyclopedia of Philosophy*, vol. 4. New York: Routledge, 2019, pp. 312-318."`;
+
+exports[`bibliography output × entry type > IEEE > ceviri — Kant 1`] = `"I. Kant, *Critique of Pure Reason*, Paul Guyer, Trans. Cambridge: Cambridge University Press, 1998."`;
+
+exports[`bibliography output × entry type > IEEE > kitap — Smith 1`] = `"J. A. Smith, *The Theory of Everything*, 2nd ed. Oxford: Oxford University Press, 2020."`;
+
+exports[`bibliography output × entry type > IEEE > makale — Johnson 1`] = `"E. R. Johnson, "A New Approach to Quantum Cognition," *Journal of Cognitive Science*, vol. 45, no. 3, pp. 127-152, 2021, doi: 10.1234/jcs.2021.045."`;
+
+exports[`bibliography output × entry type > IEEE > nesir — Dostoyevski 1`] = `"F. Dostoyevski, *Suç ve Ceza*. İstanbul: Can Yayınları, 2019."`;
+
+exports[`bibliography output × entry type > IEEE > tez — Yılmaz 1`] = `"A. Yılmaz, "Metin Üretiminde Büyük Dil Modelleri," Ph.D. dissertation, Boğaziçi Üniversitesi, İstanbul, 2023."`;
+
+exports[`bibliography output × entry type > IEEE > web — Brown 1`] = `"M. Brown, "Climate Change in 2024: A Primer." Example News, 2024. Accessed: May 12, 2024. [Online]. Available: https://www.example.org/climate-2024"`;
+
+exports[`bibliography output × entry type > ISNAD > ansiklopedi — Doe 1`] = `"Doe, Jane. "Heuristic". *Encyclopedia of Philosophy* 4 (2019), 312-318."`;
+
+exports[`bibliography output × entry type > ISNAD > ceviri — Kant 1`] = `"Kant, Immanuel. *Critique of Pure Reason*. çev. Paul Guyer. Cambridge: Cambridge University Press, 1998."`;
+
+exports[`bibliography output × entry type > ISNAD > kitap — Smith 1`] = `"Smith, John A. *The Theory of Everything*. 2. bs. Oxford: Oxford University Press, 2020."`;
+
+exports[`bibliography output × entry type > ISNAD > makale — Johnson 1`] = `"Johnson, Emily R. "A New Approach to Quantum Cognition". *Journal of Cognitive Science* 45/3 (2021): 127-152."`;
+
+exports[`bibliography output × entry type > ISNAD > nesir — Dostoyevski 1`] = `"Dostoyevski, Fyodor. *Suç ve Ceza*. nşr. Sabri Gürses. İstanbul: Can Yayınları, 2019."`;
+
+exports[`bibliography output × entry type > ISNAD > tez — Yılmaz 1`] = `"Yılmaz, Ayşe. "Metin Üretiminde Büyük Dil Modelleri". Yayımlanmamış Doktora Tezi. Boğaziçi Üniversitesi, 2023."`;
+
+exports[`bibliography output × entry type > ISNAD > web — Brown 1`] = `"Brown, Michael. "Climate Change in 2024: A Primer". Erişim: 12.05.2024. https://www.example.org/climate-2024"`;
+
+exports[`bibliography output × entry type > MLA > ansiklopedi — Doe 1`] = `"Doe, Jane. "Heuristic." *Encyclopedia of Philosophy*, edited by Richard Roe, vol. 4, Routledge, 2019, pp. 312-318."`;
+
+exports[`bibliography output × entry type > MLA > ceviri — Kant 1`] = `"Kant, Immanuel. *Critique of Pure Reason*. translated by Paul Guyer, Cambridge University Press, 1998."`;
+
+exports[`bibliography output × entry type > MLA > kitap — Smith 1`] = `"Smith, John A. *The Theory of Everything*. 2nd ed., Oxford University Press, 2020."`;
+
+exports[`bibliography output × entry type > MLA > makale — Johnson 1`] = `"Johnson, Emily R. "A New Approach to Quantum Cognition." *Journal of Cognitive Science*, vol. 45, no. 3, 2021, pp. 127-152."`;
+
+exports[`bibliography output × entry type > MLA > nesir — Dostoyevski 1`] = `"Dostoyevski, Fyodor. *Suç ve Ceza*. Can Yayınları, 2019."`;
+
+exports[`bibliography output × entry type > MLA > tez — Yılmaz 1`] = `"Yılmaz, Ayşe. "Metin Üretiminde Büyük Dil Modelleri." 2023. Boğaziçi Üniversitesi. PhD dissertation."`;
+
+exports[`bibliography output × entry type > MLA > web — Brown 1`] = `"Brown, Michael. "Climate Change in 2024: A Primer." *Example News*, 2024, www.example.org/climate-2024. Accessed 12 May 2024."`;
+
+exports[`bibliography output × entry type > TURABIAN > ansiklopedi — Doe 1`] = `"Doe, Jane. "Heuristic." *Encyclopedia of Philosophy* 4 (2019): 312-318."`;
+
+exports[`bibliography output × entry type > TURABIAN > ceviri — Kant 1`] = `"Kant, Immanuel. *Critique of Pure Reason*. Translated by Paul Guyer. Cambridge: Cambridge University Press, 1998."`;
+
+exports[`bibliography output × entry type > TURABIAN > kitap — Smith 1`] = `"Smith, John A. *The Theory of Everything*. 2nd ed. Oxford: Oxford University Press, 2020."`;
+
+exports[`bibliography output × entry type > TURABIAN > makale — Johnson 1`] = `"Johnson, Emily R. "A New Approach to Quantum Cognition." *Journal of Cognitive Science* 45, no. 3 (2021): 127-152."`;
+
+exports[`bibliography output × entry type > TURABIAN > nesir — Dostoyevski 1`] = `"Dostoyevski, Fyodor. *Suç ve Ceza*. İstanbul: Can Yayınları, 2019."`;
+
+exports[`bibliography output × entry type > TURABIAN > tez — Yılmaz 1`] = `"Yılmaz, Ayşe. "Metin Üretiminde Büyük Dil Modelleri." PhD diss., Boğaziçi Üniversitesi, 2023."`;
+
+exports[`bibliography output × entry type > TURABIAN > web — Brown 1`] = `"Brown, Michael. "Climate Change in 2024: A Primer." *Example News*. 2024. https://www.example.org/climate-2024."`;
+
+exports[`bibliography output × entry type > VANCOUVER > ansiklopedi — Doe 1`] = `"Doe J. Heuristic. In: Encyclopedia of Philosophy. Vol. 4. New York: Routledge; 2019. p. 312-318."`;
+
+exports[`bibliography output × entry type > VANCOUVER > ceviri — Kant 1`] = `"Kant I. Critique of Pure Reason. Paul Guyer, translator. Cambridge: Cambridge University Press; 1998."`;
+
+exports[`bibliography output × entry type > VANCOUVER > kitap — Smith 1`] = `"Smith JA. The Theory of Everything. 2nd ed. Oxford: Oxford University Press; 2020."`;
+
+exports[`bibliography output × entry type > VANCOUVER > makale — Johnson 1`] = `"Johnson ER. A New Approach to Quantum Cognition. Journal of Cognitive Science. 2021;45(3):127-152. doi:10.1234/jcs.2021.045"`;
+
+exports[`bibliography output × entry type > VANCOUVER > nesir — Dostoyevski 1`] = `"Dostoyevski F. Suç ve Ceza. İstanbul: Can Yayınları; 2019."`;
+
+exports[`bibliography output × entry type > VANCOUVER > tez — Yılmaz 1`] = `"Yılmaz A. Metin Üretiminde Büyük Dil Modelleri [dissertation]. İstanbul: Boğaziçi Üniversitesi; 2023."`;
+
+exports[`bibliography output × entry type > VANCOUVER > web — Brown 1`] = `"Brown M. Climate Change in 2024: A Primer [Internet]. Example News; 2024 [cited 2024 May 12]. Available from: https://www.example.org/climate-2024"`;
+
+exports[`footnote (first) output × entry type > AMA > ansiklopedi — Doe 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > AMA > ceviri — Kant 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > AMA > kitap — Smith 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > AMA > makale — Johnson 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > AMA > nesir — Dostoyevski 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > AMA > tez — Yılmaz 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > AMA > web — Brown 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > APA > ansiklopedi — Doe 1`] = `"(Doe, 2019, p. 45)"`;
+
+exports[`footnote (first) output × entry type > APA > ceviri — Kant 1`] = `"(Kant, 1998, p. 45)"`;
+
+exports[`footnote (first) output × entry type > APA > kitap — Smith 1`] = `"(Smith, 2020, p. 45)"`;
+
+exports[`footnote (first) output × entry type > APA > makale — Johnson 1`] = `"(Johnson, 2021, p. 45)"`;
+
+exports[`footnote (first) output × entry type > APA > nesir — Dostoyevski 1`] = `"(Dostoyevski, 2019, p. 45)"`;
+
+exports[`footnote (first) output × entry type > APA > tez — Yılmaz 1`] = `"(Yılmaz, 2023, p. 45)"`;
+
+exports[`footnote (first) output × entry type > APA > web — Brown 1`] = `"(Brown, 2024, p. 45)"`;
+
+exports[`footnote (first) output × entry type > CHICAGO > ansiklopedi — Doe 1`] = `"Jane Doe, "Heuristic," *Encyclopedia of Philosophy* 4 (2019): 45."`;
+
+exports[`footnote (first) output × entry type > CHICAGO > ceviri — Kant 1`] = `"Immanuel Kant, *Critique of Pure Reason*, trans. Paul Guyer (Cambridge: Cambridge University Press, 1998), 45."`;
+
+exports[`footnote (first) output × entry type > CHICAGO > kitap — Smith 1`] = `"John A. Smith, *The Theory of Everything* (Oxford: Oxford University Press, 2020), 45."`;
+
+exports[`footnote (first) output × entry type > CHICAGO > makale — Johnson 1`] = `"Emily R. Johnson, "A New Approach to Quantum Cognition," *Journal of Cognitive Science* 45, no. 3 (2021): 45, https://doi.org/10.1234/jcs.2021.045."`;
+
+exports[`footnote (first) output × entry type > CHICAGO > nesir — Dostoyevski 1`] = `"Fyodor Dostoyevski, *Suç ve Ceza* (İstanbul: Can Yayınları, 2019), 45."`;
+
+exports[`footnote (first) output × entry type > CHICAGO > tez — Yılmaz 1`] = `"Ayşe Yılmaz, "Metin Üretiminde Büyük Dil Modelleri" (PhD diss., Boğaziçi Üniversitesi, 2023), 45."`;
+
+exports[`footnote (first) output × entry type > CHICAGO > web — Brown 1`] = `"Michael Brown, "Climate Change in 2024: A Primer", *Example News*, 2024, https://www.example.org/climate-2024."`;
+
+exports[`footnote (first) output × entry type > HARVARD > ansiklopedi — Doe 1`] = `"(Doe, 2019, p. 45)"`;
+
+exports[`footnote (first) output × entry type > HARVARD > ceviri — Kant 1`] = `"(Kant, 1998, p. 45)"`;
+
+exports[`footnote (first) output × entry type > HARVARD > kitap — Smith 1`] = `"(Smith, 2020, p. 45)"`;
+
+exports[`footnote (first) output × entry type > HARVARD > makale — Johnson 1`] = `"(Johnson, 2021, p. 45)"`;
+
+exports[`footnote (first) output × entry type > HARVARD > nesir — Dostoyevski 1`] = `"(Dostoyevski, 2019, p. 45)"`;
+
+exports[`footnote (first) output × entry type > HARVARD > tez — Yılmaz 1`] = `"(Yılmaz, 2023, p. 45)"`;
+
+exports[`footnote (first) output × entry type > HARVARD > web — Brown 1`] = `"(Brown, 2024, p. 45)"`;
+
+exports[`footnote (first) output × entry type > IEEE > ansiklopedi — Doe 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > IEEE > ceviri — Kant 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > IEEE > kitap — Smith 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > IEEE > makale — Johnson 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > IEEE > nesir — Dostoyevski 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > IEEE > tez — Yılmaz 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > IEEE > web — Brown 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > ISNAD > ansiklopedi — Doe 1`] = `"Jane Doe, "Heuristic", *Encyclopedia of Philosophy* 4 (New York: Routledge, 2019), 45."`;
+
+exports[`footnote (first) output × entry type > ISNAD > ceviri — Kant 1`] = `"Immanuel Kant, *Critique of Pure Reason*, çev. Paul Guyer (Cambridge: Cambridge University Press, 1998), 45."`;
+
+exports[`footnote (first) output × entry type > ISNAD > kitap — Smith 1`] = `"John A. Smith, *The Theory of Everything* (Oxford: Oxford University Press, 2020), 45."`;
+
+exports[`footnote (first) output × entry type > ISNAD > makale — Johnson 1`] = `"Emily R. Johnson, "A New Approach to Quantum Cognition", *Journal of Cognitive Science* 45/3 (2021), 45."`;
+
+exports[`footnote (first) output × entry type > ISNAD > nesir — Dostoyevski 1`] = `"Fyodor Dostoyevski, *Suç ve Ceza*, nşr. Sabri Gürses (İstanbul: Can Yayınları, 2019), 45."`;
+
+exports[`footnote (first) output × entry type > ISNAD > tez — Yılmaz 1`] = `"Ayşe Yılmaz, "Metin Üretiminde Büyük Dil Modelleri" (Doktora Tezi, Boğaziçi Üniversitesi, 2023), 45."`;
+
+exports[`footnote (first) output × entry type > ISNAD > web — Brown 1`] = `"Michael Brown, "Climate Change in 2024: A Primer" (Erişim 2024)."`;
+
+exports[`footnote (first) output × entry type > MLA > ansiklopedi — Doe 1`] = `"(Doe 45)"`;
+
+exports[`footnote (first) output × entry type > MLA > ceviri — Kant 1`] = `"(Kant 45)"`;
+
+exports[`footnote (first) output × entry type > MLA > kitap — Smith 1`] = `"(Smith 45)"`;
+
+exports[`footnote (first) output × entry type > MLA > makale — Johnson 1`] = `"(Johnson 45)"`;
+
+exports[`footnote (first) output × entry type > MLA > nesir — Dostoyevski 1`] = `"(Dostoyevski 45)"`;
+
+exports[`footnote (first) output × entry type > MLA > tez — Yılmaz 1`] = `"(Yılmaz 45)"`;
+
+exports[`footnote (first) output × entry type > MLA > web — Brown 1`] = `"(Brown 45)"`;
+
+exports[`footnote (first) output × entry type > TURABIAN > ansiklopedi — Doe 1`] = `"Jane Doe, "Heuristic," *Encyclopedia of Philosophy* 4 (2019): 45."`;
+
+exports[`footnote (first) output × entry type > TURABIAN > ceviri — Kant 1`] = `"Immanuel Kant, *Critique of Pure Reason*, trans. Paul Guyer (Cambridge: Cambridge University Press, 1998), 45."`;
+
+exports[`footnote (first) output × entry type > TURABIAN > kitap — Smith 1`] = `"John A. Smith, *The Theory of Everything* (Oxford: Oxford University Press, 2020), 45."`;
+
+exports[`footnote (first) output × entry type > TURABIAN > makale — Johnson 1`] = `"Emily R. Johnson, "A New Approach to Quantum Cognition," *Journal of Cognitive Science* 45, no. 3 (2021): 45."`;
+
+exports[`footnote (first) output × entry type > TURABIAN > nesir — Dostoyevski 1`] = `"Fyodor Dostoyevski, *Suç ve Ceza* (İstanbul: Can Yayınları, 2019), 45."`;
+
+exports[`footnote (first) output × entry type > TURABIAN > tez — Yılmaz 1`] = `"Ayşe Yılmaz, "Metin Üretiminde Büyük Dil Modelleri" (PhD diss., Boğaziçi Üniversitesi, 2023), 45."`;
+
+exports[`footnote (first) output × entry type > TURABIAN > web — Brown 1`] = `"Michael Brown, "Climate Change in 2024: A Primer", *Example News*, 2024, https://www.example.org/climate-2024."`;
+
+exports[`footnote (first) output × entry type > VANCOUVER > ansiklopedi — Doe 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > VANCOUVER > ceviri — Kant 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > VANCOUVER > kitap — Smith 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > VANCOUVER > makale — Johnson 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > VANCOUVER > nesir — Dostoyevski 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > VANCOUVER > tez — Yılmaz 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (first) output × entry type > VANCOUVER > web — Brown 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > AMA > ansiklopedi — Doe 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > AMA > ceviri — Kant 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > AMA > kitap — Smith 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > AMA > makale — Johnson 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > AMA > nesir — Dostoyevski 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > AMA > tez — Yılmaz 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > AMA > web — Brown 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > APA > ansiklopedi — Doe 1`] = `"(Doe, 2019, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > APA > ceviri — Kant 1`] = `"(Kant, 1998, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > APA > kitap — Smith 1`] = `"(Smith, 2020, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > APA > makale — Johnson 1`] = `"(Johnson, 2021, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > APA > nesir — Dostoyevski 1`] = `"(Dostoyevski, 2019, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > APA > tez — Yılmaz 1`] = `"(Yılmaz, 2023, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > APA > web — Brown 1`] = `"(Brown, 2024, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > CHICAGO > ansiklopedi — Doe 1`] = `"Doe, *Heuristic*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > CHICAGO > ceviri — Kant 1`] = `"Kant, *Critique*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > CHICAGO > kitap — Smith 1`] = `"Smith, *Theory of Everything*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > CHICAGO > makale — Johnson 1`] = `"Johnson, "New Approach to Quantum", 45."`;
+
+exports[`footnote (subsequent) output × entry type > CHICAGO > nesir — Dostoyevski 1`] = `"Dostoyevski, *Suç ve Ceza*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > CHICAGO > tez — Yılmaz 1`] = `"Yılmaz, *Metin Üretiminde Büyük Dil*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > CHICAGO > web — Brown 1`] = `"Brown, *Climate Change in 2024:*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > HARVARD > ansiklopedi — Doe 1`] = `"(Doe, 2019, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > HARVARD > ceviri — Kant 1`] = `"(Kant, 1998, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > HARVARD > kitap — Smith 1`] = `"(Smith, 2020, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > HARVARD > makale — Johnson 1`] = `"(Johnson, 2021, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > HARVARD > nesir — Dostoyevski 1`] = `"(Dostoyevski, 2019, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > HARVARD > tez — Yılmaz 1`] = `"(Yılmaz, 2023, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > HARVARD > web — Brown 1`] = `"(Brown, 2024, p. 45)"`;
+
+exports[`footnote (subsequent) output × entry type > IEEE > ansiklopedi — Doe 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > IEEE > ceviri — Kant 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > IEEE > kitap — Smith 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > IEEE > makale — Johnson 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > IEEE > nesir — Dostoyevski 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > IEEE > tez — Yılmaz 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > IEEE > web — Brown 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > ISNAD > ansiklopedi — Doe 1`] = `"Doe, *Heuristic*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > ISNAD > ceviri — Kant 1`] = `"Kant, *Critique*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > ISNAD > kitap — Smith 1`] = `"Smith, *Theory of Everything*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > ISNAD > makale — Johnson 1`] = `"Johnson, "A New Approach to", 45."`;
+
+exports[`footnote (subsequent) output × entry type > ISNAD > nesir — Dostoyevski 1`] = `"Dostoyevski, *Suç ve Ceza*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > ISNAD > tez — Yılmaz 1`] = `"Yılmaz, *Metin Üretiminde Büyük Dil*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > ISNAD > web — Brown 1`] = `"Brown, *Climate Change in 2024:*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > MLA > ansiklopedi — Doe 1`] = `"(Doe 45)"`;
+
+exports[`footnote (subsequent) output × entry type > MLA > ceviri — Kant 1`] = `"(Kant 45)"`;
+
+exports[`footnote (subsequent) output × entry type > MLA > kitap — Smith 1`] = `"(Smith 45)"`;
+
+exports[`footnote (subsequent) output × entry type > MLA > makale — Johnson 1`] = `"(Johnson 45)"`;
+
+exports[`footnote (subsequent) output × entry type > MLA > nesir — Dostoyevski 1`] = `"(Dostoyevski 45)"`;
+
+exports[`footnote (subsequent) output × entry type > MLA > tez — Yılmaz 1`] = `"(Yılmaz 45)"`;
+
+exports[`footnote (subsequent) output × entry type > MLA > web — Brown 1`] = `"(Brown 45)"`;
+
+exports[`footnote (subsequent) output × entry type > TURABIAN > ansiklopedi — Doe 1`] = `"Doe, *Heuristic*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > TURABIAN > ceviri — Kant 1`] = `"Kant, *Critique*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > TURABIAN > kitap — Smith 1`] = `"Smith, *Theory of Everything*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > TURABIAN > makale — Johnson 1`] = `"Johnson, "New Approach to Quantum", 45."`;
+
+exports[`footnote (subsequent) output × entry type > TURABIAN > nesir — Dostoyevski 1`] = `"Dostoyevski, *Suç ve Ceza*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > TURABIAN > tez — Yılmaz 1`] = `"Yılmaz, *Metin Üretiminde Büyük Dil*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > TURABIAN > web — Brown 1`] = `"Brown, *Climate Change in 2024:*, 45."`;
+
+exports[`footnote (subsequent) output × entry type > VANCOUVER > ansiklopedi — Doe 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > VANCOUVER > ceviri — Kant 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > VANCOUVER > kitap — Smith 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > VANCOUVER > makale — Johnson 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > VANCOUVER > nesir — Dostoyevski 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > VANCOUVER > tez — Yılmaz 1`] = `"[1, p. 45]"`;
+
+exports[`footnote (subsequent) output × entry type > VANCOUVER > web — Brown 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > AMA > ansiklopedi — Doe 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > AMA > ceviri — Kant 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > AMA > kitap — Smith 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > AMA > makale — Johnson 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > AMA > nesir — Dostoyevski 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > AMA > tez — Yılmaz 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > AMA > web — Brown 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > APA > ansiklopedi — Doe 1`] = `"(Doe, 2019, p. 45)"`;
+
+exports[`inline output × entry type > APA > ceviri — Kant 1`] = `"(Kant, 1998, p. 45)"`;
+
+exports[`inline output × entry type > APA > kitap — Smith 1`] = `"(Smith, 2020, p. 45)"`;
+
+exports[`inline output × entry type > APA > makale — Johnson 1`] = `"(Johnson, 2021, p. 45)"`;
+
+exports[`inline output × entry type > APA > nesir — Dostoyevski 1`] = `"(Dostoyevski, 2019, p. 45)"`;
+
+exports[`inline output × entry type > APA > tez — Yılmaz 1`] = `"(Yılmaz, 2023, p. 45)"`;
+
+exports[`inline output × entry type > APA > web — Brown 1`] = `"(Brown, 2024, p. 45)"`;
+
+exports[`inline output × entry type > CHICAGO > ansiklopedi — Doe 1`] = `""`;
+
+exports[`inline output × entry type > CHICAGO > ceviri — Kant 1`] = `""`;
+
+exports[`inline output × entry type > CHICAGO > kitap — Smith 1`] = `""`;
+
+exports[`inline output × entry type > CHICAGO > makale — Johnson 1`] = `""`;
+
+exports[`inline output × entry type > CHICAGO > nesir — Dostoyevski 1`] = `""`;
+
+exports[`inline output × entry type > CHICAGO > tez — Yılmaz 1`] = `""`;
+
+exports[`inline output × entry type > CHICAGO > web — Brown 1`] = `""`;
+
+exports[`inline output × entry type > HARVARD > ansiklopedi — Doe 1`] = `"(Doe, 2019, p. 45)"`;
+
+exports[`inline output × entry type > HARVARD > ceviri — Kant 1`] = `"(Kant, 1998, p. 45)"`;
+
+exports[`inline output × entry type > HARVARD > kitap — Smith 1`] = `"(Smith, 2020, p. 45)"`;
+
+exports[`inline output × entry type > HARVARD > makale — Johnson 1`] = `"(Johnson, 2021, p. 45)"`;
+
+exports[`inline output × entry type > HARVARD > nesir — Dostoyevski 1`] = `"(Dostoyevski, 2019, p. 45)"`;
+
+exports[`inline output × entry type > HARVARD > tez — Yılmaz 1`] = `"(Yılmaz, 2023, p. 45)"`;
+
+exports[`inline output × entry type > HARVARD > web — Brown 1`] = `"(Brown, 2024, p. 45)"`;
+
+exports[`inline output × entry type > IEEE > ansiklopedi — Doe 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > IEEE > ceviri — Kant 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > IEEE > kitap — Smith 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > IEEE > makale — Johnson 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > IEEE > nesir — Dostoyevski 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > IEEE > tez — Yılmaz 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > IEEE > web — Brown 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > ISNAD > ansiklopedi — Doe 1`] = `""`;
+
+exports[`inline output × entry type > ISNAD > ceviri — Kant 1`] = `""`;
+
+exports[`inline output × entry type > ISNAD > kitap — Smith 1`] = `""`;
+
+exports[`inline output × entry type > ISNAD > makale — Johnson 1`] = `""`;
+
+exports[`inline output × entry type > ISNAD > nesir — Dostoyevski 1`] = `""`;
+
+exports[`inline output × entry type > ISNAD > tez — Yılmaz 1`] = `""`;
+
+exports[`inline output × entry type > ISNAD > web — Brown 1`] = `""`;
+
+exports[`inline output × entry type > MLA > ansiklopedi — Doe 1`] = `"(Doe 45)"`;
+
+exports[`inline output × entry type > MLA > ceviri — Kant 1`] = `"(Kant 45)"`;
+
+exports[`inline output × entry type > MLA > kitap — Smith 1`] = `"(Smith 45)"`;
+
+exports[`inline output × entry type > MLA > makale — Johnson 1`] = `"(Johnson 45)"`;
+
+exports[`inline output × entry type > MLA > nesir — Dostoyevski 1`] = `"(Dostoyevski 45)"`;
+
+exports[`inline output × entry type > MLA > tez — Yılmaz 1`] = `"(Yılmaz 45)"`;
+
+exports[`inline output × entry type > MLA > web — Brown 1`] = `"(Brown 45)"`;
+
+exports[`inline output × entry type > TURABIAN > ansiklopedi — Doe 1`] = `""`;
+
+exports[`inline output × entry type > TURABIAN > ceviri — Kant 1`] = `""`;
+
+exports[`inline output × entry type > TURABIAN > kitap — Smith 1`] = `""`;
+
+exports[`inline output × entry type > TURABIAN > makale — Johnson 1`] = `""`;
+
+exports[`inline output × entry type > TURABIAN > nesir — Dostoyevski 1`] = `""`;
+
+exports[`inline output × entry type > TURABIAN > tez — Yılmaz 1`] = `""`;
+
+exports[`inline output × entry type > TURABIAN > web — Brown 1`] = `""`;
+
+exports[`inline output × entry type > VANCOUVER > ansiklopedi — Doe 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > VANCOUVER > ceviri — Kant 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > VANCOUVER > kitap — Smith 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > VANCOUVER > makale — Johnson 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > VANCOUVER > nesir — Dostoyevski 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > VANCOUVER > tez — Yılmaz 1`] = `"[1, p. 45]"`;
+
+exports[`inline output × entry type > VANCOUVER > web — Brown 1`] = `"[1, p. 45]"`;

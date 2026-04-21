@@ -67,7 +67,10 @@ const ENTRY_TYPE_LABELS: Record<string, string> = {
   web: "Web",
 };
 
-const ENTRY_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+const ENTRY_TYPE_ICONS: Record<
+  string,
+  React.ComponentType<{ className?: string; style?: React.CSSProperties }>
+> = {
   kitap: BookOpen,
   makale: FileText,
   nesir: BookMarked,
@@ -84,7 +87,10 @@ const INLINE_STYLE_LABEL: Record<string, string> = {
   footnote: "Dipnotlu",
 };
 
-const INLINE_STYLE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+const INLINE_STYLE_ICON: Record<
+  string,
+  React.ComponentType<{ className?: string; style?: React.CSSProperties }>
+> = {
   "author-date": Hash,
   "parenthetical-author-page": Hash,
   numeric: Hash,
@@ -443,9 +449,10 @@ function highlightInline(sentence: string): string {
   const escaped = escapeHtml(sentence);
   return escaped
     .replace(/(\([^)]*\d{4}[^)]*\))/g, '<span style="background-color:rgba(201,168,76,0.25);padding:0 3px;border-radius:2px;">$1</span>')
-    .replace(/(\(\d+\))/g, '<span style="background-color:rgba(201,168,76,0.25);padding:0 3px;border-radius:2px;">$1</span>')
-    .replace(/(\[\d+\])/g, '<span style="background-color:rgba(201,168,76,0.25);padding:0 3px;border-radius:2px;">$1</span>')
-    .replace(/(¹|²|³|⁴|⁵)/g, '<sup style="color:#8a5a1a;font-weight:600;">$1</sup>');
+    .replace(/(\([^)]*\d+[^)]*\))/g, '<span style="background-color:rgba(201,168,76,0.25);padding:0 3px;border-radius:2px;">$1</span>')
+    .replace(/(\[\d+[^\]]*\])/g, '<span style="background-color:rgba(201,168,76,0.25);padding:0 3px;border-radius:2px;">$1</span>')
+    .replace(/(¹|²|³|⁴|⁵|⁶|⁷|⁸|⁹)/g, '<sup style="color:#8a5a1a;font-weight:600;">$1</sup>')
+    .replace(/\^(\d+)/g, '<sup style="color:#8a5a1a;font-weight:600;">$1</sup>');
 }
 
 function renderItalic(text: string): string {

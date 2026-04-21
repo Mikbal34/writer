@@ -1,47 +1,48 @@
 /**
  * MLA 9th Edition Citation Formatter
  *
- * In-text: (Surname Page) — no comma, no "p."
- * Works Cited entries follow MLA 9 core elements.
+ * Reference: https://style.mla.org/ (MLA Handbook, 9th ed., 2021)
+ *
+ * Key rules (MLA 9):
+ *  - Works Cited list is ALPHABETICAL by first author's surname.
+ *  - In-text: (Surname Page) — no comma, no "p.".
+ *  - Core elements: Author. "Title of Source." *Title of Container*,
+ *    Other contributors, Version, Number, Publisher, Publication date,
+ *    Location. Each element followed by a period (end) or comma (within
+ *    a container).
+ *  - *Italic*: titles of containers (books, journals, websites).
+ *  - "Quotes": titles of shorter works (articles, chapters, webpages).
+ *  - Author inverted: "Surname, First Middle."
+ *  - For unsigned web content, title moves to author slot.
+ *  - Access date: optional for most web; recommended for undated content.
+ *    We include it when the user provides `accessDate`.
+ *  - Edition: "2nd ed.,"
  */
 
 import type { BibliographyEntry } from '@/types/bibliography'
-import { CitationFormatter } from './formatter'
+import { CitationFormatter, type InlineCitationStyle } from './base'
 
 export class MLAFormatter extends CitationFormatter {
-  // ==================== IN-TEXT (FOOTNOTE FIRST) ====================
-  // MLA in-text: (Surname Page)
-
-  formatFootnoteFirst(
-    entry: BibliographyEntry,
-    page?: string,
-    _volume?: string
-  ): string {
-    const pageStr = page ? ` ${page}` : ''
-    return `(${entry.authorSurname}${pageStr})`
+  get inlineStyle(): InlineCitationStyle {
+    return 'author-page'
   }
 
-  // ==================== IN-TEXT (FOOTNOTE SUBSEQUENT) ====================
-  // Identical to first in MLA.
-
-  formatFootnoteSubsequent(
-    entry: BibliographyEntry,
-    page?: string,
-    _volume?: string
-  ): string {
-    return this.formatFootnoteFirst(entry, page)
+  formatFootnoteFirst(entry: BibliographyEntry, page?: string): string {
+    return this.formatInline(entry, page)
   }
 
-  // ==================== WORKS CITED ====================
+  formatFootnoteSubsequent(entry: BibliographyEntry, page?: string): string {
+    return this.formatInline(entry, page)
+  }
 
   formatBibliography(entry: BibliographyEntry): string {
     switch (entry.entryType) {
       case 'kitap':
         return this.wcBook(entry)
       case 'nesir':
-        return this.wcNesir(entry)
+        return this.wcEditedBook(entry)
       case 'ceviri':
-        return this.wcCeviri(entry)
+        return this.wcTranslation(entry)
       case 'makale':
         return this.wcArticle(entry)
       case 'tez':
@@ -55,100 +56,150 @@ export class MLAFormatter extends CitationFormatter {
     }
   }
 
-  // ==================== PRIVATE: WORKS CITED VARIANTS ====================
+  // ==================== PRIVATE ====================
 
-  // Soyadı, Adı. Başlık. Yayınevi, Yıl.
+  private authorInverted(entry: BibliographyEntry): string {
+    if (entry.authorName) {
+      return `${entry.authorSurname}, ${entry.authorName}`
+    }
+    return entry.authorSurname
+  }
+
+  private edition(entry: BibliographyEntry): string {
+    if (!entry.edition) return ''
+    return `${ordinalSuffix(entry.edition)} ed., `
+  }
+
+  // Surname, First. *Title*. 2nd ed., Publisher, Year.
   private wcBook(entry: BibliographyEntry): string {
-    const author = authorInverted(entry)
-    const pub = entry.publisher ?? ''
-    const year = entry.year ?? ''
-    const parts: string[] = [`${author}. ${entry.title}.`]
-    if (pub) parts.push(`${pub},`)
-    if (year) parts.push(`${year}.`)
-    return cleanTrailing(parts.join(' '))
+    const pub = entry.publisher?.trim() || ''
+    const year = entry.year?.trim() || ''
+    const parts: string[] = []
+    if (this.edition(entry)) parts.push(this.edition(entry).trim().replace(/,$/, ''))
+    if (pub) parts.push(pub)
+    if (year) parts.push(year)
+    const tail = parts.length > 0 ? `${parts.join(', ')}.` : ''
+    return cleanTrailing(`${this.authorInverted(entry)}. *${entry.title}*. ${tail}`)
   }
 
-  // Soyadı, Adı. Başlık. Edited by Adı Soyadı, Yayınevi, Yıl.
-  private wcNesir(entry: BibliographyEntry): string {
-    const author = authorInverted(entry)
-    const editor = entry.editor ?? entry.translator ?? ''
-    const pub = entry.publisher ?? ''
-    const year = entry.year ?? ''
-    const parts: string[] = [`${author}. ${entry.title}.`]
-    if (editor) parts.push(`Edited by ${editor},`)
-    if (pub) parts.push(`${pub},`)
-    if (year) parts.push(`${year}.`)
-    return cleanTrailing(parts.join(' '))
+  // Surname, First. *Title*. Edited by Editor Name, Publisher, Year.
+  private wcEditedBook(entry: BibliographyEntry): string {
+    const editor = entry.editor?.trim() || ''
+    const pub = entry.publisher?.trim() || ''
+    const year = entry.year?.trim() || ''
+    const parts: string[] = []
+    if (editor) parts.push(`edited by ${editor}`)
+    if (this.edition(entry)) parts.push(this.edition(entry).trim().replace(/,$/, ''))
+    if (pub) parts.push(pub)
+    if (year) parts.push(year)
+    const tail = parts.length > 0 ? `${parts.join(', ')}.` : ''
+    return cleanTrailing(`${this.authorInverted(entry)}. *${entry.title}*. ${tail}`)
   }
 
-  // Soyadı, Adı. Başlık. Translated by Adı Soyadı, Yayınevi, Yıl.
-  private wcCeviri(entry: BibliographyEntry): string {
-    const author = authorInverted(entry)
-    const translator = entry.translator ?? ''
-    const pub = entry.publisher ?? ''
-    const year = entry.year ?? ''
-    const parts: string[] = [`${author}. ${entry.title}.`]
-    if (translator) parts.push(`Translated by ${translator},`)
-    if (pub) parts.push(`${pub},`)
-    if (year) parts.push(`${year}.`)
-    return cleanTrailing(parts.join(' '))
+  // Surname, First. *Title*. Translated by Translator, Publisher, Year.
+  private wcTranslation(entry: BibliographyEntry): string {
+    const translator = entry.translator?.trim() || ''
+    const pub = entry.publisher?.trim() || ''
+    const year = entry.year?.trim() || ''
+    const parts: string[] = []
+    if (translator) parts.push(`translated by ${translator}`)
+    if (pub) parts.push(pub)
+    if (year) parts.push(year)
+    const tail = parts.length > 0 ? `${parts.join(', ')}.` : ''
+    return cleanTrailing(`${this.authorInverted(entry)}. *${entry.title}*. ${tail}`)
   }
 
-  // Soyadı, Adı. "Başlık." Dergi, vol. #, no. #, Yıl, pp. #-#.
+  // Surname, First. "Article Title." *Journal*, vol. N, no. N, Year, pp. X-Y.
   private wcArticle(entry: BibliographyEntry): string {
-    const author = authorInverted(entry)
-    const journal = entry.journalName ?? ''
-    const vol = entry.journalVolume ? `vol. ${entry.journalVolume}` : ''
-    const issue = entry.journalIssue ? `no. ${entry.journalIssue}` : ''
-    const year = entry.year ?? ''
-    const pages = entry.pageRange ? `pp. ${entry.pageRange}` : ''
-
+    const journal = entry.journalName?.trim() || ''
+    const vol = entry.journalVolume?.trim() ? `vol. ${entry.journalVolume.trim()}` : ''
+    const issue = entry.journalIssue?.trim() ? `no. ${entry.journalIssue.trim()}` : ''
+    const year = entry.year?.trim() || ''
+    const pages = entry.pageRange?.trim() ? `pp. ${entry.pageRange.trim()}` : ''
     const details = [vol, issue, year, pages].filter(Boolean).join(', ')
-    return `${author}. "${entry.title}." ${journal}, ${details}.`
+    const journalPart = journal ? ` *${journal}*` : ''
+    const detailsPart = details ? `,${journalPart ? '' : ''} ${details}.` : (journalPart ? '.' : '')
+    return cleanTrailing(`${this.authorInverted(entry)}. "${entry.title}."${journalPart}${detailsPart}`)
   }
 
-  // Soyadı, Adı. "Başlık." Yıl. Üniversite, Tez türü.
+  // Surname, First. "Title." Year. University, PhD dissertation.
   private wcDissertation(entry: BibliographyEntry): string {
-    const author = authorInverted(entry)
-    const year = entry.year ?? ''
-    const uni = entry.publisher ?? entry.publishPlace ?? ''
-    return `${author}. "${entry.title}." ${year}. ${uni}, Doctoral dissertation.`
+    const year = entry.year?.trim() || ''
+    const uni = entry.publisher?.trim() || entry.publishPlace?.trim() || ''
+    const parts: string[] = []
+    if (year) parts.push(year)
+    if (uni) parts.push(uni)
+    parts.push('PhD dissertation')
+    return `${this.authorInverted(entry)}. "${entry.title}." ${parts.join('. ')}.`
   }
 
-  // Soyadı, Adı. "Madde." Ansiklopedi Adı, Yayınevi, Yıl.
+  // Surname, First. "Entry Title." *Encyclopedia*, edited by X, vol. N, Publisher, Year, pp. X-Y.
   private wcEncyclopedia(entry: BibliographyEntry): string {
-    const author = authorInverted(entry)
-    const encyclopedia = entry.journalName ?? ''
-    const pub = entry.publisher ?? ''
-    const year = entry.year ?? ''
-    const parts: string[] = [`${author}. "${entry.title}." ${encyclopedia},`]
-    if (pub) parts.push(`${pub},`)
-    if (year) parts.push(`${year}.`)
-    return cleanTrailing(parts.join(' '))
+    const encyclopedia = entry.journalName?.trim() || entry.publisher?.trim() || ''
+    const editor = entry.editor?.trim() || ''
+    const vol = entry.journalVolume?.trim() ? `vol. ${entry.journalVolume.trim()}` : ''
+    // If encyclopedia came from journalName, publisher holds the real publisher.
+    // Otherwise publisher was already consumed by `encyclopedia`.
+    const pub = entry.journalName?.trim() ? (entry.publisher?.trim() || '') : ''
+    const year = entry.year?.trim() || ''
+    const pages = entry.pageRange?.trim() ? `pp. ${entry.pageRange.trim()}` : ''
+    const parts: string[] = []
+    if (editor) parts.push(`edited by ${editor}`)
+    if (vol) parts.push(vol)
+    if (pub) parts.push(pub)
+    if (year) parts.push(year)
+    if (pages) parts.push(pages)
+    const head = `${this.authorInverted(entry)}. "${entry.title}."`
+    const tail = encyclopedia && parts.length > 0
+      ? ` *${encyclopedia}*, ${parts.join(', ')}.`
+      : encyclopedia
+      ? ` *${encyclopedia}*.`
+      : parts.length > 0
+      ? ` ${parts.join(', ')}.`
+      : ''
+    return cleanTrailing(`${head}${tail}`)
   }
 
-  // Soyadı, Adı. "Başlık." Site Adı, Yıl, URL.
+  // Surname, First. "Page Title." *Site Name*, Day Mon Year, URL. Accessed Day Mon Year.
+  // Note: the period inside `"Title."` is the major-element separator in MLA
+  // 9 — don't add another comma before *Site Name*.
   private wcWeb(entry: BibliographyEntry): string {
-    const author = authorInverted(entry)
-    const siteName = entry.journalName ?? ''
-    const year = entry.year ?? ''
-    const url = entry.url ?? ''
-    const parts: string[] = [`${author}. "${entry.title}."`]
-    if (siteName) parts.push(`${siteName},`)
-    if (year) parts.push(`${year},`)
+    const site = entry.publisher?.trim() || entry.journalName?.trim() || ''
+    const date = entry.year?.trim() || ''
+    const url = entry.url?.replace(/^https?:\/\//, '') || '' // MLA 9 prefers trimmed URL
+    const parts: string[] = []
+    if (site) parts.push(`*${site}*`)
+    if (date) parts.push(date)
     if (url) parts.push(url)
-    // No period after URL in MLA
-    return cleanTrailing(parts.join(' '))
+    const tail = parts.length > 0 ? ` ${parts.join(', ')}.` : ''
+    const accessed = entry.accessDate ? ` Accessed ${formatAccessDateMLA(entry.accessDate)}.` : ''
+    return cleanTrailing(`${this.authorInverted(entry)}. "${entry.title}."${tail}${accessed}`)
   }
 }
 
 // ==================== MODULE-LEVEL HELPERS ====================
 
-function authorInverted(entry: BibliographyEntry): string {
-  if (entry.authorName) {
-    return `${entry.authorSurname}, ${entry.authorName}`
+function ordinalSuffix(n: string): string {
+  const num = parseInt(n, 10)
+  if (isNaN(num)) return n
+  const mod100 = num % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${num}th`
+  switch (num % 10) {
+    case 1: return `${num}st`
+    case 2: return `${num}nd`
+    case 3: return `${num}rd`
+    default: return `${num}th`
   }
-  return entry.authorSurname
+}
+
+/** Formats ISO `YYYY-MM-DD` as "DD Mon YYYY" (MLA convention). */
+function formatAccessDateMLA(raw: string): string {
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!iso) return raw
+  const months = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.']
+  const month = months[parseInt(iso[2], 10) - 1] ?? iso[2]
+  const day = parseInt(iso[3], 10)
+  return `${day} ${month} ${iso[1]}`
 }
 
 function cleanTrailing(text: string): string {
@@ -156,5 +207,6 @@ function cleanTrailing(text: string): string {
     .replace(/,\s*\./g, '.')
     .replace(/\.\s*\./g, '.')
     .replace(/,\s*$/g, '.')
+    .replace(/\s{2,}/g, ' ')
     .trim()
 }

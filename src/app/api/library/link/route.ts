@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
             pageRange: entry.pageRange,
             doi: entry.doi,
             url: entry.url,
+            accessDate: entry.accessDate,
           },
         })
         biblioId = biblio.id

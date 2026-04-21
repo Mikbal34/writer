@@ -153,6 +153,19 @@ model Project {
   bookDesign       Json?
   status           ProjectStatus  @default(onboarding)
 
+  // Academic metadata — populates title page, abstract, TOC, running heads
+  // when the project is exported in an academic citation format.
+  author           String?
+  institution      String?
+  department       String?
+  advisor          String?
+  abstractTr       String?        @db.Text
+  abstractEn       String?        @db.Text
+  keywordsTr       String[]
+  keywordsEn       String[]
+  acknowledgments  String?        @db.Text
+  dedication       String?        @db.Text
+
   user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   linkedStyleProfile UserStyleProfile?       @relation("ProjectLinkedStyle", fields: [styleProfileId], references: [id], onDelete: SetNull)
   chapters          Chapter[]
@@ -297,6 +310,7 @@ model Bibliography {
   pageRange      String?
   doi            String?
   url            String?
+  accessDate     String?
   metadata       Json?
 
   libraryEntryId String?
@@ -394,6 +408,7 @@ model LibraryEntry {
   pageRange      String?
   doi            String?
   url            String?
+  accessDate     String?
   metadata       Json?
   importSource   String?   // "manual" | "bibtex" | "zotero" | "literature-search" | "pdf-upload"
   bibtexKey      String?

@@ -25,14 +25,13 @@ import {
   SectionTitle,
   SpineShadow,
 } from "@/components/shared/BookElements";
-import { FadeUp, FadeIn, FadeRight, StaggerItem } from "@/components/shared/Animations";
-import BookPopup from "@/components/preview/BookPopup";
+import { FadeUp, FadeRight } from "@/components/shared/Animations";
 
 interface ChapterOption {
   id: string;
   number: number;
   title: string;
-  subsections: Array<{ id: string; title: string; subsectionId: string; content?: string | null }>;
+  subsections: Array<{ id: string; title: string; subsectionId: string }>;
 }
 
 interface OutputFile {
@@ -71,9 +70,11 @@ export default function ExportPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploadingDriveId, setUploadingDriveId] = useState<string | null>(null);
   const [includeIllustrations, setIncludeIllustrations] = useState(true);
-  const [bookPreviewOpen, setBookPreviewOpen] = useState(false);
+  const [includeStructural, setIncludeStructural] = useState(true);
   const [projectTypeState, setProjectTypeState] = useState<string>("ACADEMIC");
-  const [previewImages, setPreviewImages] = useState<Array<{ id: string; url: string; chapterId: string | null; subsectionId: string | null; position: string; layout: string }>>([]);
+  // Non-academic illustration toggle needs a boolean signal from the server —
+  // actual image rendering happens in the export pipeline, not here.
+  const [hasIllustrations, setHasIllustrations] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -88,7 +89,7 @@ export default function ExportPage() {
           id: string;
           number: number;
           title: string;
-          sections?: Array<{ subsections: Array<{ id: string; title: string; subsectionId: string; content?: string | null }> }>;
+          sections?: Array<{ subsections: Array<{ id: string; title: string; subsectionId: string }> }>;
         };
         const projectType = data.projectType ?? "ACADEMIC";
         setProjectTypeState(projectType);
@@ -103,20 +104,14 @@ export default function ExportPage() {
         setChapters(chaps);
         setSelectedChapterId((prev) => prev || (chaps.length > 0 ? chaps[0].id : ""));
 
-        // Fetch images for non-academic projects
+        // Illustration toggle is only relevant when the project actually has
+        // images — peek at the preview/images endpoint and store a boolean.
         if (projectType !== "ACADEMIC") {
           try {
             const imgRes = await fetch(`/api/projects/${projectId}/preview/images`);
             if (imgRes.ok) {
-              const imgData = await imgRes.json();
-              setPreviewImages(imgData.map((img: { id: string; chapterId: string | null; subsectionId: string | null; position: string; layout: string }) => ({
-                id: img.id,
-                url: `/api/projects/${projectId}/preview/images/${img.id}`,
-                chapterId: img.chapterId,
-                subsectionId: img.subsectionId,
-                position: img.position ?? "before",
-                layout: img.layout ?? "full_page",
-              })));
+              const imgData: unknown[] = await imgRes.json();
+              setHasIllustrations(Array.isArray(imgData) && imgData.length > 0);
             }
           } catch { /* ignore */ }
         }
@@ -171,6 +166,7 @@ export default function ExportPage() {
         scope,
         includeBibliography: projectTypeState === "ACADEMIC" && includeBibliography,
         includeIllustrations: projectTypeState !== "ACADEMIC" && includeIllustrations,
+        includeStructural: projectTypeState === "ACADEMIC" && includeStructural,
         fileType,
       };
 
@@ -406,6 +402,59 @@ export default function ExportPage() {
             </div>
           )}
 
+          {/* Academic metadata shortcut — only for ACADEMIC projects */}
+          {projectTypeState === "ACADEMIC" && (
+            <div className="border-t border-[#d4c9b5]/40 pt-4 mb-4">
+              <a
+                href={`/projects/${projectId}/settings/academic`}
+                className="flex items-center justify-between p-3 rounded-sm border border-[#d4c9b5] hover:border-[#C9A84C] hover:bg-[#FAF3E3] transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-sm flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: "rgba(201,168,76,0.18)" }}
+                  >
+                    <BookOpen className="h-4 w-4" style={{ color: "#8a5a1a" }} />
+                  </div>
+                  <div>
+                    <div className="font-ui text-xs font-medium text-[#2D1F0E]">
+                      Akademik Metadata
+                    </div>
+                    <div className="font-ui text-[11px] text-[#8a7a65] mt-0.5">
+                      Yazar, kurum, özet, anahtar kelimeler, önsöz — kapak ve ön sayfaları doldur
+                    </div>
+                  </div>
+                </div>
+                <span className="font-ui text-[10px] text-[#8a5a1a]">Aç →</span>
+              </a>
+            </div>
+          )}
+
+          {/* Structural toggle — only for ACADEMIC projects */}
+          {projectTypeState === "ACADEMIC" && (
+            <div className="border-t border-[#d4c9b5]/40 pt-4 mb-4">
+              <button
+                type="button"
+                onClick={() => setIncludeStructural((v) => !v)}
+                className="flex items-center justify-between w-full group"
+              >
+                <div className="text-left">
+                  <span className="font-ui text-xs uppercase tracking-widest text-[#5C4A32] block">
+                    Include Title Page + Abstract + TOC
+                  </span>
+                  <span className="font-body text-xs text-[#8a7a65] mt-0.5 block">
+                    Formata uygun kapak, özet/abstract, içindekiler ve bölüm açılışları
+                  </span>
+                </div>
+                {includeStructural ? (
+                  <ToggleRight className="h-6 w-6 text-[#2C5F2E] shrink-0 ml-3" />
+                ) : (
+                  <ToggleLeft className="h-6 w-6 text-[#8a7a65] shrink-0 ml-3" />
+                )}
+              </button>
+            </div>
+          )}
+
           {/* Bibliography toggle — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
           <div className="border-t border-[#d4c9b5]/40 pt-4 mb-6">
@@ -432,7 +481,7 @@ export default function ExportPage() {
           )}
 
           {/* Illustrations toggle — only for non-academic */}
-          {projectTypeState !== "ACADEMIC" && previewImages.length > 0 && (
+          {projectTypeState !== "ACADEMIC" && hasIllustrations && (
             <div className="border-t border-[#d4c9b5]/40 pt-4 mb-6">
               <button
                 type="button"
@@ -472,18 +521,6 @@ export default function ExportPage() {
               ? `Generating ${fileType.toUpperCase()}...`
               : `Generate ${fileType.toUpperCase()}`}
           </button>
-
-          {/* Book Preview button */}
-          {chapters.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setBookPreviewOpen(true)}
-              className="w-full mt-3 border border-[#d4c9b5] text-[#5C4A32] font-ui text-sm uppercase tracking-widest rounded-sm px-4 py-3 flex items-center justify-center gap-2 transition-opacity hover:bg-[#e8dfd0]/30"
-            >
-              <BookOpen className="h-4 w-4" />
-              Book Preview
-            </button>
-          )}
           </>
           )}
         </FadeUp>
@@ -607,63 +644,6 @@ export default function ExportPage() {
         <div className="flex-1" />
         <PageNumber number="viii" />
       </div>
-
-      {/* Book Preview Popup */}
-      {(() => {
-        const bookPages: Array<{
-          type: "chapter-cover" | "content" | "image";
-          chapterTitle?: string;
-          chapterNumber?: number;
-          text?: string;
-          imageUrl?: string;
-          imageCaption?: string;
-        }> = [];
-
-        for (const ch of chapters) {
-          bookPages.push({ type: "chapter-cover", chapterNumber: ch.number, chapterTitle: ch.title });
-
-          // Subsection content with images placed before/after
-          for (const sub of ch.subsections) {
-            // "before" images for this subsection
-            const beforeImgs = previewImages.filter(
-              (img) => img.subsectionId === sub.id && img.position === "before"
-            );
-            for (const img of beforeImgs) {
-              bookPages.push({ type: "image", imageUrl: img.url });
-            }
-
-            if (sub.content) {
-              bookPages.push({ type: "content", text: sub.content });
-            } else if (projectTypeState === "ACADEMIC") {
-              bookPages.push({ type: "content", text: `[${sub.subsectionId} ${sub.title}]\n\n[Content not yet written]` });
-            }
-
-            // "after" images for this subsection
-            const afterImgs = previewImages.filter(
-              (img) => img.subsectionId === sub.id && img.position === "after"
-            );
-            for (const img of afterImgs) {
-              bookPages.push({ type: "image", imageUrl: img.url });
-            }
-          }
-
-          // Chapter-level images (no subsection assigned) at end of chapter
-          const chapterOnlyImgs = previewImages.filter(
-            (img) => img.chapterId === ch.id && !img.subsectionId
-          );
-          for (const img of chapterOnlyImgs) {
-            bookPages.push({ type: "image", imageUrl: img.url });
-          }
-        }
-
-        // Unlinked images (no chapter) at the very end
-        const unlinked = previewImages.filter((img) => !img.chapterId);
-        for (const img of unlinked) {
-          bookPages.push({ type: "image", imageUrl: img.url });
-        }
-
-        return <BookPopup pages={bookPages} open={bookPreviewOpen} onClose={() => setBookPreviewOpen(false)} />;
-      })()}
     </div>
   );
 }

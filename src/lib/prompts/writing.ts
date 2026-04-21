@@ -154,7 +154,7 @@ export function getSessionContextPrompt(
         const author = s.authorName
           ? `${s.authorSurname}, ${s.authorName}`
           : s.authorSurname
-        parts.push(`- **${author}** — *${s.title}*`)
+        parts.push(`- \`bibId: ${s.bibliographyId}\` — **${author}** — *${s.title}*`)
         if (s.relevance) parts.push(`  Relevance: ${s.relevance}`)
         if (s.howToUse) parts.push(`  How to use: ${s.howToUse}`)
         if (s.whereToFind) parts.push(`  Where to find: ${s.whereToFind}`)
@@ -169,7 +169,7 @@ export function getSessionContextPrompt(
         const author = s.authorName
           ? `${s.authorSurname}, ${s.authorName}`
           : s.authorSurname
-        parts.push(`- **${author}** — *${s.title}*`)
+        parts.push(`- \`bibId: ${s.bibliographyId}\` — **${author}** — *${s.title}*`)
         if (s.relevance) parts.push(`  Relevance: ${s.relevance}`)
         if (s.howToUse) parts.push(`  How to use: ${s.howToUse}`)
         if (s.whereToFind) parts.push(`  Where to find: ${s.whereToFind}`)
@@ -472,7 +472,18 @@ function buildPositionInstructions(position: PositionInfo): string[] {
 }
 
 function buildCitationInstructions(citationFormat: CitationFormat): string {
-  const base = `Use the ${citationFormat} citation format. Mark footnotes inline as [fn: <formatted citation>] immediately after the closing punctuation of the sentence that contains the cited claim.`
+  const base = `You are writing in the ${citationFormat} citation format.
+
+PREFERRED: Use structured inline citation markers. Immediately after the closing punctuation of a sentence that makes a cited claim, insert one of:
+
+  [cite:<bibId>]              — no page
+  [cite:<bibId>,p=45]         — single page
+  [cite:<bibId>,pp=45-48]     — page range
+  [cite:<bibId>,v=2,p=45]     — volume + page (multi-volume works)
+
+The <bibId> MUST come from the "Sources for This Subsection" list above (the string after \`bibId:\`). The export pipeline resolves these markers into the correct ${citationFormat} in-text style, footnote, or numbered reference automatically — you do NOT need to format the citation yourself.
+
+FALLBACK (only if you absolutely cannot use [cite:...]): write [fn: <fully-formatted citation>] yourself. Do NOT use markdown (*italic*, **bold**) inside [fn:] markers; the export keeps that text verbatim.`
 
   const specifics: Partial<Record<CitationFormat, string>> = {
     ISNAD: `ISNAD 2. Baskı kuralları:

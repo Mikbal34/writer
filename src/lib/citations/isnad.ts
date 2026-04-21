@@ -1,19 +1,29 @@
 /**
  * ISNAD 2nd Edition Citation Formatter
  *
+ * Reference: https://www.isnadsistemi.org/en/guide/isnad2-2/introduction/isnad-citation-style/
+ *
  * Key rules (ISNAD 2. Baskı):
- *  - Footnote first uses normal name order: "Adı Soyadı"
- *  - Footnote subsequent: "Soyadı, KısaBaşlık, Sayfa."
- *  - Footnote uses comma separators, publisher info in parentheses
- *  - Bibliography uses inverted order: "Soyadı, Adı"
- *  - Bibliography uses period separators
- *  - Web URLs only appear in bibliography, NOT in footnotes
+ *  - Bibliography is ALPHABETICAL (leading "el-/er-/al-" articles ignored).
+ *  - Full footnote: Adı Soyadı, *Kitap Adı* (Yer: Yayınevi, Yıl), Sayfa.
+ *  - Short footnote (subsequent): Soyadı, *Kısa Başlık*, Sayfa.
+ *  - Bibliography: Soyadı, Adı. *Kitap Adı*. Yer: Yayınevi, Yıl.
+ *  - *Italic* for book / journal / encyclopedia titles.
+ *  - "nşr." (neşreden / editör) for edited works; "çev." for translations.
+ *  - Cilt/sayfa: "cilt/sayfa" (e.g. "2/45").
+ *  - Web: URL only in bibliography, NOT in footnotes.
+ *  - Access date: "Erişim: DD.MM.YYYY" (only in bibliography).
+ *  - Edition: "2. bs."
  */
 
 import type { BibliographyEntry } from '@/types/bibliography'
-import { CitationFormatter } from './formatter'
+import { CitationFormatter, type InlineCitationStyle } from './base'
 
 export class ISNADFormatter extends CitationFormatter {
+  get inlineStyle(): InlineCitationStyle {
+    return 'footnote'
+  }
+
   // ==================== FOOTNOTE FIRST ====================
 
   formatFootnoteFirst(
@@ -23,21 +33,21 @@ export class ISNADFormatter extends CitationFormatter {
   ): string {
     switch (entry.entryType) {
       case 'kitap':
-        return this.footnoteKitapFirst(entry, page, volume)
+        return this.noteKitapFirst(entry, page, volume)
       case 'nesir':
-        return this.footnoteNesirFirst(entry, page, volume)
+        return this.noteNesirFirst(entry, page, volume)
       case 'ceviri':
-        return this.footnoteCeviriFirst(entry, page, volume)
+        return this.noteCeviriFirst(entry, page, volume)
       case 'makale':
-        return this.footnoteMakaleFirst(entry, page)
+        return this.noteMakaleFirst(entry, page)
       case 'tez':
-        return this.footnoteTezFirst(entry, page)
+        return this.noteTezFirst(entry, page)
       case 'ansiklopedi':
-        return this.footnoteAnsiklopediFirst(entry, page)
+        return this.noteAnsiklopediFirst(entry, page)
       case 'web':
-        return this.footnoteWebFirst(entry)
+        return this.noteWebFirst(entry)
       default:
-        return this.footnoteKitapFirst(entry, page, volume)
+        return this.noteKitapFirst(entry, page, volume)
     }
   }
 
@@ -48,14 +58,15 @@ export class ISNADFormatter extends CitationFormatter {
     page?: string,
     volume?: string
   ): string {
-    const short = entry.shortTitle ?? this.deriveShortTitle(entry.title)
+    const short = entry.shortTitle || deriveShortTitle(entry.title)
     const pageStr = buildPageVolume(page, volume)
+    const pageClause = pageStr ? `, ${pageStr}` : ''
 
     switch (entry.entryType) {
       case 'makale':
-        return `${entry.authorSurname}, "${short}", ${pageStr}.`
+        return `${entry.authorSurname}, "${short}"${pageClause}.`
       default:
-        return `${entry.authorSurname}, ${short}, ${pageStr}.`
+        return `${entry.authorSurname}, *${short}*${pageClause}.`
     }
   }
 
@@ -82,64 +93,45 @@ export class ISNADFormatter extends CitationFormatter {
     }
   }
 
-  // ==================== PRIVATE: FOOTNOTE FIRST VARIANTS ====================
+  // ==================== PRIVATE: FOOTNOTE VARIANTS ====================
 
-  // Dipnot: Adı Soyadı, Kitap Adı (Yer: Yayınevi, Yıl), Sayfa.
-  private footnoteKitapFirst(
-    entry: BibliographyEntry,
-    page?: string,
-    volume?: string
-  ): string {
+  private noteKitapFirst(entry: BibliographyEntry, page?: string, volume?: string): string {
     const author = authorNormal(entry)
-    const pubParens = buildPublisherParens(entry)
+    const pub = buildPublisherParens(entry)
     const pageStr = buildPageVolume(page, volume)
     const pageClause = pageStr ? `, ${pageStr}` : ''
-    return `${author}, ${entry.title} ${pubParens}${pageClause}.`
+    return `${author}, *${entry.title}* ${pub}${pageClause}.`
   }
 
-  // Dipnot: Adı Soyadı, Kitap Adı, nşr. Editör Adı Soyadı (Yer: Yayınevi, Yıl), Cilt/Sayfa.
-  private footnoteNesirFirst(
-    entry: BibliographyEntry,
-    page?: string,
-    volume?: string
-  ): string {
+  private noteNesirFirst(entry: BibliographyEntry, page?: string, volume?: string): string {
     const author = authorNormal(entry)
-    const editor = entry.editor ?? entry.translator ?? ''
-    const pubParens = buildPublisherParens(entry)
-    const pageStr = buildPageVolume(page, volume)
-    const pageClause = pageStr ? `, ${pageStr}` : ''
+    const editor = entry.editor || entry.translator || ''
     const editorClause = editor ? `, nşr. ${editor}` : ''
-    return `${author}, ${entry.title}${editorClause} ${pubParens}${pageClause}.`
-  }
-
-  // Dipnot: Adı Soyadı, Kitap Adı, çev. Çevirmen Adı Soyadı (Yer: Yayınevi, Yıl), Sayfa.
-  private footnoteCeviriFirst(
-    entry: BibliographyEntry,
-    page?: string,
-    volume?: string
-  ): string {
-    const author = authorNormal(entry)
-    const translator = entry.translator ?? ''
-    const pubParens = buildPublisherParens(entry)
+    const pub = buildPublisherParens(entry)
     const pageStr = buildPageVolume(page, volume)
     const pageClause = pageStr ? `, ${pageStr}` : ''
-    const transClause = translator ? `, çev. ${translator}` : ''
-    return `${author}, ${entry.title}${transClause} ${pubParens}${pageClause}.`
+    return `${author}, *${entry.title}*${editorClause} ${pub}${pageClause}.`
   }
 
-  // Dipnot: Adı Soyadı, "Makale Adı", Dergi Adı Cilt/Sayı (Yıl), Sayfa.
-  private footnoteMakaleFirst(
-    entry: BibliographyEntry,
-    page?: string
-  ): string {
+  private noteCeviriFirst(entry: BibliographyEntry, page?: string, volume?: string): string {
     const author = authorNormal(entry)
-    const journal = entry.journalName ?? ''
-    const vol = entry.journalVolume ?? ''
-    const issue = entry.journalIssue ?? ''
-    const year = entry.year ?? ''
-    const pageStr = page ?? ''
+    const translator = entry.translator || ''
+    const transClause = translator ? `, çev. ${translator}` : ''
+    const pub = buildPublisherParens(entry)
+    const pageStr = buildPageVolume(page, volume)
+    const pageClause = pageStr ? `, ${pageStr}` : ''
+    return `${author}, *${entry.title}*${transClause} ${pub}${pageClause}.`
+  }
 
-    let journalRef = journal
+  private noteMakaleFirst(entry: BibliographyEntry, page?: string): string {
+    const author = authorNormal(entry)
+    const journal = entry.journalName || ''
+    const vol = entry.journalVolume || ''
+    const issue = entry.journalIssue || ''
+    const year = entry.year || ''
+    const pageStr = page || ''
+
+    let journalRef = `*${journal}*`
     if (vol && issue) journalRef += ` ${vol}/${issue}`
     else if (vol) journalRef += ` ${vol}`
     if (year) journalRef += ` (${year})`
@@ -148,33 +140,27 @@ export class ISNADFormatter extends CitationFormatter {
     return `${author}, "${entry.title}", ${journalRef}${pageClause}.`
   }
 
-  // Dipnot: Adı Soyadı, "Tez Başlığı" (Doktora Tezi, Üniversite, Yıl), Sayfa.
-  private footnoteTezFirst(
-    entry: BibliographyEntry,
-    page?: string
-  ): string {
+  private noteTezFirst(entry: BibliographyEntry, page?: string): string {
     const author = authorNormal(entry)
-    const uni = entry.publisher ?? entry.publishPlace ?? ''
-    const year = entry.year ?? ''
+    const uni = entry.publisher?.trim() || entry.publishPlace?.trim() || ''
+    const year = entry.year?.trim() || ''
     const pageClause = page ? `, ${page}` : ''
-    return `${author}, "${entry.title}" (Doktora Tezi, ${uni}, ${year})${pageClause}.`
+    const inner = [uni, year].filter(Boolean).join(', ')
+    return `${author}, "${entry.title}" (Doktora Tezi, ${inner})${pageClause}.`
   }
 
-  // Dipnot: Adı Soyadı, "Madde Adı", Ansiklopedi Cilt (Yer: Yayınevi, Yıl), Sayfa.
-  private footnoteAnsiklopediFirst(
-    entry: BibliographyEntry,
-    page?: string
-  ): string {
+  private noteAnsiklopediFirst(entry: BibliographyEntry, page?: string): string {
     const author = authorNormal(entry)
-    const encyclopedia = entry.journalName ?? ''
-    const vol = entry.journalVolume ? ` ${entry.journalVolume}` : ''
-    const pubParens = buildPublisherParens(entry)
+    const encyclopedia = entry.journalName?.trim() || ''
+    const vol = entry.journalVolume?.trim() ? ` ${entry.journalVolume.trim()}` : ''
+    const pub = buildPublisherParens(entry)
     const pageClause = page ? `, ${page}` : ''
-    return `${author}, "${entry.title}", ${encyclopedia}${vol} ${pubParens}${pageClause}.`
+    const encyclopediaPart = encyclopedia ? ` *${encyclopedia}*${vol}` : ''
+    return `${author}, "${entry.title}",${encyclopediaPart} ${pub}${pageClause}.`
   }
 
-  // Dipnot: Adı Soyadı, "Başlık" (Erişim Yıl).  ← URL YOK
-  private footnoteWebFirst(entry: BibliographyEntry): string {
+  // Dipnot: URL KULLANILMAZ — sadece erişim yılı belirtilir.
+  private noteWebFirst(entry: BibliographyEntry): string {
     const author = authorNormal(entry)
     const year = entry.year ? ` (Erişim ${entry.year})` : ''
     return `${author}, "${entry.title}"${year}.`
@@ -185,9 +171,9 @@ export class ISNADFormatter extends CitationFormatter {
   private bibKitap(entry: BibliographyEntry): string {
     const author = authorInverted(entry)
     const pub = buildPublisher(entry)
-    const parts: string[] = [`${author}. ${entry.title}.`]
+    const parts: string[] = [`${author}. *${entry.title}*.`]
+    if (entry.edition) parts.push(`${entry.edition}. bs.`)
     if (pub) parts.push(`${pub},`)
-    if (entry.edition) parts.push(`${entry.edition}. Basım,`)
     if (entry.year) parts.push(`${entry.year}.`)
     return cleanTrailing(parts.join(' '))
   }
@@ -195,8 +181,8 @@ export class ISNADFormatter extends CitationFormatter {
   private bibNesir(entry: BibliographyEntry): string {
     const author = authorInverted(entry)
     const pub = buildPublisher(entry)
-    const editor = entry.editor ?? entry.translator ?? ''
-    const parts: string[] = [`${author}. ${entry.title}.`]
+    const editor = entry.editor || entry.translator || ''
+    const parts: string[] = [`${author}. *${entry.title}*.`]
     if (editor) parts.push(`nşr. ${editor}.`)
     if (pub) parts.push(`${pub},`)
     if (entry.year) parts.push(`${entry.year}.`)
@@ -206,8 +192,8 @@ export class ISNADFormatter extends CitationFormatter {
   private bibCeviri(entry: BibliographyEntry): string {
     const author = authorInverted(entry)
     const pub = buildPublisher(entry)
-    const translator = entry.translator ?? ''
-    const parts: string[] = [`${author}. ${entry.title}.`]
+    const translator = entry.translator || ''
+    const parts: string[] = [`${author}. *${entry.title}*.`]
     if (translator) parts.push(`çev. ${translator}.`)
     if (pub) parts.push(`${pub},`)
     if (entry.year) parts.push(`${entry.year}.`)
@@ -216,13 +202,13 @@ export class ISNADFormatter extends CitationFormatter {
 
   private bibMakale(entry: BibliographyEntry): string {
     const author = authorInverted(entry)
-    const journal = entry.journalName ?? ''
-    const vol = entry.journalVolume ?? ''
-    const issue = entry.journalIssue ?? ''
-    const year = entry.year ?? ''
-    const pages = entry.pageRange ?? ''
+    const journal = entry.journalName || ''
+    const vol = entry.journalVolume || ''
+    const issue = entry.journalIssue || ''
+    const year = entry.year || ''
+    const pages = entry.pageRange || ''
 
-    let journalRef = journal
+    let journalRef = `*${journal}*`
     if (vol && issue) journalRef += ` ${vol}/${issue}`
     else if (vol) journalRef += ` ${vol}`
     if (year) journalRef += ` (${year})`
@@ -233,95 +219,87 @@ export class ISNADFormatter extends CitationFormatter {
 
   private bibTez(entry: BibliographyEntry): string {
     const author = authorInverted(entry)
-    const uni = entry.publisher ?? entry.publishPlace ?? ''
-    const year = entry.year ?? ''
+    const uni = entry.publisher?.trim() || entry.publishPlace?.trim() || ''
+    const year = entry.year?.trim() || ''
     return `${author}. "${entry.title}". Yayımlanmamış Doktora Tezi. ${uni}, ${year}.`
   }
 
   private bibAnsiklopedi(entry: BibliographyEntry): string {
     const author = authorInverted(entry)
-    const journal = entry.journalName ?? ''
-    const vol = entry.journalVolume ?? ''
-    const year = entry.year ?? ''
-    const pages = entry.pageRange ?? ''
+    // Legacy fallback: encyclopedia title may have been stored in `publisher`.
+    const encyclopedia = entry.journalName?.trim() || entry.publisher?.trim() || ''
+    const vol = entry.journalVolume || ''
+    const year = entry.year || ''
+    const pages = entry.pageRange || ''
 
-    let ref = journal
-    if (vol) ref += ` ${vol}`
-    if (year) ref += ` (${year})`
+    // Empty encyclopedia → omit the italic marker entirely (no `** (…)`).
+    const ref = encyclopedia
+      ? `*${encyclopedia}*${vol ? ` ${vol}` : ''}${year ? ` (${year})` : ''}`
+      : (year ? `(${year})` : '')
     const pagesStr = pages ? `, ${pages}` : ''
-    return `${author}. "${entry.title}". ${ref}${pagesStr}.`
+    const refClause = ref ? ` ${ref}` : ''
+    return `${author}. "${entry.title}".${refClause}${pagesStr}.`
   }
 
   private bibWeb(entry: BibliographyEntry): string {
     const author = authorInverted(entry)
-    const url = entry.url ?? ''
-    const year = entry.year ? ` Erişim: ${entry.year}.` : ''
-    // URL sonrası nokta YOK
-    return `${author}. "${entry.title}".${year} ${url}`
-  }
-
-  // ==================== PRIVATE: UTILITIES ====================
-
-  /**
-   * Derives a short title from the full title.
-   * Takes the first 3-4 meaningful words, strips leading articles.
-   */
-  private deriveShortTitle(title: string): string {
-    const stripped = title.replace(/^(el-|er-|al-)/i, '')
-    const words = stripped.split(/\s+/).slice(0, 4)
-    return words.join(' ')
+    const url = entry.url || ''
+    const accessed = entry.accessDate
+      ? ` Erişim: ${formatAccessDateISNAD(entry.accessDate)}.`
+      : (entry.year ? ` Erişim: ${entry.year}.` : '')
+    // ISNAD: URL is the last element, no trailing period.
+    return `${author}. "${entry.title}".${accessed} ${url}`.trim()
   }
 }
 
 // ==================== MODULE-LEVEL HELPERS ====================
 
-/** "Adı Soyadı" — normal order for footnotes */
 function authorNormal(entry: BibliographyEntry): string {
-  if (entry.authorName) {
-    return `${entry.authorName} ${entry.authorSurname}`
-  }
+  if (entry.authorName) return `${entry.authorName} ${entry.authorSurname}`
   return entry.authorSurname
 }
 
-/** "Soyadı, Adı" — inverted order for bibliography */
 function authorInverted(entry: BibliographyEntry): string {
-  if (entry.authorName) {
-    return `${entry.authorSurname}, ${entry.authorName}`
-  }
+  if (entry.authorName) return `${entry.authorSurname}, ${entry.authorName}`
   return entry.authorSurname
 }
 
 function buildPublisher(entry: BibliographyEntry): string {
-  if (entry.publishPlace && entry.publisher) {
-    return `${entry.publishPlace}: ${entry.publisher}`
-  }
-  if (entry.publisher) return entry.publisher
-  if (entry.publishPlace) return entry.publishPlace
+  const place = entry.publishPlace?.trim() || ''
+  const pub = entry.publisher?.trim() || ''
+  if (place && pub) return `${place}: ${pub}`
+  if (pub) return pub
+  if (place) return place
   return ''
 }
 
-/** "(Yer: Yayınevi, Yıl)" — parenthesized publisher block for footnotes */
 function buildPublisherParens(entry: BibliographyEntry): string {
-  const pub = buildPublisher(entry)
-  const year = entry.year ?? ''
-  if (pub && year) return `(${pub}, ${year})`
-  if (pub) return `(${pub})`
+  const inner = buildPublisher(entry)
+  const year = entry.year?.trim() || ''
+  if (inner && year) return `(${inner}, ${year})`
+  if (inner) return `(${inner})`
   if (year) return `(${year})`
   return ''
 }
 
-/**
- * Combines volume and page into the ISNAD format "cilt/sayfa" or just "sayfa".
- */
 function buildPageVolume(page?: string, volume?: string): string {
   if (volume && page) return `${volume}/${page}`
   if (page) return page
   return ''
 }
 
-/**
- * Removes trailing commas or double periods left over from optional fields.
- */
+function deriveShortTitle(title: string): string {
+  const stripped = title.replace(/^(el-|er-|al-)/i, '')
+  return stripped.split(/\s+/).slice(0, 4).join(' ')
+}
+
+/** "DD.MM.YYYY" — ISNAD access-date convention (Turkish short date). */
+function formatAccessDateISNAD(raw: string): string {
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!iso) return raw
+  return `${iso[3]}.${iso[2]}.${iso[1]}`
+}
+
 function cleanTrailing(text: string): string {
   return text
     .replace(/,\s*\./g, '.')

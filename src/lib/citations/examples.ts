@@ -34,6 +34,7 @@ function build(partial: Partial<BibliographyEntry> & Pick<BibliographyEntry, 'en
     pageRange: null,
     doi: null,
     url: null,
+    accessDate: null,
     metadata: null,
     createdAt: NOW,
     ...partial,
@@ -100,10 +101,11 @@ export const EXAMPLE_ENCYCLOPEDIA: BibliographyEntry = build({
   title: 'Heuristic',
   shortTitle: 'Heuristic',
   editor: 'Richard Roe',
-  publisher: 'Encyclopedia of Philosophy',
+  journalName: 'Encyclopedia of Philosophy',
+  journalVolume: '4',
+  publisher: 'Routledge',
   publishPlace: 'New York',
   year: '2019',
-  volume: '4',
   pageRange: '312-318',
 })
 
@@ -128,6 +130,7 @@ export const EXAMPLE_WEB: BibliographyEntry = build({
   url: 'https://www.example.org/climate-2024',
   year: '2024',
   publisher: 'Example News',
+  accessDate: '2024-05-12',
 })
 
 /**

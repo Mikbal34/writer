@@ -2,6 +2,33 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { getCitationFormatter, CitationFormatter } from '@/lib/citations/formatter'
+import {
+  createResolverState,
+  resolveInlineCitations,
+  orderEntriesForBibliography,
+  type InlineResolverState,
+} from '@/lib/citations/inline-resolver'
+import {
+  buildTitlePage,
+  buildAbstractPages,
+  buildTableOfContents,
+  buildChapterOpening,
+  buildBibliographyHeader,
+  buildDedicationPage,
+  buildAcknowledgmentsPage,
+  buildMlaInfoBlock,
+  type AcademicMeta,
+  type TocEntry,
+} from '@/lib/export/docx-structural'
+import {
+  renderTitlePage,
+  renderAbstractPages,
+  renderTableOfContents,
+  renderChapterOpening,
+  getBibliographyHeaderText,
+  getBibliographyHeaderAlign,
+} from '@/lib/export/pdf-structural'
+import { getStructuralSpec } from '@/lib/export/structural-specs'
 import type { BibliographyEntry } from '@/types/bibliography'
 import type { CitationFormat } from '@prisma/client'
 import {
@@ -199,51 +226,106 @@ interface SubsectionData {
   isLastInChapter: boolean
 }
 
+/**
+ * Everything buildDocx / buildPdf need for the academic front matter +
+ * per-chapter opening + headers. `title` is supplied separately (it's
+ * already threaded through the builder signatures).
+ */
+type AcademicStructuralInput = Omit<AcademicMeta, 'title'>
+
+
+
 function buildDocx(
   projectTitle: string,
   subsections: SubsectionData[],
   bibliography: BibliographyEntry[],
   formatter: CitationFormatter,
   includeBibliography: boolean,
-  language?: string | null
+  language?: string | null,
+  academic?: AcademicStructuralInput | null,
+  format: CitationFormat = 'ISNAD'
 ): Document {
   const labels = getLabels(language)
   const footnotes: Record<number, { children: Paragraph[] }> = {}
   let footnoteCounter = 1
   let currentChapter = ''
   let currentSection = ''
+  let chapterIndex = 0
 
   const children: Paragraph[] = []
 
-  // Title page
-  children.push(
-    new Paragraph({
-      children: [new TextRun({ text: projectTitle, bold: true, size: 36, font: 'Times New Roman' })],
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 600 },
-    })
-  )
-  children.push(
-    new Paragraph({
-      children: [new PageBreak()],
-    })
-  )
+  // Structural front matter (academic projects only). For non-academic or
+  // when the toggle is off, fall back to a single plain title page.
+  if (academic) {
+    const spec = getStructuralSpec(format)
+    const meta: AcademicMeta = { ...academic, title: projectTitle }
+
+    if (spec.titlePage.enabled) {
+      children.push(...buildTitlePage(format, meta))
+    }
+    children.push(...buildDedicationPage(meta.dedication))
+    children.push(...buildAcknowledgmentsPage(format, meta.acknowledgments))
+    children.push(...buildAbstractPages(format, meta))
+
+    // Build TOC entries from subsection data.
+    const tocEntries: TocEntry[] = []
+    const seenChapters = new Set<string>()
+    const seenSections = new Set<string>()
+    for (const sub of subsections) {
+      if (!seenChapters.has(sub.chapterTitle)) {
+        seenChapters.add(sub.chapterTitle)
+        tocEntries.push({
+          label: `${sub.chapterNumber}. ${sub.chapterTitle}`,
+          depth: 0,
+        })
+      }
+      const sectionKey = `${sub.chapterTitle}/${sub.sectionTitle}`
+      if (!seenSections.has(sectionKey)) {
+        seenSections.add(sectionKey)
+        tocEntries.push({ label: sub.sectionTitle, depth: 1 })
+      }
+      tocEntries.push({ label: `${sub.subsectionId} ${sub.title}`, depth: 2 })
+    }
+    children.push(...buildTableOfContents(format, tocEntries))
+  } else {
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: projectTitle, bold: true, size: 36, font: 'Times New Roman' })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 600 },
+      })
+    )
+    children.push(new Paragraph({ children: [new PageBreak()] }))
+  }
 
   for (const sub of subsections) {
-    // Chapter heading
+    // Chapter heading — structural builders when academic, simple heading otherwise.
     if (sub.chapterTitle !== currentChapter) {
       currentChapter = sub.chapterTitle
       currentSection = '' // reset section
-      if (children.length > 2) {
-        children.push(new Paragraph({ children: [new PageBreak()] }))
+      if (academic) {
+        children.push(
+          ...buildChapterOpening(format, sub.chapterNumber, sub.chapterTitle, chapterIndex === 0)
+        )
+        // MLA renders the author/instructor/course block on the first
+        // page of the body (no separate title page).
+        if (chapterIndex === 0 && format === 'MLA') {
+          const meta: AcademicMeta = { ...academic, title: projectTitle }
+          children.unshift(...buildMlaInfoBlock(meta))
+        }
+        chapterIndex++
+      } else {
+        if (children.length > 2) {
+          children.push(new Paragraph({ children: [new PageBreak()] }))
+        }
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: `${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, bold: true, size: 32, font: 'Times New Roman', color: '000000' })],
+            heading: HeadingLevel.HEADING_1,
+            spacing: { after: 300 },
+          })
+        )
       }
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: `${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, bold: true, size: 32, font: 'Times New Roman', color: '000000' })],
-          heading: HeadingLevel.HEADING_1,
-          spacing: { after: 300 },
-        })
-      )
     }
 
     // Section heading
@@ -411,36 +493,47 @@ function buildDocx(
     }
   }
 
-  // Bibliography section
+  // Bibliography section — use the format's own label ("References" /
+  // "Works Cited" / "KAYNAKÇA" / "Bibliography" / …) when available.
   if (includeBibliography && bibliography.length > 0) {
     children.push(new Paragraph({ children: [new PageBreak()] }))
-    children.push(
-      new Paragraph({
-        text: labels.bibliography,
-        heading: HeadingLevel.HEADING_1,
-        spacing: { after: 300 },
-      })
-    )
-
-    const formatted = bibliography
-      .map((entry) => formatter.formatBibliographyEntry(entry))
-    const sorted = CitationFormatter.sortBibliography(formatted)
-
-    for (const item of sorted) {
+    if (academic) {
+      children.push(buildBibliographyHeader(format))
+    } else {
       children.push(
         new Paragraph({
-          children: [
-            new TextRun({
-              text: item.entry,
-              size: 24,
-              font: 'Times New Roman',
-            }),
-          ],
-          spacing: { after: 80 },
-          indent: { left: convertInchesToTwip(0.5), hanging: convertInchesToTwip(0.5) },
+          text: labels.bibliography,
+          heading: HeadingLevel.HEADING_1,
+          spacing: { after: 300 },
         })
       )
     }
+
+    // `bibliography` arrives already ordered by the caller (POST handler):
+    // citation-order for numeric formats, insertion order for the rest.
+    // Per-format alphabetical sort happens on the formatted strings.
+    const formatted = bibliography.map((entry) => formatter.formatBibliographyEntry(entry))
+    const ordered = CitationFormatter.orderBibliography(formatted, formatter)
+    const prefix = formatter.bibliographyPrefix
+
+    ordered.forEach((item, idx) => {
+      const prefixStr = CitationFormatter.renderPrefix(idx, prefix)
+      const runs: TextRun[] = []
+      if (prefixStr) {
+        runs.push(new TextRun({ text: prefixStr, size: 24, font: 'Times New Roman' }))
+      }
+      // parseInlineRuns turns `*italic*` markdown into italic TextRuns.
+      runs.push(...parseInlineRuns(item.entry, 24))
+      children.push(
+        new Paragraph({
+          children: runs,
+          spacing: { after: 80 },
+          indent: prefix === 'bracket'
+            ? { left: convertInchesToTwip(0.5) }
+            : { left: convertInchesToTwip(0.5), hanging: convertInchesToTwip(0.5) },
+        })
+      )
+    })
   }
 
   return new Document({
@@ -647,7 +740,9 @@ function buildPdf(
   includeBibliography: boolean,
   language?: string | null,
   images?: ProjectImageData[],
-  design?: BookDesignSettings | null
+  design?: BookDesignSettings | null,
+  academic?: AcademicStructuralInput | null,
+  format: CitationFormat = 'ISNAD'
 ): Promise<Buffer> {
   const labels = getLabels(language)
   const d = design ?? {}
@@ -761,33 +856,71 @@ function buildPdf(
     }
 
     // ---- Cover / Title page ----
+    // Priority: explicit cover image (story books) > academic title page
+    // > plain text title.
     const coverImage = images?.find((img) => img.sortOrder === -1)
     if (coverImage) {
       try {
         doc.image(coverImage.imageData, 0, 0, { width: PAGE_WIDTH, height: PAGE_HEIGHT })
+        doc.addPage()
       } catch {
-        // Fallback to text title if cover image fails
         doc.font(fonts.bold).fontSize(24)
         doc.text(projectTitle, { align: 'center' })
+        doc.addPage()
       }
+    } else if (academic) {
+      const meta: AcademicMeta = { ...academic, title: projectTitle }
+      renderTitlePage(doc, format, meta, fonts)
+      renderAbstractPages(doc, format, meta, fonts, BODY_SIZE)
+      // Build TOC entries from subsection list (flat pass).
+      const tocEntries: TocEntry[] = []
+      const seenChapters = new Set<string>()
+      const seenSections = new Set<string>()
+      for (const sub of subsections) {
+        if (!seenChapters.has(sub.chapterTitle)) {
+          seenChapters.add(sub.chapterTitle)
+          tocEntries.push({ label: `${sub.chapterNumber}. ${sub.chapterTitle}`, depth: 0 })
+        }
+        const secKey = `${sub.chapterTitle}/${sub.sectionTitle}`
+        if (!seenSections.has(secKey)) {
+          seenSections.add(secKey)
+          tocEntries.push({ label: sub.sectionTitle, depth: 1 })
+        }
+        tocEntries.push({ label: `${sub.subsectionId} ${sub.title}`, depth: 2 })
+      }
+      renderTableOfContents(doc, format, tocEntries, fonts)
     } else {
       doc.font(fonts.bold).fontSize(24)
       doc.text(projectTitle, { align: 'center' })
+      doc.addPage()
     }
-    doc.addPage()
 
     let currentChapter = ''
     let currentSection = ''
+    let chapterIdx = 0
 
     for (const sub of subsections) {
-      // Chapter heading
+      // Chapter heading — delegate to structural builder when academic.
       if (sub.chapterTitle !== currentChapter) {
         currentChapter = sub.chapterTitle
         currentSection = ''
-        if (doc.y > 100) doc.addPage()
-        doc.font(fonts.bold).fontSize(CHAPTER_SIZE)
-        doc.text(`${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, { align: 'left' })
-        doc.moveDown(0.5)
+        if (academic) {
+          renderChapterOpening(
+            doc,
+            format,
+            sub.chapterNumber,
+            sub.chapterTitle,
+            chapterIdx === 0,
+            fonts,
+            CHAPTER_SIZE
+          )
+          chapterIdx++
+        } else {
+          if (doc.y > 100) doc.addPage()
+          doc.font(fonts.bold).fontSize(CHAPTER_SIZE)
+          doc.text(`${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, { align: 'left' })
+          doc.moveDown(0.5)
+        }
 
       }
 
@@ -1040,20 +1173,30 @@ function buildPdf(
     if (includeBibliography && bibliography.length > 0) {
       doc.addPage()
       doc.font(fonts.bold).fontSize(CHAPTER_SIZE)
-      doc.text(labels.bibliography, { align: 'left' })
+      if (academic) {
+        doc.text(getBibliographyHeaderText(format), { align: getBibliographyHeaderAlign(format) })
+      } else {
+        doc.text(labels.bibliography, { align: 'left' })
+      }
       doc.moveDown(0.5)
 
       const formatted = bibliography.map((entry) => formatter.formatBibliographyEntry(entry))
-      const sorted = CitationFormatter.sortBibliography(formatted)
+      const ordered = CitationFormatter.orderBibliography(formatted, formatter)
+      const prefix = formatter.bibliographyPrefix
 
       doc.font(fonts.regular).fontSize(BODY_SIZE)
-      for (const item of sorted) {
-        doc.text(item.entry, {
-          indent: 36,
+      ordered.forEach((item, idx) => {
+        const prefixStr = CitationFormatter.renderPrefix(idx, prefix)
+        const line = `${prefixStr}${item.entry}`
+        // pdfRichText honours `*italic*` spans — renders them with the italic font.
+        pdfRichText(doc, line, { regular: fonts.regular, italic: fonts.italic }, {
+          fontSize: BODY_SIZE,
           lineGap: 2,
+          indent: prefix === 'bracket' ? 36 : 0,
+          align: 'left',
         })
         doc.moveDown(0.2)
-      }
+      })
     }
 
     // ---- Render page-bottom footnotes (second pass via bufferPages) ----
@@ -1113,6 +1256,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       subsectionId,
       includeBibliography = true,
       includeIllustrations = false,
+      includeStructural = true,
       fileType = 'docx',
     } = body as {
       scope?: 'full' | 'chapter' | 'subsection'
@@ -1120,14 +1264,56 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       subsectionId?: string
       includeBibliography?: boolean
       includeIllustrations?: boolean
+      includeStructural?: boolean
       fileType?: 'docx' | 'pdf'
     }
 
-    // Verify project ownership
+    // Verify project ownership. We select the academic metadata fields
+    // (author, institution, abstract, …) so the export can render the
+    // format-specific title page / abstract / TOC without another round
+    // trip. `as any` avoids a Prisma client regeneration lag in dev —
+    // the fields are typed at the destination (`AcademicStructuralInput`).
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
-      select: { id: true, title: true, citationFormat: true, language: true, projectType: true, bookDesign: true },
-    })
+      select: {
+        id: true,
+        title: true,
+        citationFormat: true,
+        language: true,
+        projectType: true,
+        bookDesign: true,
+        author: true,
+        institution: true,
+        department: true,
+        advisor: true,
+        abstractTr: true,
+        abstractEn: true,
+        keywordsTr: true,
+        keywordsEn: true,
+        acknowledgments: true,
+        dedication: true,
+      },
+    }) as unknown as (
+      | ({
+          id: string
+          title: string
+          citationFormat: CitationFormat
+          language: string | null
+          projectType: string
+          bookDesign: unknown
+          author: string | null
+          institution: string | null
+          department: string | null
+          advisor: string | null
+          abstractTr: string | null
+          abstractEn: string | null
+          keywordsTr: string[]
+          keywordsEn: string[]
+          acknowledgments: string | null
+          dedication: string | null
+        })
+      | null
+    )
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
@@ -1188,16 +1374,39 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'No subsections found for this scope' }, { status: 404 })
     }
 
-    // Fetch bibliography entries
-    const bibliography = includeBibliography
-      ? await prisma.bibliography.findMany({
-          where: { projectId },
-          orderBy: [{ authorSurname: 'asc' }, { year: 'asc' }],
-        })
-      : []
+    // Fetch bibliography entries. We always need the full set (even when
+    // the bibliography section is suppressed) so inline `[cite:…]` markers
+    // can resolve author/title/page info.
+    const bibliography = (await prisma.bibliography.findMany({
+      where: { projectId },
+      orderBy: [{ authorSurname: 'asc' }, { year: 'asc' }],
+    })) as unknown as BibliographyEntry[]
 
     // Get citation formatter
     const formatter = getCitationFormatter(project.citationFormat as CitationFormat)
+
+    // Resolve `[cite:bibId,p=N]` markers inside each subsection. State is
+    // shared across subsections so numeric formats keep stable reference
+    // numbers and footnote formats track first-vs-subsequent correctly.
+    const resolverState: InlineResolverState = createResolverState()
+    for (const sub of subsections) {
+      if (sub.content) {
+        sub.content = resolveInlineCitations(
+          sub.content,
+          bibliography,
+          formatter,
+          resolverState
+        )
+      }
+    }
+
+    // Citation-order formats (IEEE / Vancouver / AMA) render the
+    // bibliography in first-appearance order; others keep the DB sort and
+    // let CitationFormatter.orderBibliography handle the final alphabetical
+    // pass on formatted strings.
+    const orderedBibliography = includeBibliography
+      ? orderEntriesForBibliography(bibliography, formatter, resolverState)
+      : []
 
     // Fetch project images if requested
     let projectImages: ProjectImageData[] = []
@@ -1217,27 +1426,58 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       }))
     }
 
+    // Academic metadata — only attached for ACADEMIC projects with the
+    // structural toggle on. When `academic` is null, both builders fall
+    // back to the plain title-page / chapter-heading rendering.
+    const academic: AcademicStructuralInput | null =
+      includeStructural && project.projectType === 'ACADEMIC'
+        ? {
+            author: project.author,
+            institution: project.institution,
+            department: project.department,
+            advisor: project.advisor,
+            abstractTr: project.abstractTr,
+            abstractEn: project.abstractEn,
+            keywordsTr: project.keywordsTr ?? [],
+            keywordsEn: project.keywordsEn ?? [],
+            acknowledgments: project.acknowledgments,
+            dedication: project.dedication,
+            language: project.language,
+            date: String(new Date().getFullYear()),
+            // Optional fields not yet surfaced in the schema — left blank
+            // so the title-page builder skips them cleanly.
+            degreeType: null,
+            course: null,
+            instructor: null,
+            city: null,
+          }
+        : null
+
     // Build file
     let buffer: Buffer
     if (fileType === 'pdf') {
       buffer = await buildPdf(
         project.title,
         subsections,
-        bibliography as unknown as BibliographyEntry[],
+        orderedBibliography,
         formatter,
         includeBibliography,
         project.language,
         projectImages,
-        project.bookDesign as BookDesignSettings | null
+        project.bookDesign as BookDesignSettings | null,
+        academic,
+        project.citationFormat
       )
     } else {
       const doc = buildDocx(
         project.title,
         subsections,
-        bibliography as unknown as BibliographyEntry[],
+        orderedBibliography,
         formatter,
         includeBibliography,
-        project.language
+        project.language,
+        academic,
+        project.citationFormat
       )
       buffer = await Packer.toBuffer(doc)
     }

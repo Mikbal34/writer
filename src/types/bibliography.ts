@@ -41,6 +41,8 @@ export interface BibliographyEntry {
   doi: string | null
   /** URL for web sources */
   url: string | null
+  /** Access date for web sources (ISO "YYYY-MM-DD" or free text) */
+  accessDate: string | null
   /** Arbitrary additional metadata */
   metadata: Record<string, unknown> | null
   createdAt: Date

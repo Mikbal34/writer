@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import type { CitationFormat } from '@prisma/client'
 
-type CitationFormat = 'ISNAD' | 'APA' | 'CHICAGO' | 'MLA'
 type ProjectStatus = 'roadmap' | 'sources' | 'writing' | 'completed'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -92,6 +92,18 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       styleProfile,
       writingGuidelines,
       bookDesign,
+      // Academic metadata (only meaningful for ACADEMIC projectType; the
+      // title-page / abstract / TOC builders read these at export time).
+      author,
+      institution,
+      department,
+      advisor,
+      abstractTr,
+      abstractEn,
+      keywordsTr,
+      keywordsEn,
+      acknowledgments,
+      dedication,
     } = body as {
       title?: string
       description?: string
@@ -104,6 +116,16 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       styleProfile?: Record<string, unknown>
       writingGuidelines?: Record<string, unknown>
       bookDesign?: Record<string, unknown>
+      author?: string | null
+      institution?: string | null
+      department?: string | null
+      advisor?: string | null
+      abstractTr?: string | null
+      abstractEn?: string | null
+      keywordsTr?: string[]
+      keywordsEn?: string[]
+      acknowledgments?: string | null
+      dedication?: string | null
     }
 
     const validFormats: CitationFormat[] = ['ISNAD', 'APA', 'CHICAGO', 'MLA', 'HARVARD', 'VANCOUVER', 'IEEE', 'AMA', 'TURABIAN']
@@ -131,6 +153,18 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         ...(styleProfile !== undefined && { styleProfile: styleProfile as unknown as object }),
         ...(writingGuidelines !== undefined && { writingGuidelines: writingGuidelines as unknown as object }),
         ...(bookDesign !== undefined && { bookDesign: bookDesign as unknown as object }),
+        // Academic metadata — passed through as-is; UI form handles
+        // trimming. Arrays default to empty when omitted on set.
+        ...(author !== undefined && { author }),
+        ...(institution !== undefined && { institution }),
+        ...(department !== undefined && { department }),
+        ...(advisor !== undefined && { advisor }),
+        ...(abstractTr !== undefined && { abstractTr }),
+        ...(abstractEn !== undefined && { abstractEn }),
+        ...(keywordsTr !== undefined && { keywordsTr: { set: keywordsTr } }),
+        ...(keywordsEn !== undefined && { keywordsEn: { set: keywordsEn } }),
+        ...(acknowledgments !== undefined && { acknowledgments }),
+        ...(dedication !== undefined && { dedication }),
       },
     })
 

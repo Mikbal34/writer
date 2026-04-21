@@ -87,6 +87,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
           pageRange: bib.pageRange,
           doi: bib.doi,
           url: bib.url,
+          accessDate: bib.accessDate,
           importSource: 'pdf-upload',
           pdfStatus: 'ready',
           fileType: source.fileType,

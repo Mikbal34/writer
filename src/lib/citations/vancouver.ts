@@ -1,80 +1,184 @@
 /**
- * Vancouver/ICMJE (NLM Citing Medicine) Citation Formatter
+ * Vancouver / ICMJE (NLM Citing Medicine) Citation Formatter
  *
- * Rules:
- * - In-text: superscript numbers by order of first appearance, reuse same number
- * - Authors: Surname Initials (no periods), list up to 6, then "et al."
- * - Journal: Author(s). Title. Journal Abbrev. Year;Vol(Issue):Pages.
- * - Book: Author(s). Title. Edition. Place: Publisher; Year.
+ * Reference: https://www.ncbi.nlm.nih.gov/books/NBK7256/ (NLM: Citing Medicine)
+ *
+ * Key rules (Vancouver / ICMJE):
+ *  - References are NUMBERED in CITATION ORDER. Prefix: "1." (period).
+ *  - In-text: superscript numbers or [1], reused for the same source.
+ *  - Author format: "Smith AB" — surname + initials, NO periods or comma.
+ *  - Up to 6 authors, then "et al.".
+ *  - Journal titles use NLM abbreviations and are NOT italicised.
+ *  - Article: Smith AB. Article title. J Abbrev. Year;Vol(Issue):Pages.
+ *    Optional doi: at the end.
+ *  - Book: Smith AB. Book Title. Nth ed. Place: Publisher; Year.
+ *  - Web: Smith AB. Title [Internet]. Place: Publisher; Year
+ *    [cited YYYY Mon DD]. Available from: URL
+ *  - Dissertation: Smith AB. Title [dissertation]. Place: Univ.; Year.
  */
 
 import type { BibliographyEntry } from '@/types/bibliography'
-import { CitationFormatter } from './formatter'
+import {
+  CitationFormatter,
+  type BibliographyOrder,
+  type BibliographyPrefix,
+  type InlineCitationStyle,
+} from './base'
 
 export class VancouverFormatter extends CitationFormatter {
-  formatFootnoteFirst(
-    entry: BibliographyEntry,
-    page?: string,
-    _volume?: string
-  ): string {
-    const author = this.formatAuthor(entry)
-
-    switch (entry.entryType) {
-      case 'makale': {
-        const journal = entry.journalName ?? ''
-        const year = entry.year ?? ''
-        const vol = entry.journalVolume ?? ''
-        const issue = entry.journalIssue ? `(${entry.journalIssue})` : ''
-        const pages = entry.pageRange ? `:${entry.pageRange}` : ''
-        const doi = entry.doi ? `. doi:${entry.doi}` : ''
-        return `${author}. ${entry.title}. ${journal}. ${year};${vol}${issue}${pages}${doi}.`
-      }
-      case 'tez': {
-        const place = entry.publishPlace ?? ''
-        const uni = entry.publisher ?? ''
-        const year = entry.year ?? ''
-        return `${author}. ${entry.title} [dissertation]. ${place}: ${uni}; ${year}.`
-      }
-      case 'web': {
-        const year = entry.year ?? ''
-        const url = entry.url ? ` Available from: ${entry.url}` : ''
-        return `${author}. ${entry.title}. ${year}.${url}`
-      }
-      default: {
-        const edition = entry.edition ? ` ${entry.edition}.` : ''
-        const place = entry.publishPlace ?? ''
-        const publisher = entry.publisher ?? ''
-        const year = entry.year ?? ''
-        const pageStr = page ? `. p. ${page}` : ''
-        return `${author}. ${entry.title}.${edition} ${place}: ${publisher}; ${year}${pageStr}.`
-      }
-    }
+  override get bibliographyOrder(): BibliographyOrder {
+    return 'citation-order'
   }
 
-  formatFootnoteSubsequent(
-    entry: BibliographyEntry,
-    page?: string,
-    _volume?: string
-  ): string {
-    // Vancouver reuses the same number; the short form is just the number reference
-    const author = this.formatAuthor(entry)
-    const pageStr = page ? `, p. ${page}` : ''
-    return `${author}. ${entry.shortTitle ?? entry.title}${pageStr}.`
+  override get bibliographyPrefix(): BibliographyPrefix {
+    return 'period'
+  }
+
+  get inlineStyle(): InlineCitationStyle {
+    return 'numeric'
+  }
+
+  formatFootnoteFirst(entry: BibliographyEntry, page?: string): string {
+    return this.formatInline(entry, page)
+  }
+
+  formatFootnoteSubsequent(entry: BibliographyEntry, page?: string): string {
+    return this.formatInline(entry, page)
   }
 
   formatBibliography(entry: BibliographyEntry): string {
-    // Same as first footnote for Vancouver
-    return this.formatFootnoteFirst(entry)
+    switch (entry.entryType) {
+      case 'kitap':
+      case 'nesir':
+        return this.refBook(entry)
+      case 'ceviri':
+        return this.refTranslation(entry)
+      case 'makale':
+        return this.refArticle(entry)
+      case 'tez':
+        return this.refDissertation(entry)
+      case 'ansiklopedi':
+        return this.refEncyclopedia(entry)
+      case 'web':
+        return this.refWeb(entry)
+      default:
+        return this.refBook(entry)
+    }
   }
 
-  private formatAuthor(entry: BibliographyEntry): string {
+  // ==================== PRIVATE ====================
+
+  private author(entry: BibliographyEntry): string {
+    // Vancouver: "Smith AB" — no periods, no comma
     if (entry.authorName) {
       const initials = entry.authorName
         .split(/\s+/)
+        .filter(Boolean)
         .map((n) => n.charAt(0).toUpperCase())
         .join('')
       return `${entry.authorSurname} ${initials}`
     }
     return entry.authorSurname
   }
+
+  private edition(entry: BibliographyEntry): string {
+    if (!entry.edition) return ''
+    return ` ${ordinalSuffix(entry.edition)} ed.`
+  }
+
+  // Smith AB. Title of Book. 2nd ed. Place: Publisher; Year.
+  private refBook(entry: BibliographyEntry): string {
+    const place = entry.publishPlace?.trim() || ''
+    const pub = entry.publisher?.trim() || ''
+    const year = entry.year?.trim() || ''
+    const placePub = place && pub ? `${place}: ${pub}` : (pub || place)
+    const tail = placePub && year ? `${placePub}; ${year}` : (placePub || year)
+    return `${this.author(entry)}. ${entry.title}.${this.edition(entry)} ${tail}.`.replace(/\s+\./g, '.')
+  }
+
+  // Smith AB. Title of Book. Translator, translator. Place: Publisher; Year.
+  private refTranslation(entry: BibliographyEntry): string {
+    const transNote = entry.translator ? ` ${entry.translator}, translator.` : ''
+    const place = entry.publishPlace?.trim() || ''
+    const pub = entry.publisher?.trim() || ''
+    const year = entry.year?.trim() || ''
+    const placePub = place && pub ? `${place}: ${pub}` : (pub || place)
+    const tail = placePub && year ? `${placePub}; ${year}` : (placePub || year)
+    return `${this.author(entry)}. ${entry.title}.${transNote}${this.edition(entry)} ${tail}.`.replace(/\s+\./g, '.')
+  }
+
+  // Smith AB. Article title. Journal Abbrev. Year;Vol(Issue):Pages.
+  private refArticle(entry: BibliographyEntry): string {
+    const journal = entry.journalName?.trim() || ''
+    const year = entry.year?.trim() || ''
+    const vol = entry.journalVolume?.trim() || ''
+    const issue = entry.journalIssue?.trim() ? `(${entry.journalIssue.trim()})` : ''
+    const pages = entry.pageRange?.trim() ? `:${entry.pageRange.trim()}` : ''
+    const journalPart = journal ? ` ${journal}.` : ''
+    const yearPart = year ? ` ${year}` : ''
+    const volPart = vol ? `;${vol}${issue}${pages}` : (pages ? `;${pages}` : '')
+    const doi = entry.doi ? ` doi:${entry.doi.replace(/^https?:\/\/(dx\.)?doi\.org\//, '')}` : ''
+    return `${this.author(entry)}. ${entry.title}.${journalPart}${yearPart}${volPart}.${doi}`.replace(/\.\.$/, '.')
+  }
+
+  // Smith AB. Title [dissertation]. Place: Univ.; Year.
+  private refDissertation(entry: BibliographyEntry): string {
+    const place = entry.publishPlace?.trim() || ''
+    const uni = entry.publisher?.trim() || ''
+    const year = entry.year?.trim() || ''
+    const placePub = place && uni ? `${place}: ${uni}` : (uni || place)
+    const tail = placePub && year ? `${placePub}; ${year}` : (placePub || year)
+    return `${this.author(entry)}. ${entry.title} [dissertation]. ${tail}.`
+  }
+
+  // Smith AB. Entry title. In: *Encyclopedia*. Vol N. Place: Publisher; Year. p. X-Y.
+  private refEncyclopedia(entry: BibliographyEntry): string {
+    const encyclopedia = entry.journalName?.trim() || ''
+    const vol = entry.journalVolume?.trim() ? ` Vol. ${entry.journalVolume.trim()}.` : ''
+    const place = entry.publishPlace?.trim() || ''
+    const pub = entry.publisher?.trim() || ''
+    const year = entry.year?.trim() || ''
+    const pages = entry.pageRange?.trim() ? ` p. ${entry.pageRange.trim()}.` : ''
+    const placePub = place && pub ? `${place}: ${pub}` : (pub || place)
+    const placeClause = placePub && year ? ` ${placePub}; ${year}.` : (placePub ? ` ${placePub}.` : (year ? ` ${year}.` : ''))
+    const inPart = encyclopedia ? ` In: ${encyclopedia}.${vol}` : ''
+    return `${this.author(entry)}. ${entry.title}.${inPart}${placeClause}${pages}`.trim()
+  }
+
+  // Smith AB. Title [Internet]. Place: Publisher; Year [cited YYYY Mon DD]. Available from: URL
+  private refWeb(entry: BibliographyEntry): string {
+    const place = entry.publishPlace?.trim() || ''
+    const pub = entry.publisher?.trim() || entry.journalName?.trim() || ''
+    const year = entry.year?.trim() || ''
+    const placePub = place && pub ? `${place}: ${pub}` : (pub || place)
+    const tail = placePub && year ? ` ${placePub}; ${year}` : (placePub ? ` ${placePub}` : (year ? ` ${year}` : ''))
+    const cited = entry.accessDate ? ` [cited ${formatAccessDateVancouver(entry.accessDate)}]` : ''
+    const available = entry.url ? ` Available from: ${entry.url}` : ''
+    return `${this.author(entry)}. ${entry.title} [Internet].${tail}${cited}.${available}`.trim()
+  }
+}
+
+// ==================== MODULE-LEVEL HELPERS ====================
+
+function ordinalSuffix(n: string): string {
+  const num = parseInt(n, 10)
+  if (isNaN(num)) return n
+  const mod100 = num % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${num}th`
+  switch (num % 10) {
+    case 1: return `${num}st`
+    case 2: return `${num}nd`
+    case 3: return `${num}rd`
+    default: return `${num}th`
+  }
+}
+
+/** "YYYY Mon DD" — Vancouver/NLM abbreviation style. */
+function formatAccessDateVancouver(raw: string): string {
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!iso) return raw
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const month = months[parseInt(iso[2], 10) - 1] ?? iso[2]
+  const day = parseInt(iso[3], 10)
+  return `${iso[1]} ${month} ${day}`
 }

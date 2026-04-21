@@ -1,141 +1,263 @@
 /**
- * Turabian 9th Edition (2018) Citation Formatter
+ * Turabian 9th Edition (Notes–Bibliography) Citation Formatter
  *
- * Notes-Bibliography system (simplified Chicago).
- * - Footnote first: Firstname Lastname, Title (Place: Publisher, Year), Page.
- * - Footnote subsequent: Lastname, Short Title, Page.
- * - Bibliography: Lastname, Firstname. Title. Place: Publisher, Year.
+ * Reference: https://www.chicagomanualofstyle.org/turabian/citation-guide.html
+ *
+ * Turabian 9 is the student-oriented simplification of Chicago 17 (NB).
+ *
+ * Key rules (Turabian 9):
+ *  - Bibliography is ALPHABETICAL by first author's surname.
+ *  - Full footnote: Firstname Lastname, *Title* (Place: Publisher, Year), Page.
+ *  - Short footnote: Lastname, *Short Title*, Page.
+ *  - Bibliography: Lastname, Firstname. *Title*. Place: Publisher, Year.
+ *  - *Italic* book/journal titles; "quotes" around article titles.
+ *  - Translation: "trans. Translator" (note) / "Translated by Translator." (bib).
+ *  - Access date for web: "accessed Month DD, YYYY,"
+ *  - Dissertation: "(PhD diss., University, Year)".
  */
 
 import type { BibliographyEntry } from '@/types/bibliography'
-import { CitationFormatter } from './formatter'
+import { CitationFormatter, type InlineCitationStyle } from './base'
 
 export class TurabianFormatter extends CitationFormatter {
+  get inlineStyle(): InlineCitationStyle {
+    return 'footnote'
+  }
+
+  // ==================== FOOTNOTE FIRST ====================
+
   formatFootnoteFirst(
     entry: BibliographyEntry,
     page?: string,
     volume?: string
   ): string {
-    const author = this.authorNormalOrder(entry)
-
     switch (entry.entryType) {
-      case 'makale': {
-        const journal = entry.journalName ?? ''
-        const vol = entry.journalVolume ?? ''
-        const issue = entry.journalIssue ? `, no. ${entry.journalIssue}` : ''
-        const year = entry.year ? ` (${entry.year})` : ''
-        const pageStr = page ? `: ${page}` : ''
-        return `${author}, "${entry.title}," ${journal} ${vol}${issue}${year}${pageStr}.`
-      }
-      case 'tez': {
-        const uni = entry.publisher ?? entry.publishPlace ?? ''
-        const year = entry.year ?? ''
-        const pageStr = page ? `, ${page}` : ''
-        return `${author}, "${entry.title}" (PhD diss., ${uni}, ${year})${pageStr}.`
-      }
-      case 'web': {
-        const url = entry.url ?? ''
-        const year = entry.year ? `, ${entry.year}` : ''
-        return `${author}, "${entry.title}"${year}, ${url}.`
-      }
-      default: {
-        const pubBlock = this.buildPublisherParens(entry)
-        const pageStr = this.buildPageVolume(page, volume)
-        let extra = ''
-        if (entry.entryType === 'ceviri' && entry.translator) {
-          extra = `, trans. ${entry.translator}`
-        }
-        if (entry.entryType === 'nesir' && entry.editor) {
-          extra = `, ed. ${entry.editor}`
-        }
-        const pageClause = pageStr ? `, ${pageStr}` : ''
-        return `${author}, ${entry.title}${extra} ${pubBlock}${pageClause}.`
-      }
+      case 'kitap':
+      case 'nesir':
+      case 'ceviri':
+        return this.noteBookFirst(entry, page, volume)
+      case 'makale':
+        return this.noteArticleFirst(entry, page)
+      case 'tez':
+        return this.noteDissertationFirst(entry, page)
+      case 'ansiklopedi':
+        return this.noteEncyclopediaFirst(entry, page)
+      case 'web':
+        return this.noteWebFirst(entry)
+      default:
+        return this.noteBookFirst(entry, page, volume)
     }
   }
+
+  // ==================== FOOTNOTE SUBSEQUENT ====================
 
   formatFootnoteSubsequent(
     entry: BibliographyEntry,
     page?: string,
     volume?: string
   ): string {
-    const short = entry.shortTitle ?? this.deriveShortTitle(entry.title)
-    const pageStr = this.buildPageVolume(page, volume)
+    const short = entry.shortTitle || deriveShortTitle(entry.title)
+    const pageStr = buildPageVolume(page, volume)
+    const pageClause = pageStr ? `, ${pageStr}` : ''
     if (entry.entryType === 'makale') {
-      return `${entry.authorSurname}, "${short}", ${pageStr}.`
+      return `${entry.authorSurname}, "${short}"${pageClause}.`
     }
-    return `${entry.authorSurname}, ${short}, ${pageStr}.`
+    return `${entry.authorSurname}, *${short}*${pageClause}.`
   }
+
+  // ==================== BIBLIOGRAPHY ====================
 
   formatBibliography(entry: BibliographyEntry): string {
-    const author = this.authorInvertedOrder(entry)
-    const year = entry.year ?? 'n.d.'
-
     switch (entry.entryType) {
-      case 'makale': {
-        const journal = entry.journalName ?? ''
-        const vol = entry.journalVolume ?? ''
-        const issue = entry.journalIssue ? `, no. ${entry.journalIssue}` : ''
-        const yearStr = ` (${year})`
-        const pages = entry.pageRange ? `: ${entry.pageRange}` : ''
-        return `${author}. "${entry.title}." ${journal} ${vol}${issue}${yearStr}${pages}.`
-      }
-      case 'tez': {
-        const uni = entry.publisher ?? entry.publishPlace ?? ''
-        return `${author}. "${entry.title}." PhD diss., ${uni}, ${year}.`
-      }
-      case 'web': {
-        const url = entry.url ?? ''
-        return `${author}. "${entry.title}." ${year}. ${url}.`
-      }
-      default: {
-        const pub = this.buildPublisher(entry)
-        let extra = ''
-        if (entry.entryType === 'ceviri' && entry.translator) {
-          extra = ` Translated by ${entry.translator}.`
-        }
-        if (entry.entryType === 'nesir' && entry.editor) {
-          extra = ` Edited by ${entry.editor}.`
-        }
-        return `${author}. ${entry.title}.${extra} ${pub}, ${year}.`
-      }
+      case 'kitap':
+      case 'nesir':
+      case 'ceviri':
+        return this.bibBook(entry)
+      case 'makale':
+        return this.bibArticle(entry)
+      case 'tez':
+        return this.bibDissertation(entry)
+      case 'ansiklopedi':
+        return this.bibEncyclopedia(entry)
+      case 'web':
+        return this.bibWeb(entry)
+      default:
+        return this.bibBook(entry)
     }
   }
 
-  private authorNormalOrder(entry: BibliographyEntry): string {
-    if (entry.authorName) {
-      return `${entry.authorName} ${entry.authorSurname}`
-    }
-    return entry.authorSurname
+  // ==================== PRIVATE: FOOTNOTE VARIANTS ====================
+
+  private noteBookFirst(entry: BibliographyEntry, page?: string, volume?: string): string {
+    const author = authorNormal(entry)
+    const extra = buildNoteContributor(entry)
+    const pub = buildPublisherParens(entry)
+    const pageStr = buildPageVolume(page, volume)
+    const pageClause = pageStr ? `, ${pageStr}` : ''
+    return `${author}, *${entry.title}*${extra} ${pub}${pageClause}.`
   }
 
-  private authorInvertedOrder(entry: BibliographyEntry): string {
-    if (entry.authorName) {
-      return `${entry.authorSurname}, ${entry.authorName}`
-    }
-    return entry.authorSurname
+  private noteArticleFirst(entry: BibliographyEntry, page?: string): string {
+    const author = authorNormal(entry)
+    const journal = entry.journalName?.trim() || ''
+    const vol = entry.journalVolume?.trim() || ''
+    const issue = entry.journalIssue?.trim() ? `, no. ${entry.journalIssue.trim()}` : ''
+    const year = entry.year ? ` (${entry.year})` : ''
+    const pageStr = page ? `: ${page}` : ''
+    const journalPart = journal ? ` *${journal}*${vol ? ` ${vol}` : ''}${issue}${year}` : ''
+    return `${author}, "${entry.title},"${journalPart}${pageStr}.`
   }
 
-  private deriveShortTitle(title: string): string {
-    return title.replace(/^(el-|er-|al-)/i, '').split(/\s+/).slice(0, 4).join(' ')
+  private noteDissertationFirst(entry: BibliographyEntry, page?: string): string {
+    const author = authorNormal(entry)
+    const uni = entry.publisher?.trim() || entry.publishPlace?.trim() || ''
+    const year = entry.year?.trim() || ''
+    const pageStr = page ? `, ${page}` : ''
+    const inner = [uni, year].filter(Boolean).join(', ')
+    return `${author}, "${entry.title}" (PhD diss., ${inner})${pageStr}.`
   }
 
-  private buildPublisher(entry: BibliographyEntry): string {
-    if (entry.publishPlace && entry.publisher) {
-      return `${entry.publishPlace}: ${entry.publisher}`
-    }
-    return entry.publisher ?? entry.publishPlace ?? 'n.p.'
+  private noteEncyclopediaFirst(entry: BibliographyEntry, page?: string): string {
+    const author = authorNormal(entry)
+    const encyclopedia = entry.journalName?.trim() || ''
+    const vol = entry.journalVolume?.trim() ? ` ${entry.journalVolume.trim()}` : ''
+    const year = entry.year ? ` (${entry.year})` : ''
+    const pageStr = page ? `: ${page}` : ''
+    const encyclopediaPart = encyclopedia ? ` *${encyclopedia}*${vol}${year}` : ''
+    return `${author}, "${entry.title},"${encyclopediaPart}${pageStr}.`
   }
 
-  private buildPublisherParens(entry: BibliographyEntry): string {
-    const inner = this.buildPublisher(entry)
-    const year = entry.year ?? 'n.d.'
-    return `(${inner}, ${year})`
+  private noteWebFirst(entry: BibliographyEntry): string {
+    const author = authorNormal(entry)
+    const site = entry.publisher?.trim() || entry.journalName?.trim() || ''
+    const sitePart = site ? `, *${site}*` : ''
+    const published = entry.year ? `, ${entry.year}` : ''
+    const accessed = entry.accessDate && !entry.year
+      ? `, accessed ${formatAccessDateTurabian(entry.accessDate)}`
+      : ''
+    const url = entry.url ? `, ${entry.url}` : ''
+    return `${author}, "${entry.title}"${sitePart}${published}${accessed}${url}.`
   }
 
-  private buildPageVolume(page?: string, volume?: string): string {
-    if (volume && page) return `${volume}:${page}`
-    if (page) return page
-    return ''
+  // ==================== PRIVATE: BIBLIOGRAPHY VARIANTS ====================
+
+  private bibBook(entry: BibliographyEntry): string {
+    const author = authorInverted(entry)
+    const pub = buildPublisher(entry)
+    const year = entry.year?.trim() || 'n.d.'
+    const extra = buildBibContributor(entry)
+    const edition = entry.edition ? ` ${ordinalSuffix(entry.edition)} ed.` : ''
+    return `${author}. *${entry.title}*.${extra}${edition} ${pub}, ${year}.`
   }
+
+  private bibArticle(entry: BibliographyEntry): string {
+    const author = authorInverted(entry)
+    const journal = entry.journalName?.trim() || ''
+    const vol = entry.journalVolume?.trim() || ''
+    const issue = entry.journalIssue?.trim() ? `, no. ${entry.journalIssue.trim()}` : ''
+    const year = entry.year ? ` (${entry.year})` : ''
+    const pages = entry.pageRange ? `: ${entry.pageRange}` : ''
+    const journalPart = journal ? ` *${journal}*${vol ? ` ${vol}` : ''}${issue}${year}` : ''
+    return `${author}. "${entry.title}."${journalPart}${pages}.`
+  }
+
+  private bibDissertation(entry: BibliographyEntry): string {
+    const author = authorInverted(entry)
+    const uni = entry.publisher?.trim() || entry.publishPlace?.trim() || ''
+    const year = entry.year?.trim() || 'n.d.'
+    return `${author}. "${entry.title}." PhD diss., ${uni}, ${year}.`
+  }
+
+  private bibEncyclopedia(entry: BibliographyEntry): string {
+    const author = authorInverted(entry)
+    const encyclopedia = entry.journalName?.trim() || entry.publisher?.trim() || ''
+    const vol = entry.journalVolume?.trim() ? ` ${entry.journalVolume.trim()}` : ''
+    const year = entry.year ? ` (${entry.year})` : ''
+    const pages = entry.pageRange ? `: ${entry.pageRange}` : ''
+    const encyclopediaPart = encyclopedia ? ` *${encyclopedia}*${vol}${year}` : ''
+    return `${author}. "${entry.title}."${encyclopediaPart}${pages}.`
+  }
+
+  private bibWeb(entry: BibliographyEntry): string {
+    const author = authorInverted(entry)
+    const site = entry.publisher?.trim() || entry.journalName?.trim() || ''
+    const sitePart = site ? ` *${site}*.` : ''
+    const published = entry.year ? ` ${entry.year}.` : ''
+    const accessed = entry.accessDate && !entry.year
+      ? ` Accessed ${formatAccessDateTurabian(entry.accessDate)}.`
+      : ''
+    const url = entry.url ? ` ${entry.url}.` : ''
+    return `${author}. "${entry.title}."${sitePart}${published}${accessed}${url}`.trim()
+  }
+}
+
+// ==================== MODULE-LEVEL HELPERS ====================
+
+function authorNormal(entry: BibliographyEntry): string {
+  if (entry.authorName) return `${entry.authorName} ${entry.authorSurname}`
+  return entry.authorSurname
+}
+
+function authorInverted(entry: BibliographyEntry): string {
+  if (entry.authorName) return `${entry.authorSurname}, ${entry.authorName}`
+  return entry.authorSurname
+}
+
+function buildPublisher(entry: BibliographyEntry): string {
+  const place = entry.publishPlace?.trim() || ''
+  const pub = entry.publisher?.trim() || ''
+  if (place && pub) return `${place}: ${pub}`
+  if (pub) return pub
+  if (place) return place
+  return 'n.p.'
+}
+
+function buildPublisherParens(entry: BibliographyEntry): string {
+  const inner = buildPublisher(entry)
+  const year = entry.year?.trim() || 'n.d.'
+  return `(${inner}, ${year})`
+}
+
+function buildPageVolume(page?: string, volume?: string): string {
+  if (volume && page) return `${volume}:${page}`
+  if (page) return page
+  return ''
+}
+
+function buildNoteContributor(entry: BibliographyEntry): string {
+  if (entry.entryType === 'ceviri' && entry.translator) return `, trans. ${entry.translator}`
+  if (entry.entryType === 'nesir' && entry.editor) return `, ed. ${entry.editor}`
+  return ''
+}
+
+function buildBibContributor(entry: BibliographyEntry): string {
+  if (entry.entryType === 'ceviri' && entry.translator) return ` Translated by ${entry.translator}.`
+  if (entry.entryType === 'nesir' && entry.editor) return ` Edited by ${entry.editor}.`
+  return ''
+}
+
+function deriveShortTitle(title: string): string {
+  return title.replace(/^(el-|er-|al-|the |a |an )/i, '').split(/\s+/).slice(0, 4).join(' ')
+}
+
+function ordinalSuffix(n: string): string {
+  const num = parseInt(n, 10)
+  if (isNaN(num)) return n
+  const mod100 = num % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${num}th`
+  switch (num % 10) {
+    case 1: return `${num}st`
+    case 2: return `${num}nd`
+    case 3: return `${num}rd`
+    default: return `${num}th`
+  }
+}
+
+function formatAccessDateTurabian(raw: string): string {
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!iso) return raw
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  const month = months[parseInt(iso[2], 10) - 1] ?? iso[2]
+  const day = parseInt(iso[3], 10)
+  return `${month} ${day}, ${iso[1]}`
 }

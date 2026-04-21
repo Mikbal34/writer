@@ -36,6 +36,7 @@ export interface LibraryFormData {
   pageRange: string;
   doi: string;
   url: string;
+  accessDate: string;
 }
 
 const ENTRY_TYPES: Array<{ value: EntryType; label: string; description: string }> = [
@@ -67,6 +68,7 @@ const EMPTY_FORM: LibraryFormData = {
   pageRange: "",
   doi: "",
   url: "",
+  accessDate: "",
 };
 
 interface LibraryEntryFormProps {
@@ -141,6 +143,7 @@ export default function LibraryEntryForm({
         pageRange: (full.pageRange as string) ?? "",
         doi: (full.doi as string) ?? "",
         url: (full.url as string) ?? "",
+        accessDate: (full.accessDate as string) ?? "",
       }));
     };
 
@@ -225,6 +228,7 @@ export default function LibraryEntryForm({
   }
 
   const showJournalFields = form.entryType === "makale";
+  const showEncyclopediaTitle = form.entryType === "ansiklopedi";
   const showPublisherFields = ["kitap", "nesir", "ceviri", "tez", "ansiklopedi"].includes(form.entryType);
   const showTranslatorField = form.entryType === "ceviri";
   const showEditorField = ["kitap", "ansiklopedi", "nesir"].includes(form.entryType);
@@ -310,6 +314,22 @@ export default function LibraryEntryForm({
         </Field>
       )}
 
+      {showEncyclopediaTitle && (
+        <>
+          <Field id="journalName" label="Encyclopedia Title">
+            <Input id="journalName" placeholder="e.g. Encyclopedia of Philosophy" value={form.journalName} onChange={(e) => update("journalName", e.target.value)} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field id="journalVolume" label="Volume">
+              <Input id="journalVolume" value={form.journalVolume} onChange={(e) => update("journalVolume", e.target.value)} />
+            </Field>
+            <Field id="pageRange" label="Entry Pages">
+              <Input id="pageRange" placeholder="e.g. 312-318" value={form.pageRange} onChange={(e) => update("pageRange", e.target.value)} />
+            </Field>
+          </div>
+        </>
+      )}
+
       {showJournalFields && (
         <>
           <Field id="journalName" label="Journal Name">
@@ -356,9 +376,14 @@ export default function LibraryEntryForm({
       </div>
 
       {showUrlField && (
-        <Field id="url" label="URL">
-          <Input id="url" type="url" placeholder="https://..." value={form.url} onChange={(e) => update("url", e.target.value)} />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field id="url" label="URL">
+            <Input id="url" type="url" placeholder="https://..." value={form.url} onChange={(e) => update("url", e.target.value)} />
+          </Field>
+          <Field id="accessDate" label="Access Date">
+            <Input id="accessDate" type="date" value={form.accessDate} onChange={(e) => update("accessDate", e.target.value)} />
+          </Field>
+        </div>
       )}
 
       <div className="flex items-center justify-end gap-2 pt-2">
