@@ -133,7 +133,7 @@ export type RunningHeadContent =
 export type RunningHeadSpec = {
   enabled: boolean
   content: RunningHeadContent
-  position: 'top-right' | 'top-center'
+  position: 'top-right' | 'top-center' | 'bottom-center'
 }
 
 // =================================================================
