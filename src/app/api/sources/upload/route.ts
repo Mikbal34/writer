@@ -270,9 +270,12 @@ Rules:
               }
             }
 
+            // Only set primary sourceId if this bib has none yet (first PDF wins primary)
+            const primarySourceUpdate = existingBib.sourceId ? {} : { sourceId }
+
             await prisma.bibliography.update({
               where: { id: bibliographyId },
-              data: { ...updateData, sourceId },
+              data: { ...updateData, ...primarySourceUpdate },
             })
           }
 
@@ -312,20 +315,52 @@ Rules:
         )
         // If we have a bibliographyId but AI failed, still link the source
         if (bibliographyId) {
-          await prisma.bibliography.update({
+          const existingBib = await prisma.bibliography.findUnique({
             where: { id: bibliographyId },
-            data: { sourceId },
+            select: { sourceId: true },
           })
+          if (existingBib && !existingBib.sourceId) {
+            await prisma.bibliography.update({
+              where: { id: bibliographyId },
+              data: { sourceId },
+            })
+          }
           biblioId = bibliographyId
         }
       }
     } else if (bibliographyId) {
       // No extracted text but we have a bibliographyId — just link the source
-      await prisma.bibliography.update({
+      const existingBib = await prisma.bibliography.findUnique({
         where: { id: bibliographyId },
-        data: { sourceId },
+        select: { sourceId: true },
       })
+      if (existingBib && !existingBib.sourceId) {
+        await prisma.bibliography.update({
+          where: { id: bibliographyId },
+          data: { sourceId },
+        })
+      }
       biblioId = bibliographyId
+    }
+
+    // Always record this source as an attachment of the bibliography (if linked).
+    // First PDF also becomes primary (Bibliography.sourceId, set above);
+    // subsequent PDFs live only in the junction table.
+    if (biblioId) {
+      try {
+        await prisma.bibliographyAttachment.upsert({
+          where: {
+            bibliographyId_sourceId: { bibliographyId: biblioId, sourceId },
+          },
+          update: {},
+          create: { bibliographyId: biblioId, sourceId },
+        })
+      } catch (attachErr) {
+        console.error(
+          `[sources/upload] Failed to create attachment link for source ${sourceId} → bib ${biblioId}:`,
+          attachErr
+        )
+      }
     }
 
     // Step 4: If OCR is pending, poll for background results

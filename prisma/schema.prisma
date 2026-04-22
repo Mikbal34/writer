@@ -272,10 +272,11 @@ model Source {
   totalPages Int?
   processed  Boolean @default(false)
 
-  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project      Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   bibliography Bibliography[]
+  attachments  BibliographyAttachment[]
   chunks       SourceChunk[]
-  createdAt    DateTime       @default(now())
+  createdAt    DateTime                 @default(now())
 }
 
 enum EntryType {
@@ -314,12 +315,25 @@ model Bibliography {
   metadata       Json?
 
   libraryEntryId String?
-  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  source         Source?         @relation(fields: [sourceId], references: [id], onDelete: SetNull)
-  libraryEntry   LibraryEntry?   @relation(fields: [libraryEntryId], references: [id], onDelete: SetNull)
+  project        Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source         Source?                  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  libraryEntry   LibraryEntry?            @relation(fields: [libraryEntryId], references: [id], onDelete: SetNull)
   sourceMappings SourceMapping[]
   chunks         SourceChunk[]
-  createdAt      DateTime        @default(now())
+  attachments    BibliographyAttachment[]
+  createdAt      DateTime                 @default(now())
+}
+
+model BibliographyAttachment {
+  id             String       @id @default(cuid())
+  bibliographyId String
+  sourceId       String
+  createdAt      DateTime     @default(now())
+
+  bibliography Bibliography @relation(fields: [bibliographyId], references: [id], onDelete: Cascade)
+  source       Source       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([bibliographyId, sourceId])
 }
 
 model SourceMapping {

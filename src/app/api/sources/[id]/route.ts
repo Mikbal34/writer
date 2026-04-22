@@ -66,24 +66,42 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
 
     await unlink(absolutePath).catch(() => {})
 
-    // Roadmap-linked bibliography entries: keep them, just clear sourceId
-    await prisma.bibliography.updateMany({
-      where: {
-        sourceId: id,
-        sourceMappings: { some: {} },
+    // For every bibliography where this source is the primary, try to promote
+    // the oldest remaining attachment (excluding this one) as the new primary.
+    const primaryBibs = await prisma.bibliography.findMany({
+      where: { sourceId: id },
+      select: {
+        id: true,
+        sourceMappings: { select: { id: true }, take: 1 },
+        attachments: {
+          where: { sourceId: { not: id } },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: { sourceId: true },
+        },
       },
-      data: { sourceId: null },
     })
 
-    // Non-roadmap bibliography entries: delete them
-    await prisma.bibliography.deleteMany({
-      where: {
-        sourceId: id,
-        sourceMappings: { none: {} },
-      },
-    })
+    for (const bib of primaryBibs) {
+      const nextSourceId = bib.attachments[0]?.sourceId ?? null
+      if (nextSourceId) {
+        await prisma.bibliography.update({
+          where: { id: bib.id },
+          data: { sourceId: nextSourceId },
+        })
+      } else if (bib.sourceMappings.length > 0) {
+        // No attachments left but still linked to a roadmap subsection — keep the bib
+        await prisma.bibliography.update({
+          where: { id: bib.id },
+          data: { sourceId: null },
+        })
+      } else {
+        // No attachments and not on the roadmap — drop the orphan
+        await prisma.bibliography.delete({ where: { id: bib.id } })
+      }
+    }
 
-    // Delete DB record (cascades to chunks via onDelete: Cascade)
+    // Delete DB record (cascades to chunks and attachments via onDelete: Cascade)
     await prisma.source.delete({ where: { id } })
 
     return NextResponse.json({ success: true })

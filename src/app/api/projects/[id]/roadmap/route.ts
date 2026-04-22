@@ -105,7 +105,9 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
       // Remove existing chapters (cascades to sections, subsections, sourceMappings)
       await tx.chapter.deleteMany({ where: { projectId: id } })
       // Remove bibliography entries that have no linked source file (AI-suggested only)
-      await tx.bibliography.deleteMany({ where: { projectId: id, sourceId: null } })
+      await tx.bibliography.deleteMany({
+        where: { projectId: id, sourceId: null, attachments: { none: {} } },
+      })
 
       // Update project title if the roadmap provides one
       if (roadmap.title) {

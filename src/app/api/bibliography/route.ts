@@ -42,6 +42,14 @@ export async function GET(req: NextRequest) {
       orderBy: [{ authorSurname: 'asc' }, { authorName: 'asc' }, { year: 'asc' }],
       include: {
         source: { select: { id: true, filename: true, processed: true } },
+        attachments: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            source: {
+              select: { id: true, filename: true, fileType: true, processed: true, totalPages: true },
+            },
+          },
+        },
         _count: { select: { sourceMappings: true } },
       },
     })

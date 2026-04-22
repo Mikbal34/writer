@@ -6,14 +6,10 @@ import {
   Plus,
   Loader2,
   BookMarked,
-  Upload,
-  ChevronDown,
-  ChevronUp,
   FileText,
   Search,
   CheckCircle2,
-  Download,
-  BookOpen,
+  X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,14 +20,23 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import UploadArea from "@/components/sources/UploadArea";
-import SourceList, { type SourceItem } from "@/components/sources/SourceList";
+import { type SourceItem } from "@/components/sources/SourceList";
 import KunyeForm from "@/components/sources/KunyeForm";
 import PdfFinderButton from "@/components/sources/PdfFinderButton";
-import BulkPdfFinder from "@/components/sources/BulkPdfFinder";
 import LibraryPickerDialog from "@/components/library/LibraryPickerDialog";
 import { Ornament, PageNumber, PageTitle } from "@/components/shared/BookElements";
 import { FadeUp, FadeIn, StaggerItem } from "@/components/shared/Animations";
+
+interface BibliographyAttachment {
+  id: string;
+  source: {
+    id: string;
+    filename: string;
+    fileType: string;
+    processed: boolean;
+    totalPages: number | null;
+  };
+}
 
 interface BibliographyEntry {
   id: string;
@@ -54,7 +59,65 @@ interface BibliographyEntry {
   doi: string | null;
   url: string | null;
   sourceId: string | null;
+  attachments?: BibliographyAttachment[];
   _count?: { sourceMappings: number };
+}
+
+function AttachmentChip({
+  filename,
+  processed,
+  sourceId,
+  onDeleted,
+}: {
+  filename: string;
+  processed: boolean;
+  sourceId: string;
+  onDeleted: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirm(`"${filename}" silinsin mi?`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/sources/${sourceId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("silinemedi");
+      toast.success("Dosya silindi");
+      onDeleted();
+    } catch {
+      toast.error("Silme başarısız");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <span
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#e8dfd0]/50 border border-[#d4c9b5] rounded-sm text-[11px] font-ui text-ink-light max-w-[260px]"
+    >
+      <FileText className="h-3 w-3 shrink-0 text-ink-light" />
+      <span className="truncate" title={filename}>
+        {filename}
+      </span>
+      {!processed && (
+        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />
+      )}
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={deleting}
+        className="text-muted-foreground hover:text-red-600 transition-colors shrink-0"
+        title="Kaldır"
+      >
+        {deleting ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <X className="h-3 w-3" />
+        )}
+      </button>
+    </span>
+  );
 }
 
 function isBibComplete(bib: BibliographyEntry): boolean {
@@ -72,11 +135,8 @@ export default function SourcesPage() {
   const [sources, setSources] = useState<SourceItem[]>([]);
   const [allBibliography, setAllBibliography] = useState<BibliographyEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedSource, setSelectedSource] = useState<SourceItem | null>(null);
   const [showKunyeDialog, setShowKunyeDialog] = useState(false);
-  const [showAddBiblio, setShowAddBiblio] = useState(false);
   const [editingBiblio, setEditingBiblio] = useState<BibliographyEntry | null>(null);
-  const [showUpload, setShowUpload] = useState(false);
   const [bibSearch, setBibSearch] = useState("");
   const [bibFilter, setBibFilter] = useState<"all" | "complete" | "incomplete">("all");
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
@@ -130,17 +190,8 @@ export default function SourcesPage() {
     return () => clearInterval(interval);
   }, [sources, fetchSources, fetchBibliography]);
 
-  function handleSourceClick(source: SourceItem) {
-    setSelectedSource(source);
-    setShowKunyeDialog(true);
-    setShowAddBiblio(false);
-    setEditingBiblio(null);
-  }
-
   function handleKunyeSave() {
     setShowKunyeDialog(false);
-    setSelectedSource(null);
-    setShowAddBiblio(false);
     setEditingBiblio(null);
     fetchSources();
     fetchBibliography();
@@ -172,26 +223,6 @@ export default function SourcesPage() {
           subtitle="Manage your sources. Upload PDFs or fill in bibliography details from the roadmap."
         />
         <div className="flex gap-2">
-          <BulkPdfFinder
-            projectId={projectId}
-            missingCount={allBibliography.filter((b) => !b.sourceId).length}
-            onComplete={() => {
-              fetchSources();
-              fetchBibliography();
-            }}
-          />
-          <button
-            onClick={() => setShowUpload(!showUpload)}
-            className="flex items-center gap-2 px-3 py-1.5 border border-[#d4c9b5] rounded-sm font-ui text-xs text-ink hover:bg-[#e8dfd0]/30 transition-colors"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            {showUpload ? "Hide Upload" : "Upload PDF"}
-            {showUpload ? (
-              <ChevronUp className="h-3 w-3" />
-            ) : (
-              <ChevronDown className="h-3 w-3" />
-            )}
-          </button>
           <button
             onClick={() => setShowLibraryPicker(true)}
             className="flex items-center gap-2 px-3 py-1.5 border border-[#d4c9b5] rounded-sm font-ui text-xs text-ink hover:bg-[#e8dfd0]/30 transition-colors"
@@ -201,9 +232,7 @@ export default function SourcesPage() {
           </button>
           <button
             onClick={() => {
-              setSelectedSource(null);
               setEditingBiblio(null);
-              setShowAddBiblio(true);
               setShowKunyeDialog(true);
             }}
             className="flex items-center gap-2 px-3 py-1.5 bg-forest text-[#F5EDE0] rounded-sm font-ui text-xs hover:bg-forest/90 transition-colors"
@@ -213,43 +242,6 @@ export default function SourcesPage() {
           </button>
         </div>
       </FadeUp>
-
-      {/* Upload area - collapsible */}
-      {showUpload && (
-        <div className="mb-6 border border-[#d4c9b5] rounded-sm bg-[#FAF7F0] p-5">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              <UploadArea
-                projectId={projectId}
-                onUploadComplete={() => {
-                  fetchSources();
-                  setShowUpload(false);
-                }}
-              />
-            </div>
-            {sources.length > 0 && (
-              <div>
-                <p className="font-ui text-sm font-medium mb-3 text-ink">
-                  Uploaded Files ({sources.length})
-                </p>
-                {isLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-forest" />
-                ) : (
-                  <SourceList
-                    sources={sources}
-                    onSourceClick={handleSourceClick}
-                    onSourceDeleted={() => {
-                      fetchSources();
-                      fetchBibliography();
-                    }}
-                    selectedSourceId={selectedSource?.id}
-                  />
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Stats bar */}
       <FadeIn delay={0.2} className="flex items-center gap-4 mb-4 flex-wrap">
@@ -281,15 +273,6 @@ export default function SourcesPage() {
           <span className="h-2 w-2 rounded-full bg-gold-dark" />
           {partialCount + missingCount} Incomplete
         </button>
-        {sources.length > 0 && (
-          <>
-            <div className="h-4 w-px bg-[#d4c9b5]" />
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground font-ui">
-              <BookOpen className="h-3.5 w-3.5 text-ink-light" />
-              {sources.length} files uploaded
-            </span>
-          </>
-        )}
         <div className="ml-auto relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -329,6 +312,7 @@ export default function SourcesPage() {
               if (!bib.year) missingFields.push("yıl");
               if (!bib.publisher) missingFields.push("yayınevi");
               if (!bib.publishPlace) missingFields.push("yer");
+              const attachments = bib.attachments ?? [];
 
               return (
                 <StaggerItem
@@ -336,69 +320,79 @@ export default function SourcesPage() {
                   index={bibIndex}
                   baseDelay={0.3}
                   stagger={0.08}
-                  className="group flex items-center gap-4 py-4 border-b border-[#d4c9b5]/40 hover:bg-[#e8dfd0]/15 px-4 -mx-4 transition-colors last:border-b-0 cursor-pointer"
+                  className="group flex flex-col py-4 border-b border-[#d4c9b5]/40 hover:bg-[#e8dfd0]/15 px-4 -mx-4 transition-colors last:border-b-0 cursor-pointer"
                   onClick={() => {
                     setEditingBiblio(bib);
-                    setSelectedSource(null);
-                    setShowAddBiblio(true);
                     setShowKunyeDialog(true);
                   }}
                 >
-                  {/* Status icon */}
-                  {complete ? (
-                    <CheckCircle2 className="w-5 h-5 text-forest shrink-0" />
-                  ) : partial ? (
-                    <CheckCircle2 className="w-5 h-5 text-gold-dark shrink-0" />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/20 shrink-0" />
-                  )}
-
-                  {/* Author + Title */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="font-body text-sm font-semibold text-ink">
-                        {bib.authorSurname}
-                        {bib.authorName ? `, ${bib.authorName}` : ""}
-                      </span>
-                      <span className="text-muted-foreground">—</span>
-                      <span className="font-body text-sm italic text-ink-light truncate">
-                        {bib.title}
-                      </span>
-                    </div>
-                    {missingFields.length > 0 && (
-                      <span className="text-[10px] text-gold-dark">
-                        eksik: {missingFields.join(", ")}
-                      </span>
+                  <div className="flex items-center gap-4">
+                    {/* Status icon */}
+                    {complete ? (
+                      <CheckCircle2 className="w-5 h-5 text-forest shrink-0" />
+                    ) : partial ? (
+                      <CheckCircle2 className="w-5 h-5 text-gold-dark shrink-0" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/20 shrink-0" />
                     )}
-                  </div>
 
-                  {/* Year */}
-                  <span className="font-display text-sm text-muted-foreground shrink-0">
-                    {bib.year ?? "—"}
-                  </span>
+                    {/* Author + Title */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="font-body text-sm font-semibold text-ink">
+                          {bib.authorSurname}
+                          {bib.authorName ? `, ${bib.authorName}` : ""}
+                        </span>
+                        <span className="text-muted-foreground">—</span>
+                        <span className="font-body text-sm italic text-ink-light truncate">
+                          {bib.title}
+                        </span>
+                      </div>
+                      {missingFields.length > 0 && (
+                        <span className="text-[10px] text-gold-dark">
+                          eksik: {missingFields.join(", ")}
+                        </span>
+                      )}
+                    </div>
 
-                  {/* Type badge */}
-                  <span className="font-ui text-[10px] px-2 py-0.5 bg-[#e8dfd0] text-ink-light rounded-sm tracking-wider shrink-0">
-                    {bib.entryType}
-                  </span>
+                    {/* Year */}
+                    <span className="font-display text-sm text-muted-foreground shrink-0">
+                      {bib.year ?? "—"}
+                    </span>
 
-                  {/* Download / PDF finder */}
-                  {bib.sourceId ? (
-                    <button
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-8 h-8 rounded-sm flex items-center justify-center hover:bg-[#e8dfd0]/50 transition-colors shrink-0"
-                    >
-                      <Download className="w-4 h-4 text-ink-light group-hover:text-forest transition-colors" />
-                    </button>
-                  ) : (
+                    {/* Type badge */}
+                    <span className="font-ui text-[10px] px-2 py-0.5 bg-[#e8dfd0] text-ink-light rounded-sm tracking-wider shrink-0">
+                      {bib.entryType}
+                    </span>
+
+                    {/* Paperclip upload — always clickable, adds another PDF */}
                     <PdfFinderButton
                       bibliographyId={bib.id}
                       projectId={projectId}
+                      hasSource={attachments.length > 0}
                       onSourceLinked={() => {
                         fetchSources();
                         fetchBibliography();
                       }}
                     />
+                  </div>
+
+                  {/* Attached PDFs */}
+                  {attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 ml-9 mt-2">
+                      {attachments.map((att) => (
+                        <AttachmentChip
+                          key={att.id}
+                          filename={att.source.filename}
+                          processed={att.source.processed}
+                          sourceId={att.source.id}
+                          onDeleted={() => {
+                            fetchSources();
+                            fetchBibliography();
+                          }}
+                        />
+                      ))}
+                    </div>
                   )}
                 </StaggerItem>
               );
@@ -415,70 +409,59 @@ export default function SourcesPage() {
         onOpenChange={(open) => {
           if (!open) {
             setShowKunyeDialog(false);
-            setSelectedSource(null);
             setEditingBiblio(null);
-            setShowAddBiblio(false);
           }
         }}
       >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-[#FAF7F0] border border-[#d4c9b5]">
           <DialogHeader>
             <DialogTitle className="font-display text-ink">
-              {editingBiblio
-                ? "Edit Bibliography Entry"
-                : selectedSource
-                ? `Bibliography for: ${selectedSource.filename}`
-                : "Add Bibliography Entry"}
+              {editingBiblio ? "Edit Bibliography Entry" : "Add Bibliography Entry"}
             </DialogTitle>
           </DialogHeader>
 
           <Separator className="my-3 bg-[#d4c9b5]" />
 
-          {(showAddBiblio || editingBiblio || !selectedSource) && (
-            <KunyeForm
-              projectId={projectId}
-              sourceId={selectedSource?.id}
-              bibliographyId={editingBiblio?.id}
-              initialData={
-                editingBiblio
-                  ? {
-                      entryType: editingBiblio.entryType as
-                        | "kitap"
-                        | "makale"
-                        | "nesir"
-                        | "ceviri"
-                        | "tez"
-                        | "ansiklopedi"
-                        | "web",
-                      authorSurname: editingBiblio.authorSurname,
-                      authorName: editingBiblio.authorName ?? "",
-                      title: editingBiblio.title,
-                      shortTitle: editingBiblio.shortTitle ?? "",
-                      editor: editingBiblio.editor ?? "",
-                      translator: editingBiblio.translator ?? "",
-                      publisher: editingBiblio.publisher ?? "",
-                      publishPlace: editingBiblio.publishPlace ?? "",
-                      year: editingBiblio.year ?? "",
-                      volume: editingBiblio.volume ?? "",
-                      edition: editingBiblio.edition ?? "",
-                      journalName: editingBiblio.journalName ?? "",
-                      journalVolume: editingBiblio.journalVolume ?? "",
-                      journalIssue: editingBiblio.journalIssue ?? "",
-                      pageRange: editingBiblio.pageRange ?? "",
-                      doi: editingBiblio.doi ?? "",
-                      url: editingBiblio.url ?? "",
-                    }
-                  : undefined
-              }
-              onSave={handleKunyeSave}
-              onCancel={() => {
-                setShowKunyeDialog(false);
-                setSelectedSource(null);
-                setEditingBiblio(null);
-                setShowAddBiblio(false);
-              }}
-            />
-          )}
+          <KunyeForm
+            projectId={projectId}
+            bibliographyId={editingBiblio?.id}
+            initialData={
+              editingBiblio
+                ? {
+                    entryType: editingBiblio.entryType as
+                      | "kitap"
+                      | "makale"
+                      | "nesir"
+                      | "ceviri"
+                      | "tez"
+                      | "ansiklopedi"
+                      | "web",
+                    authorSurname: editingBiblio.authorSurname,
+                    authorName: editingBiblio.authorName ?? "",
+                    title: editingBiblio.title,
+                    shortTitle: editingBiblio.shortTitle ?? "",
+                    editor: editingBiblio.editor ?? "",
+                    translator: editingBiblio.translator ?? "",
+                    publisher: editingBiblio.publisher ?? "",
+                    publishPlace: editingBiblio.publishPlace ?? "",
+                    year: editingBiblio.year ?? "",
+                    volume: editingBiblio.volume ?? "",
+                    edition: editingBiblio.edition ?? "",
+                    journalName: editingBiblio.journalName ?? "",
+                    journalVolume: editingBiblio.journalVolume ?? "",
+                    journalIssue: editingBiblio.journalIssue ?? "",
+                    pageRange: editingBiblio.pageRange ?? "",
+                    doi: editingBiblio.doi ?? "",
+                    url: editingBiblio.url ?? "",
+                  }
+                : undefined
+            }
+            onSave={handleKunyeSave}
+            onCancel={() => {
+              setShowKunyeDialog(false);
+              setEditingBiblio(null);
+            }}
+          />
         </DialogContent>
       </Dialog>
 

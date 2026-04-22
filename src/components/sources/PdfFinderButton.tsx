@@ -1,98 +1,29 @@
 "use client";
 
 import { useState, useRef } from "react";
-import {
-  Search,
-  Download,
-  Paperclip,
-  Loader2,
-  CheckCircle2,
-} from "lucide-react";
+import { Paperclip, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-type FinderState =
-  | "idle"
-  | "searching"
-  | "found"
-  | "not_found"
-  | "downloading"
-  | "done";
+type UploadState = "idle" | "uploading" | "done";
 
 interface PdfFinderButtonProps {
   bibliographyId: string;
   projectId: string;
+  hasSource?: boolean;
   onSourceLinked: () => void;
 }
 
 export default function PdfFinderButton({
   bibliographyId,
   projectId,
+  hasSource = false,
   onSourceLinked,
 }: PdfFinderButtonProps) {
-  const [state, setState] = useState<FinderState>("idle");
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [provider, setProvider] = useState<string | null>(null);
+  const [state, setState] = useState<UploadState>("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleFindPdf(e: React.MouseEvent) {
-    e.stopPropagation();
-    setState("searching");
-
-    try {
-      const res = await fetch("/api/research/find-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bibliographyId }),
-      });
-
-      if (!res.ok) {
-        setState("not_found");
-        return;
-      }
-
-      const data = await res.json();
-
-      if (data.found && data.pdfUrl) {
-        setPdfUrl(data.pdfUrl);
-        setProvider(data.provider);
-        setState("found");
-      } else {
-        setState("not_found");
-      }
-    } catch {
-      setState("not_found");
-    }
-  }
-
-  async function handleDownloadPdf(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (!pdfUrl) return;
-    setState("downloading");
-
-    try {
-      const res = await fetch("/api/research/download-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bibliographyId, pdfUrl }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Download failed" }));
-        throw new Error(err.error);
-      }
-
-      setState("done");
-      toast.success("PDF indirildi ve işlendi");
-      onSourceLinked();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Download failed";
-      toast.error(message);
-      setState("found"); // allow retry
-    }
-  }
-
-  function handleManualUpload(e: React.MouseEvent) {
+  function handleClick(e: React.MouseEvent) {
     e.stopPropagation();
     fileInputRef.current?.click();
   }
@@ -102,7 +33,7 @@ export default function PdfFinderButton({
     e.target.value = "";
     if (!file) return;
 
-    setState("downloading");
+    setState("uploading");
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -122,21 +53,13 @@ export default function PdfFinderButton({
       setState("done");
       toast.success("Dosya yüklendi");
       onSourceLinked();
+      setTimeout(() => setState("idle"), 1500);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Upload failed";
       toast.error(message);
-      setState("not_found");
+      setState("idle");
     }
   }
-
-  const PROVIDER_LABELS: Record<string, string> = {
-    unpaywall: "Unpaywall",
-    semantic_scholar: "S2",
-    openalex: "OpenAlex",
-    core: "CORE",
-    open_library: "Archive",
-    doab: "DOAB",
-  };
 
   return (
     <>
@@ -151,47 +74,22 @@ export default function PdfFinderButton({
 
       {state === "idle" && (
         <button
-          onClick={handleFindPdf}
-          title="PDF Bul"
+          onClick={handleClick}
+          title={hasSource ? "Başka PDF ekle" : "PDF yükle"}
           className="w-8 h-8 rounded-sm flex items-center justify-center hover:bg-[#e8dfd0]/50 transition-colors shrink-0"
         >
-          <Search className="w-4 h-4 text-ink-light group-hover:text-forest transition-colors" />
+          <Paperclip
+            className={cn(
+              "w-4 h-4 transition-colors",
+              hasSource
+                ? "text-forest"
+                : "text-ink-light group-hover:text-forest"
+            )}
+          />
         </button>
       )}
 
-      {state === "searching" && (
-        <div className="w-8 h-8 flex items-center justify-center shrink-0">
-          <Loader2 className="w-4 h-4 animate-spin text-forest" />
-        </div>
-      )}
-
-      {state === "found" && (
-        <button
-          onClick={handleDownloadPdf}
-          title={`İndir (${PROVIDER_LABELS[provider ?? ""] ?? provider})`}
-          className={cn(
-            "flex items-center gap-1.5 px-2 py-1 rounded-sm transition-colors shrink-0",
-            "bg-forest/10 hover:bg-forest/20 text-forest"
-          )}
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span className="text-[10px] font-ui font-medium">
-            {PROVIDER_LABELS[provider ?? ""] ?? "PDF"}
-          </span>
-        </button>
-      )}
-
-      {state === "not_found" && (
-        <button
-          onClick={handleManualUpload}
-          title="PDF bulunamadı — kendin yükle"
-          className="w-8 h-8 rounded-sm flex items-center justify-center hover:bg-[#e8dfd0]/50 transition-colors shrink-0"
-        >
-          <Paperclip className="w-4 h-4 text-gold-dark" />
-        </button>
-      )}
-
-      {state === "downloading" && (
+      {state === "uploading" && (
         <div className="w-8 h-8 flex items-center justify-center shrink-0">
           <Loader2 className="w-4 h-4 animate-spin text-forest" />
         </div>
