@@ -6,8 +6,8 @@ import { Users, ImageIcon, Palette } from "lucide-react";
 import PreviewChat from "@/components/preview/PreviewChat";
 import CharacterPanel from "@/components/preview/CharacterPanel";
 import ScenePanel from "@/components/preview/ScenePanel";
-import StylePanel from "@/components/preview/StylePanel";
-import { toast } from "sonner";
+import BookStylePanel from "@/components/preview/BookStylePanel";
+import type { BookDesign } from "@/lib/book-styles";
 
 type Tab = "characters" | "scenes" | "style";
 
@@ -53,6 +53,7 @@ export default function PreviewPage() {
   const [chapters, setChapters] = useState<ChapterData[]>([]);
   const [projectTitle, setProjectTitle] = useState<string>("Untitled Book");
   const [artStyle, setArtStyle] = useState<string | null>(null);
+  const [bookDesign, setBookDesign] = useState<Partial<BookDesign> | null>(null);
   const [isLoadingChars, setIsLoadingChars] = useState(true);
   const [isLoadingImages, setIsLoadingImages] = useState(true);
 
@@ -95,7 +96,12 @@ export default function PreviewPage() {
         const data = await projRes.json();
         if (data.title) setProjectTitle(data.title);
         const guidelines = data.writingGuidelines as Record<string, unknown> | null;
-        if (guidelines?.artStyle) setArtStyle(guidelines.artStyle as string);
+        setArtStyle(guidelines?.artStyle ? (guidelines.artStyle as string) : null);
+        setBookDesign(
+          data.bookDesign && typeof data.bookDesign === "object"
+            ? (data.bookDesign as Partial<BookDesign>)
+            : null
+        );
       }
 
       if (roadmapRes.ok) {
@@ -151,11 +157,6 @@ export default function PreviewPage() {
     fetchProject();
   }
 
-  function handleStyleSelect(style: string) {
-    setArtStyle(style);
-    toast.info(`Art style set to "${style}". Use the chat to apply it.`);
-  }
-
   // Flat chapters list for ScenePanel
   const chaptersList = chapters.map((ch) => ({
     id: ch.id,
@@ -166,7 +167,7 @@ export default function PreviewPage() {
   const tabs: { key: Tab; label: string; icon: typeof Users }[] = [
     { key: "characters", label: "Characters", icon: Users },
     { key: "scenes", label: "Scenes", icon: ImageIcon },
-    { key: "style", label: "Style", icon: Palette },
+    { key: "style", label: "Book Style", icon: Palette },
   ];
 
   return (
@@ -226,7 +227,12 @@ export default function PreviewPage() {
             />
           )}
           {activeTab === "style" && (
-            <StylePanel currentStyle={artStyle} onStyleSelect={handleStyleSelect} />
+            <BookStylePanel
+              projectId={projectId}
+              currentArtStyle={artStyle}
+              currentDesign={bookDesign}
+              onApplied={fetchProject}
+            />
           )}
         </div>
       </div>

@@ -33,6 +33,7 @@ import {
   type FormatDefaults,
 } from "@/lib/citations/format-defaults";
 import { CITATION_FORMAT_META } from "@/lib/citations/metadata";
+import BookStylePanel from "@/components/preview/BookStylePanel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1161,6 +1162,7 @@ export default function DesignPage() {
   const projectId = params.id as string;
 
   const [design, setDesign] = useState<BookDesign>(DEFAULT_DESIGN);
+  const [artStyle, setArtStyle] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [citationFormat, setCitationFormat] = useState<CitationFormat | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1177,6 +1179,8 @@ export default function DesignPage() {
       if (data.citationFormat) {
         setCitationFormat(data.citationFormat as CitationFormat);
       }
+      const guidelines = data.writingGuidelines as Record<string, unknown> | null;
+      setArtStyle(guidelines?.artStyle ? (guidelines.artStyle as string) : null);
     } catch {
       // ignore
     } finally {
@@ -1243,13 +1247,28 @@ export default function DesignPage() {
           </div>
 
           {/* Live Preview (sticky right column on large screens) */}
-          <div className="lg:w-[260px] shrink-0 border-t lg:border-t-0 lg:border-l border-[#d4c9b5]/40 bg-[#f5f0e8] p-5 flex flex-col items-center gap-4">
+          <div className="lg:w-[280px] shrink-0 border-t lg:border-t-0 lg:border-l border-[#d4c9b5]/40 bg-[#f5f0e8] p-5 flex flex-col items-center gap-4 overflow-y-auto">
             <LivePreview design={design} />
 
-            {/* Quick Preset Buttons */}
+            {/* Unified Book Style bundles — cascade art + layout together */}
+            <div className="w-full">
+              <p className="font-ui text-[10px] uppercase tracking-wide text-muted-foreground text-center mb-1.5">
+                Kitap Stili
+              </p>
+              <BookStylePanel
+                projectId={projectId}
+                currentArtStyle={artStyle}
+                currentDesign={design}
+                variant="compact"
+                onApplied={fetchDesign}
+              />
+            </div>
+
+            {/* Legacy single-axis presets — kept for academic layout which
+                isn't part of the creative Book Style bundles. */}
             <div className="w-full space-y-2">
               <p className="font-ui text-[10px] uppercase tracking-wide text-muted-foreground text-center">
-                Quick Presets
+                Sadece Layout
               </p>
               {(
                 [
