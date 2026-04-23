@@ -560,55 +560,71 @@ function DesignControls({
 }
 
 // ---------------------------------------------------------------------------
-// Live Preview
+// Live Preview — two-page spread (verso + recto) with a gutter between
+// them. Readers spend 95% of their time on spreads, so the preview
+// matches what a finished book actually looks like when open.
 // ---------------------------------------------------------------------------
-function LivePreview({ design }: { design: BookDesign }) {
-  const pageAspects: Record<string, { w: number; h: number }> = {
-    A4: { w: 210, h: 297 },
-    A5: { w: 148, h: 210 },
-    "16x24cm": { w: 160, h: 240 },
-    "17x24cm": { w: 170, h: 240 },
-    "5x8": { w: 127, h: 203 },
-    "5.5x8.5": { w: 140, h: 216 },
-    "6x9": { w: 152, h: 229 },
-    letter: { w: 216, h: 279 },
-  };
-  const dims = pageAspects[design.pageSize] ?? pageAspects["A4"];
-  const previewScale = 220 / dims.w; // scale to ~220px wide
-  const previewH = dims.h * previewScale;
+const PAGE_ASPECTS: Record<string, { w: number; h: number }> = {
+  A4: { w: 210, h: 297 },
+  A5: { w: 148, h: 210 },
+  "16x24cm": { w: 160, h: 240 },
+  "17x24cm": { w: 170, h: 240 },
+  "5x8": { w: 127, h: 203 },
+  "5.5x8.5": { w: 140, h: 216 },
+  "6x9": { w: 152, h: 229 },
+  letter: { w: 216, h: 279 },
+};
 
-  // Convert pt margins to preview px.
-  // The real page width in pt is dims.w * (72/25.4) for mm-based sizes.
-  // But all margin values are stored in pt and the preview is 220px wide.
-  // We map pt → preview pixels by treating the page width in pt as the full 220px.
-  // A4 is 210mm = 595pt wide, so the pt-to-px factor is 220/595 ≈ 0.369.
-  const pageSizePtWidth: Record<string, number> = {
-    A4: 595,
-    A5: 420,
-    B5: 499,
-    "16x24cm": 454,
-    "17x24cm": 482,
-    "6x9": 432,
-    "5x8": 360,
-    "5.5x8.5": 396,
-    letter: 612,
-  };
-  const pageWidthPt = pageSizePtWidth[design.pageSize] ?? 595;
-  const ptToPx = (pt: number) => (pt / pageWidthPt) * 220;
+const PAGE_SIZE_PT_WIDTH: Record<string, number> = {
+  A4: 595,
+  A5: 420,
+  B5: 499,
+  "16x24cm": 454,
+  "17x24cm": 482,
+  "6x9": 432,
+  "5x8": 360,
+  "5.5x8.5": 396,
+  letter: 612,
+};
+
+function LivePreview({ design }: { design: BookDesign }) {
+  const dims = PAGE_ASPECTS[design.pageSize] ?? PAGE_ASPECTS.A4;
+  // Each page in the spread is 110px wide so the whole spread fits the
+  // same ~220px slot as the old single-page preview.
+  const pageW = 110;
+  const previewScale = pageW / dims.w;
+  const previewH = dims.h * previewScale;
+  const pageWidthPt = PAGE_SIZE_PT_WIDTH[design.pageSize] ?? 595;
+  const ptToPx = (pt: number) => (pt / pageWidthPt) * pageW;
 
   const chapterTitleWeight =
     design.chapterTitleStyle === "bold" || design.chapterTitleStyle === "bold-italic" ? "bold" : "normal";
-  const chapterTitleStyle =
+  const chapterTitleFontStyle =
     design.chapterTitleStyle === "italic" || design.chapterTitleStyle === "bold-italic" ? "italic" : "normal";
 
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <p className="font-ui text-[10px] uppercase tracking-wide text-muted-foreground">Live Preview</p>
+  // One page rendered with the current design. `side` controls asymmetric
+  // details: verso shows body-only (page 2), recto shows a chapter opener
+  // (page 3). Page number placement flips for "bottom-outside".
+  function SpreadPage({ side }: { side: "verso" | "recto" }) {
+    const isVerso = side === "verso";
+    const isRecto = side === "recto";
+    const pageNumber = isVerso ? 2 : 3;
+
+    // Page-number horizontal placement — outside = spine-opposite edge.
+    const pageNumLeftSide =
+      design.pageNumberPosition === "bottom-outside"
+        ? (isVerso ? "left" : "right")
+        : "center";
+
+    return (
       <div
-        className="relative bg-white shadow-md rounded overflow-hidden"
-        style={{ width: 220, height: Math.round(previewH) }}
+        className="relative bg-white shadow-md overflow-hidden"
+        style={{
+          width: pageW,
+          height: Math.round(previewH),
+          borderRadius: isVerso ? "2px 0 0 2px" : "0 2px 2px 0",
+        }}
       >
-        {/* Simulated page content area */}
         <div
           style={{
             position: "absolute",
@@ -619,69 +635,89 @@ function LivePreview({ design }: { design: BookDesign }) {
             overflow: "hidden",
           }}
         >
-          {/* Chapter title */}
-          <div
-            style={{
-              fontSize: ptToPx(design.chapterTitleSize) * 0.85,
-              fontWeight: chapterTitleWeight,
-              fontStyle: chapterTitleStyle,
-              color: design.headingColor,
-              textAlign: design.chapterTitleAlign as React.CSSProperties["textAlign"],
-              marginBottom: ptToPx(6),
-              lineHeight: 1.2,
-            }}
-          >
-            Chapter 1
-          </div>
-
-          {/* Section title */}
-          <div
-            style={{
-              fontSize: ptToPx(design.sectionTitleSize) * 0.85,
-              fontWeight: "600",
-              color: design.headingColor,
-              textAlign: design.chapterTitleAlign as React.CSSProperties["textAlign"],
-              marginBottom: ptToPx(8),
-            }}
-          >
-            The Beginning
-          </div>
-
-          {/* Divider */}
-          {design.showChapterDivider && (
-            <div
-              style={{
-                borderTop: `1px solid ${design.accentColor}`,
-                marginBottom: ptToPx(8),
-              }}
-            />
+          {/* Recto (right-hand page) gets the chapter opener. */}
+          {isRecto && (
+            <>
+              <div
+                style={{
+                  fontSize: ptToPx(design.chapterTitleSize) * 0.75,
+                  fontWeight: chapterTitleWeight,
+                  fontStyle: chapterTitleFontStyle,
+                  color: design.headingColor,
+                  textAlign: design.chapterTitleAlign as React.CSSProperties["textAlign"],
+                  marginBottom: ptToPx(6),
+                  lineHeight: 1.2,
+                }}
+              >
+                Chapter 1
+              </div>
+              <div
+                style={{
+                  fontSize: ptToPx(design.sectionTitleSize) * 0.85,
+                  fontWeight: 600,
+                  color: design.headingColor,
+                  textAlign: design.chapterTitleAlign as React.CSSProperties["textAlign"],
+                  marginBottom: ptToPx(8),
+                }}
+              >
+                The Beginning
+              </div>
+              {design.showChapterDivider && (
+                <div
+                  style={{
+                    borderTop: `1px solid ${design.accentColor}`,
+                    marginBottom: ptToPx(8),
+                  }}
+                />
+              )}
+            </>
           )}
 
-          {/* Image placeholder */}
-          {(design.imageLayout === "float_right" || design.imageLayout === "inline_right" ||
-            design.imageLayout === "float_left" || design.imageLayout === "inline_left" ||
-            design.imageLayout === "half_page") && (
-            <div
-              style={{
-                float: design.imageLayout === "float_right" || design.imageLayout === "inline_right" ? "right" : "left",
-                width: design.imageLayout === "half_page" ? "50%" : `${design.imageWidthPercent}%`,
-                height: ptToPx(60),
-                backgroundColor: design.accentColor + "33",
-                border: `1px solid ${design.accentColor}55`,
-                borderRadius: 2,
-                marginLeft: design.imageLayout === "float_right" || design.imageLayout === "inline_right" ? ptToPx(4) : 0,
-                marginRight: design.imageLayout === "float_left" || design.imageLayout === "inline_left" ? ptToPx(4) : 0,
-                marginBottom: ptToPx(4),
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <span style={{ fontSize: ptToPx(7), color: design.accentColor, opacity: 0.8 }}>img</span>
-            </div>
-          )}
-          {design.imageLayout === "full_page" && (
+          {/* Image placeholder — recto only, so verso stays "body-only" */}
+          {isRecto &&
+            (design.imageLayout === "float_right" ||
+              design.imageLayout === "inline_right" ||
+              design.imageLayout === "float_left" ||
+              design.imageLayout === "inline_left" ||
+              design.imageLayout === "half_page") && (
+              <div
+                style={{
+                  float:
+                    design.imageLayout === "float_right" ||
+                    design.imageLayout === "inline_right"
+                      ? "right"
+                      : "left",
+                  width:
+                    design.imageLayout === "half_page"
+                      ? "50%"
+                      : `${design.imageWidthPercent}%`,
+                  height: ptToPx(60),
+                  backgroundColor: design.accentColor + "33",
+                  border: `1px solid ${design.accentColor}55`,
+                  borderRadius: 2,
+                  marginLeft:
+                    design.imageLayout === "float_right" ||
+                    design.imageLayout === "inline_right"
+                      ? ptToPx(4)
+                      : 0,
+                  marginRight:
+                    design.imageLayout === "float_left" ||
+                    design.imageLayout === "inline_left"
+                      ? ptToPx(4)
+                      : 0,
+                  marginBottom: ptToPx(4),
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ fontSize: ptToPx(7), color: design.accentColor, opacity: 0.8 }}>
+                  img
+                </span>
+              </div>
+            )}
+          {isRecto && design.imageLayout === "full_page" && (
             <div
               style={{
                 width: "100%",
@@ -695,11 +731,13 @@ function LivePreview({ design }: { design: BookDesign }) {
                 justifyContent: "center",
               }}
             >
-              <span style={{ fontSize: ptToPx(7), color: design.accentColor, opacity: 0.8 }}>img</span>
+              <span style={{ fontSize: ptToPx(7), color: design.accentColor, opacity: 0.8 }}>
+                img
+              </span>
             </div>
           )}
 
-          {/* Body text — actual lorem ipsum sample text */}
+          {/* Body text */}
           <div
             style={{
               fontSize: ptToPx(design.bodyFontSize),
@@ -709,12 +747,39 @@ function LivePreview({ design }: { design: BookDesign }) {
               fontFamily: "serif",
             }}
           >
-            <p style={{ marginBottom: ptToPx(design.paragraphSpacing), textIndent: design.firstLineIndent ? ptToPx(design.firstLineIndent) : undefined }}>
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+            <p
+              style={{
+                marginBottom: ptToPx(design.paragraphSpacing),
+                textIndent: design.firstLineIndent
+                  ? ptToPx(design.firstLineIndent)
+                  : undefined,
+              }}
+            >
+              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
+              incididunt ut labore et dolore magna aliqua.
             </p>
-            <p style={{ marginBottom: ptToPx(design.paragraphSpacing), textIndent: design.firstLineIndent ? ptToPx(design.firstLineIndent) : undefined }}>
-              Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo.
+            <p
+              style={{
+                marginBottom: ptToPx(design.paragraphSpacing),
+                textIndent: design.firstLineIndent
+                  ? ptToPx(design.firstLineIndent)
+                  : undefined,
+              }}
+            >
+              Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi.
             </p>
+            {isVerso && (
+              <p
+                style={{
+                  marginBottom: ptToPx(design.paragraphSpacing),
+                  textIndent: design.firstLineIndent
+                    ? ptToPx(design.firstLineIndent)
+                    : undefined,
+                }}
+              >
+                Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore.
+              </p>
+            )}
           </div>
         </div>
 
@@ -724,19 +789,38 @@ function LivePreview({ design }: { design: BookDesign }) {
             style={{
               position: "absolute",
               bottom: ptToPx(design.marginBottom) * 0.4,
-              left: design.pageNumberPosition === "bottom-outside" ? "auto" : "50%",
-              right: design.pageNumberPosition === "bottom-outside" ? ptToPx(design.marginRight) : "auto",
-              transform: design.pageNumberPosition === "bottom-center" ? "translateX(-50%)" : undefined,
+              left: pageNumLeftSide === "left" ? ptToPx(design.marginLeft) : pageNumLeftSide === "center" ? "50%" : "auto",
+              right: pageNumLeftSide === "right" ? ptToPx(design.marginRight) : "auto",
+              transform: pageNumLeftSide === "center" ? "translateX(-50%)" : undefined,
               fontSize: ptToPx(8),
               color: design.textColor,
               opacity: 0.6,
             }}
           >
-            1
+            {pageNumber}
           </div>
         )}
       </div>
-      <p className="font-ui text-[10px] text-muted-foreground">{design.pageSize} · {design.bodyFont} {design.bodyFontSize}pt</p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <p className="font-ui text-[10px] uppercase tracking-wide text-muted-foreground">
+        Spread Preview
+      </p>
+      <div
+        className="flex shadow-md rounded-sm overflow-hidden"
+        style={{ background: "#d4c9b5" }}
+      >
+        <SpreadPage side="verso" />
+        {/* Gutter / binding line */}
+        <div style={{ width: 1, background: "#a89e8b" }} aria-hidden />
+        <SpreadPage side="recto" />
+      </div>
+      <p className="font-ui text-[10px] text-muted-foreground">
+        {design.pageSize} · {design.bodyFont} {design.bodyFontSize}pt
+      </p>
     </div>
   );
 }

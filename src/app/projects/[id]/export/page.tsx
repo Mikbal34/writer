@@ -46,7 +46,7 @@ interface OutputFile {
 }
 
 type ExportScope = "subsection" | "chapter" | "full";
-type ExportFileType = "docx" | "pdf";
+type ExportFileType = "docx" | "pdf" | "epub";
 
 const SCOPE_LABELS: Record<string, string> = {
   full: "Full Book",
@@ -71,6 +71,7 @@ export default function ExportPage() {
   const [uploadingDriveId, setUploadingDriveId] = useState<string | null>(null);
   const [includeIllustrations, setIncludeIllustrations] = useState(true);
   const [includeStructural, setIncludeStructural] = useState(true);
+  const [printReady, setPrintReady] = useState(false);
   const [projectTypeState, setProjectTypeState] = useState<string>("ACADEMIC");
   // Non-academic illustration toggle needs a boolean signal from the server —
   // actual image rendering happens in the export pipeline, not here.
@@ -168,6 +169,7 @@ export default function ExportPage() {
         includeIllustrations: projectTypeState !== "ACADEMIC" && includeIllustrations,
         includeStructural: projectTypeState === "ACADEMIC" && includeStructural,
         fileType,
+        printReady: fileType === "pdf" && printReady,
       };
 
       if (scope === "chapter") body.chapterId = selectedChapterId;
@@ -345,8 +347,8 @@ export default function ExportPage() {
             <label className="font-ui text-xs uppercase tracking-widest text-[#5C4A32]">
               File Format
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["docx", "pdf"] as ExportFileType[]).map((ft) => (
+            <div className="grid grid-cols-3 gap-2">
+              {(["docx", "pdf", "epub"] as ExportFileType[]).map((ft) => (
                 <button
                   key={ft}
                   type="button"
@@ -372,7 +374,37 @@ export default function ExportPage() {
                 </button>
               ))}
             </div>
+            {fileType === "epub" && (
+              <p className="font-body text-[11px] text-[#8a7a65] mt-1">
+                Kindle, Apple Books, Kobo'ya yükleme için hazır dosya.
+              </p>
+            )}
           </div>
+
+          {/* Print-ready toggle — only relevant for PDF */}
+          {fileType === "pdf" && (
+            <div className="space-y-2 mb-5">
+              <label
+                className="flex items-start gap-3 p-3 rounded-sm border border-[#d4c9b5]/60 hover:border-[#d4c9b5] cursor-pointer transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  checked={printReady}
+                  onChange={(e) => setPrintReady(e.target.checked)}
+                  className="mt-0.5 h-4 w-4"
+                />
+                <div className="flex-1">
+                  <div className="font-ui text-xs font-medium text-[#2D1F0E]">
+                    Matbaaya hazır PDF (bleed + crop marks)
+                  </div>
+                  <div className="font-body text-[11px] text-[#8a7a65] leading-snug mt-0.5">
+                    3mm taşma + köşe kesim işaretleri. KDP / IngramSpark /
+                    yerel matbaa için yükleme hazır.
+                  </div>
+                </div>
+              </label>
+            </div>
+          )}
 
           {/* Citation format shortcut — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (

@@ -31,6 +31,12 @@ import {
 import { getStructuralSpec } from '@/lib/export/structural-specs'
 import { renderCreativeChapterOpening } from '@/lib/export/creative-pdf'
 import type { CreativeStructuralSpec } from '@/lib/creative-specs'
+import {
+  buildEpub,
+  routeBlocksToEpubBlocks,
+  type EpubChapter,
+  type RouteMdBlock,
+} from '@/lib/export/epub-builder'
 import type { BibliographyEntry } from '@/types/bibliography'
 import type { CitationFormat } from '@prisma/client'
 import {
@@ -750,17 +756,27 @@ function buildPdf(
   design?: BookDesignSettings | null,
   academic?: AcademicStructuralInput | null,
   format: CitationFormat = 'ISNAD',
-  creativeSpec?: CreativeStructuralSpec | null
+  creativeSpec?: CreativeStructuralSpec | null,
+  printReady: boolean = false
 ): Promise<Buffer> {
   const labels = getLabels(language)
   const d = design ?? {}
 
   // Page dimensions from design settings
-  const pageDimensions = PAGE_SIZES[d.pageSize ?? 'A4'] ?? PAGE_SIZES['A4']
-  const mTop = d.marginTop ?? 72
-  const mBottom = d.marginBottom ?? 72
-  const mLeft = d.marginLeft ?? 72
-  const mRight = d.marginRight ?? 72
+  const trimDimensions = PAGE_SIZES[d.pageSize ?? 'A4'] ?? PAGE_SIZES['A4']
+
+  // Print-ready output adds a 3mm bleed on every edge (≈ 8.5 pt) and
+  // draws crop marks at each corner so the printer can trim back to
+  // the logical page boundary. Non-print exports use the trim size as-is.
+  const BLEED_PT = printReady ? 8.504 : 0 // 3mm @ 72dpi
+  const pageDimensions: [number, number] = [
+    trimDimensions[0] + BLEED_PT * 2,
+    trimDimensions[1] + BLEED_PT * 2,
+  ]
+  const mTop = (d.marginTop ?? 72) + BLEED_PT
+  const mBottom = (d.marginBottom ?? 72) + BLEED_PT
+  const mLeft = (d.marginLeft ?? 72) + BLEED_PT
+  const mRight = (d.marginRight ?? 72) + BLEED_PT
 
   return new Promise((resolve, reject) => {
     const fontFamily = resolvePdfFontFamily()
@@ -798,6 +814,40 @@ function buildPdf(
     doc.on('data', (chunk: Buffer) => bufferChunks.push(chunk))
     doc.on('end', () => resolve(Buffer.concat(bufferChunks)))
     doc.on('error', reject)
+
+    // Print-ready: draw 8pt crop marks 4pt outside each trim corner so
+    // the printer can align a straight cut. Marks live in the bleed
+    // zone and never touch the live text area.
+    if (printReady && BLEED_PT > 0) {
+      const markLen = 8
+      const markGap = 4
+      const drawCropMarks = () => {
+        const pw = doc.page.width
+        const ph = doc.page.height
+        const tx1 = BLEED_PT              // trim left
+        const ty1 = BLEED_PT              // trim top
+        const tx2 = pw - BLEED_PT         // trim right
+        const ty2 = ph - BLEED_PT         // trim bottom
+
+        doc.save()
+        doc.strokeColor('#000000').lineWidth(0.25)
+        // Top-left
+        doc.moveTo(tx1, ty1 - markGap).lineTo(tx1, ty1 - markGap - markLen).stroke()
+        doc.moveTo(tx1 - markGap, ty1).lineTo(tx1 - markGap - markLen, ty1).stroke()
+        // Top-right
+        doc.moveTo(tx2, ty1 - markGap).lineTo(tx2, ty1 - markGap - markLen).stroke()
+        doc.moveTo(tx2 + markGap, ty1).lineTo(tx2 + markGap + markLen, ty1).stroke()
+        // Bottom-left
+        doc.moveTo(tx1, ty2 + markGap).lineTo(tx1, ty2 + markGap + markLen).stroke()
+        doc.moveTo(tx1 - markGap, ty2).lineTo(tx1 - markGap - markLen, ty2).stroke()
+        // Bottom-right
+        doc.moveTo(tx2, ty2 + markGap).lineTo(tx2, ty2 + markGap + markLen).stroke()
+        doc.moveTo(tx2 + markGap, ty2).lineTo(tx2 + markGap + markLen, ty2).stroke()
+        doc.restore()
+      }
+      drawCropMarks() // first page
+      doc.on('pageAdded', drawCropMarks)
+    }
 
     // ---- Page-bottom footnote tracking ----
     const PAGE_HEIGHT = pageDimensions[1]
@@ -1263,6 +1313,93 @@ function buildPdf(
 }
 
 // ---------------------------------------------------------------------------
+// EPUB adapter — groups subsections into chapters, converts their
+// markdown-ish content into EpubBlock[], and hands everything to the
+// standalone builder in src/lib/export/epub-builder.ts.
+// ---------------------------------------------------------------------------
+interface BuildEpubFromProjectArgs {
+  projectTitle: string
+  author: string | null
+  language: string
+  subsections: SubsectionData[]
+  bookDesign: BookDesignSettings | null
+  coverImage: ProjectImageData | null
+}
+
+async function buildEpubFromProject(args: BuildEpubFromProjectArgs): Promise<Buffer> {
+  // Group subsections by chapter
+  const byChapter = new Map<
+    number,
+    { number: number; title: string; subsections: SubsectionData[] }
+  >()
+  for (const sub of args.subsections) {
+    const existing = byChapter.get(sub.chapterNumber)
+    if (existing) {
+      existing.subsections.push(sub)
+    } else {
+      byChapter.set(sub.chapterNumber, {
+        number: sub.chapterNumber,
+        title: sub.chapterTitle,
+        subsections: [sub],
+      })
+    }
+  }
+
+  const chapters: EpubChapter[] = Array.from(byChapter.values())
+    .sort((a, b) => a.number - b.number)
+    .map((ch) => {
+      const blocks: RouteMdBlock[] = []
+      for (const sub of ch.subsections) {
+        // Only render a section/subsection heading when there's actual body
+        // text — empty subsections become silent placeholders.
+        if (sub.sectionTitle && sub.sectionTitle !== ch.title) {
+          blocks.push({ type: 'heading', level: 2, text: sub.sectionTitle })
+        }
+        blocks.push({ type: 'heading', level: 3, text: sub.title })
+        if (sub.content) {
+          blocks.push(...parseMarkdownBlocks(sub.content))
+        }
+      }
+      return {
+        number: ch.number,
+        title: ch.title,
+        blocks: routeBlocksToEpubBlocks(blocks),
+      }
+    })
+
+  const d = args.bookDesign ?? {}
+  const fontFamily = (d.bodyFont ?? 'Serif').toLowerCase().includes('sans')
+    ? '"Inter", "Helvetica Neue", Arial, sans-serif'
+    : '"Crimson Pro", Georgia, "Times New Roman", serif'
+  const headingFamily = (d.headingFont ?? 'Serif').toLowerCase().includes('sans')
+    ? '"Inter", "Helvetica Neue", Arial, sans-serif'
+    : '"Crimson Pro", Georgia, "Times New Roman", serif'
+
+  return buildEpub({
+    metadata: {
+      title: args.projectTitle,
+      author: args.author,
+      language: args.language,
+    },
+    chapters,
+    cover: args.coverImage
+      ? { data: args.coverImage.imageData, mime: 'image/jpeg' }
+      : null,
+    style: {
+      bodyFontFamily: fontFamily,
+      headingFontFamily: headingFamily,
+      textColor: d.textColor,
+      headingColor: d.headingColor,
+      accentColor: d.accentColor,
+      chapterAlign: (d.chapterTitleAlign === 'center' ? 'center' : 'left') as
+        | 'center'
+        | 'left',
+      firstLineIndentPt: d.firstLineIndent,
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/projects/[id]/export
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest, ctx: RouteContext) {
@@ -1279,6 +1416,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       includeIllustrations = false,
       includeStructural = true,
       fileType = 'docx',
+      printReady = false,
     } = body as {
       scope?: 'full' | 'chapter' | 'subsection'
       chapterId?: string
@@ -1286,7 +1424,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       includeBibliography?: boolean
       includeIllustrations?: boolean
       includeStructural?: boolean
-      fileType?: 'docx' | 'pdf'
+      fileType?: 'docx' | 'pdf' | 'epub'
+      printReady?: boolean
     }
 
     // Verify project ownership. We select the academic metadata fields
@@ -1510,8 +1649,18 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         project.bookDesign as BookDesignSettings | null,
         academic,
         project.citationFormat,
-        creativeSpec
+        creativeSpec,
+        printReady
       )
+    } else if (fileType === 'epub') {
+      buffer = await buildEpubFromProject({
+        projectTitle: project.title,
+        author: blindReview ? null : project.author,
+        language: project.language ?? 'en',
+        subsections,
+        bookDesign: project.bookDesign as BookDesignSettings | null,
+        coverImage: projectImages?.find((img) => img.sortOrder === -1) ?? null,
+      })
     } else {
       const doc = buildDocx(
         project.title,
@@ -1527,7 +1676,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     }
 
     // Save to disk
-    const ext = fileType === 'pdf' ? 'pdf' : 'docx'
+    const ext = fileType === 'pdf' ? 'pdf' : fileType === 'epub' ? 'epub' : 'docx'
 
     // Build a human-readable filename (ASCII-safe for filesystem, Türkçe transliterated)
     const trMap: Record<string, string> = { 'ç': 'c', 'Ç': 'C', 'ğ': 'g', 'Ğ': 'G', 'ı': 'i', 'İ': 'I', 'ö': 'o', 'Ö': 'O', 'ş': 's', 'Ş': 'S', 'ü': 'u', 'Ü': 'U' }
