@@ -29,6 +29,8 @@ import {
   getBibliographyHeaderAlign,
 } from '@/lib/export/pdf-structural'
 import { getStructuralSpec } from '@/lib/export/structural-specs'
+import { renderCreativeChapterOpening } from '@/lib/export/creative-pdf'
+import type { CreativeStructuralSpec } from '@/lib/creative-specs'
 import type { BibliographyEntry } from '@/types/bibliography'
 import type { CitationFormat } from '@prisma/client'
 import {
@@ -747,7 +749,8 @@ function buildPdf(
   images?: ProjectImageData[],
   design?: BookDesignSettings | null,
   academic?: AcademicStructuralInput | null,
-  format: CitationFormat = 'ISNAD'
+  format: CitationFormat = 'ISNAD',
+  creativeSpec?: CreativeStructuralSpec | null
 ): Promise<Buffer> {
   const labels = getLabels(language)
   const d = design ?? {}
@@ -905,7 +908,9 @@ function buildPdf(
     let chapterIdx = 0
 
     for (const sub of subsections) {
-      // Chapter heading — delegate to structural builder when academic.
+      // Chapter heading — delegate to the right structural builder:
+      // academic citation formats, creative book-style specs, or the
+      // plain fallback when neither is attached.
       if (sub.chapterTitle !== currentChapter) {
         currentChapter = sub.chapterTitle
         currentSection = ''
@@ -913,6 +918,17 @@ function buildPdf(
           renderChapterOpening(
             doc,
             format,
+            sub.chapterNumber,
+            sub.chapterTitle,
+            chapterIdx === 0,
+            fonts,
+            CHAPTER_SIZE
+          )
+          chapterIdx++
+        } else if (creativeSpec) {
+          renderCreativeChapterOpening(
+            doc,
+            creativeSpec,
             sub.chapterNumber,
             sub.chapterTitle,
             chapterIdx === 0,
@@ -1287,6 +1303,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         language: true,
         projectType: true,
         bookDesign: true,
+        writingGuidelines: true,
         author: true,
         institution: true,
         department: true,
@@ -1307,6 +1324,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           language: string | null
           projectType: string
           bookDesign: unknown
+          writingGuidelines: unknown
           author: string | null
           institution: string | null
           department: string | null
@@ -1466,6 +1484,18 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           }
         : null
 
+    // Creative structural spec (chapter opener / drop cap / scene break
+    // conventions) — attached by the Book Style picker via
+    // writingGuidelines.creativeSpec. Only applies when the project is
+    // non-academic; academic formats have their own per-citation spec.
+    const creativeSpec: CreativeStructuralSpec | null = (() => {
+      if (project.projectType === 'ACADEMIC') return null
+      const guidelines = project.writingGuidelines as Record<string, unknown> | null
+      const spec = guidelines?.creativeSpec
+      if (!spec || typeof spec !== 'object') return null
+      return spec as CreativeStructuralSpec
+    })()
+
     // Build file
     let buffer: Buffer
     if (fileType === 'pdf') {
@@ -1479,7 +1509,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         projectImages,
         project.bookDesign as BookDesignSettings | null,
         academic,
-        project.citationFormat
+        project.citationFormat,
+        creativeSpec
       )
     } else {
       const doc = buildDocx(
