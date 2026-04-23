@@ -1241,31 +1241,37 @@ export default function DesignPage() {
         <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
           {/* Design Controls (scrollable) */}
           <div className="flex-1 overflow-y-auto">
+            {/* Unified Book Style bundles — full-width banner at the top so
+                picking a vibe is the first visible decision, then users can
+                scroll down to fine-tune. */}
+            <div className="border-b border-[#d4c9b5]/40 bg-[#faf7f0]">
+              <div className="px-5 pt-4 pb-1">
+                <h3 className="font-display text-sm font-semibold text-ink">
+                  Kitap Stili
+                </h3>
+                <p className="font-body text-[11px] text-muted-foreground">
+                  Bir kart seç — sanat stili, tipografi, renk ve sayfa düzeni birlikte uygulanır.
+                </p>
+              </div>
+              <BookStylePanel
+                projectId={projectId}
+                currentArtStyle={artStyle}
+                currentDesign={design}
+                onApplied={fetchDesign}
+              />
+            </div>
+
             <div className="p-5">
               <DesignControls design={design} onChange={handleDesignChange} />
             </div>
           </div>
 
           {/* Live Preview (sticky right column on large screens) */}
-          <div className="lg:w-[280px] shrink-0 border-t lg:border-t-0 lg:border-l border-[#d4c9b5]/40 bg-[#f5f0e8] p-5 flex flex-col items-center gap-4 overflow-y-auto">
+          <div className="lg:w-[260px] shrink-0 border-t lg:border-t-0 lg:border-l border-[#d4c9b5]/40 bg-[#f5f0e8] p-5 flex flex-col items-center gap-4">
             <LivePreview design={design} />
 
-            {/* Unified Book Style bundles — cascade art + layout together */}
-            <div className="w-full">
-              <p className="font-ui text-[10px] uppercase tracking-wide text-muted-foreground text-center mb-1.5">
-                Kitap Stili
-              </p>
-              <BookStylePanel
-                projectId={projectId}
-                currentArtStyle={artStyle}
-                currentDesign={design}
-                variant="compact"
-                onApplied={fetchDesign}
-              />
-            </div>
-
-            {/* Legacy single-axis presets — kept for academic layout which
-                isn't part of the creative Book Style bundles. */}
+            {/* Layout-only presets — for academic and pure-layout fine tuning
+                that doesn't touch art style. */}
             <div className="w-full space-y-2">
               <p className="font-ui text-[10px] uppercase tracking-wide text-muted-foreground text-center">
                 Sadece Layout
