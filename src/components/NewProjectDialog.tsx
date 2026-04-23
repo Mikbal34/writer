@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Loader2, BookOpen, GraduationCap, BookText, Feather } from "lucide-react";
+import { Plus, Loader2, BookOpen, GraduationCap, Feather } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,13 +23,12 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
-type ProjectType = "ACADEMIC" | "BOOK" | "STORY";
+type ProjectType = "ACADEMIC" | "CREATIVE";
 type CitationFormat = "ISNAD" | "APA" | "CHICAGO" | "MLA" | "HARVARD" | "VANCOUVER" | "IEEE" | "AMA" | "TURABIAN";
 
 const PROJECT_TYPES: { value: ProjectType; label: string; desc: string; icon: typeof GraduationCap }[] = [
-  { value: "ACADEMIC", label: "Academic", desc: "Research, thesis, articles with sources", icon: GraduationCap },
-  { value: "BOOK", label: "Book", desc: "Non-fiction, essays, guides", icon: BookText },
-  { value: "STORY", label: "Story", desc: "Fiction, novels, tales", icon: Feather },
+  { value: "ACADEMIC", label: "Akademik", desc: "Araştırma, tez, kaynaklı makaleler", icon: GraduationCap },
+  { value: "CREATIVE", label: "Serbest Yazım", desc: "Kurgu, kurgu-dışı, anı, deneme — kaynaksız", icon: Feather },
 ];
 
 const LANGUAGES = [
@@ -234,7 +233,7 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
             {/* Project Type */}
             <div className="space-y-2">
               <Label>Project Type</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {PROJECT_TYPES.map((pt) => {
                   const Icon = pt.icon;
                   return (

@@ -122,6 +122,7 @@ enum ProjectType {
   ACADEMIC
   BOOK
   STORY
+  CREATIVE
 }
 
 enum CitationFormat {

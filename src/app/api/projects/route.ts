@@ -3,7 +3,7 @@ import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
 type CitationFormat = 'ISNAD' | 'APA' | 'CHICAGO' | 'MLA' | 'HARVARD' | 'VANCOUVER' | 'IEEE' | 'AMA' | 'TURABIAN'
-type ProjectType = 'ACADEMIC' | 'BOOK' | 'STORY'
+type ProjectType = 'ACADEMIC' | 'CREATIVE'
 
 // GET /api/projects
 // Returns all projects belonging to the authenticated user, with chapter count
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
       if (userStyle) verifiedStyleProfileId = userStyle.id
     }
 
-    const validTypes: ProjectType[] = ['ACADEMIC', 'BOOK', 'STORY']
+    const validTypes: ProjectType[] = ['ACADEMIC', 'CREATIVE']
     const resolvedType = projectType && validTypes.includes(projectType) ? projectType : 'ACADEMIC'
 
     const project = await prisma.project.create({

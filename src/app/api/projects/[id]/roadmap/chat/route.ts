@@ -389,34 +389,30 @@ When you issue a batch of commands:
 - Preserve stable IDs (the real dbIds) for anything you are modifying. Do not replace a modifiable unit with a fresh one when an update_* command would do the job.
 - When adding a subsection to a section that already has subsections, position it by choosing its subsectionId ("1.2.3" — coming after "1.2.2") with care; the order matters for the flow of the section.`
 
-  const projectTypeLabel = project.projectType === 'STORY' ? 'story/fiction' : project.projectType === 'BOOK' ? 'book' : 'academic book'
+  const projectTypeLabel = project.projectType === 'ACADEMIC' ? 'academic book' : 'creative writing project'
 
   let staticPart: string
   if (isCreationMode) {
-    const storyWritingPrefsStep = project.projectType === 'STORY' ? `
-3. BEFORE creating the roadmap, ask the user about their writing preferences for the story:
+    const creativeWritingPrefsStep = project.projectType !== 'ACADEMIC' ? `
+3. BEFORE creating the roadmap, ask the user about their writing preferences. Start by finding out whether this is fiction, non-fiction, or a blend (e.g., memoir, creative non-fiction), then ask the follow-up questions that fit:
+   If the work is fiction-leaning:
    - **Point of view (POV):** First person, third person limited, third person omniscient, or second person?
-   - **Genre:** What genre? (romance, sci-fi, mystery, thriller, fantasy, historical fiction, horror, literary fiction, etc.)
-   - **Dialogue style:** Sparse (mostly narrative), moderate (balanced), or dialogue-heavy?
-   - **Pacing:** Slow/atmospheric, moderate, or fast-paced/action-driven?
-   - **Mood/Atmosphere:** What overall mood? (dark, lighthearted, tense, melancholic, romantic, mysterious, etc.)
-   - **Target audience:** Children, young adult, or adult?
-   - **Narrative style:** Descriptive, minimalist, stream of consciousness, epistolary, etc.?
-   Ask these naturally in conversation — you do not need to ask all at once. If the user says "you decide" or gives a short answer, make reasonable choices based on the story's concept.
-4. After gathering writing preferences, SAVE them using this update_project command with the styleProfile field. Example:
-   {"action": "update_project", "fields": {"styleProfile": {"narrativePOV": "third_person_limited", "genre": "romantic thriller", "dialogueStyle": "dialogue_heavy", "pacing": "fast", "moodAtmosphere": "tense and mysterious", "targetAgeGroup": "adult", "narrativeStyle": "descriptive"}}}
-5. Then create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section). Do NOT add any academic sources.
-6. Use update_project to set topic/purpose/audience if not already specified.` : ''
-
-    const bookWritingPrefsStep = project.projectType === 'BOOK' ? `
-3. BEFORE creating the roadmap, ask the user about their writing preferences:
+   - **Genre:** Romance, sci-fi, mystery, thriller, fantasy, historical fiction, horror, literary fiction, etc.
+   - **Dialogue density:** Sparse (mostly narrative), moderate, or dialogue-heavy?
+   - **Pacing:** Slow/atmospheric, moderate, or fast/action-driven?
+   - **Mood/Atmosphere:** e.g., dark, lighthearted, tense, melancholic, romantic, mysterious.
+   - **Target audience:** Children, young adult, or adult.
+   If the work is non-fiction-leaning:
    - **Tone:** Serious/professional, conversational, inspirational, or humorous?
    - **Target reader:** Expert, general reader, or student?
    - **Writing approach:** How-to/practical, anecdotal/story-driven, case studies, data-driven, or mixed?
    - **Pacing:** Detailed/thorough or concise/to-the-point?
-   Ask these naturally in conversation.
-4. After gathering preferences, SAVE them using update_project with styleProfile. Example:
-   {"action": "update_project", "fields": {"styleProfile": {"tone": "conversational", "targetAgeGroup": "adult", "pacing": "moderate", "narrativeStyle": "anecdotal"}}}
+   Always ask:
+   - **Narrative style:** Descriptive, minimalist, stream of consciousness, epistolary, anecdotal, etc.
+   Ask these naturally in conversation — you do not need to ask all at once. If the user says "you decide" or gives a short answer, make reasonable choices based on the project's concept.
+4. After gathering preferences, SAVE them using this update_project command with the styleProfile field. Fill the fields that apply and leave others out. Examples:
+   Fiction: {"action": "update_project", "fields": {"styleProfile": {"narrativePOV": "third_person_limited", "genre": "romantic thriller", "dialogueStyle": "dialogue_heavy", "pacing": "fast", "moodAtmosphere": "tense and mysterious", "targetAgeGroup": "adult", "narrativeStyle": "descriptive"}}}
+   Non-fiction: {"action": "update_project", "fields": {"styleProfile": {"tone": "conversational", "targetAgeGroup": "adult", "pacing": "moderate", "narrativeStyle": "anecdotal"}}}
 5. Then create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section). Do NOT add any academic sources.
 6. Use update_project to set topic/purpose/audience if not already specified.` : ''
 
@@ -430,7 +426,7 @@ When you issue a batch of commands:
 5. When creating the roadmap, attach sources to EVERY subsection via the inline "sources" array on each subsection (inside add_chapter / add_section / add_subsection). Do NOT defer to a follow-up turn. Use sources from the user's library first; suggest your own only for genuine gaps.
 
 SOURCE DENSITY: ${SOURCE_DENSITY_INSTRUCTIONS[sourceDensity ?? 'normal']}
-6. Use update_project command to update project information.` : storyWritingPrefsStep || bookWritingPrefsStep || `
+6. Use update_project command to update project information.` : creativeWritingPrefsStep || `
 3. After gathering enough information, create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section). Do NOT add any sources.
 4. Use update_project command to update project information.`
 

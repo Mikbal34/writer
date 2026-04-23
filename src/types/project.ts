@@ -39,7 +39,7 @@ export interface StyleProfile {
   /** Additional style notes captured from sample analysis */
   additionalNotes?: string
 
-  // ---- Narrative / Creative Writing Fields (STORY & BOOK) ----
+  // ---- Narrative / Creative Writing Fields (CREATIVE) ----
 
   /** Narrative point of view */
   narrativePOV?: 'first_person' | 'second_person' | 'third_person_limited' | 'third_person_omniscient'
@@ -177,7 +177,7 @@ export interface WritingContext {
   sources: SourceMappingInfo[]
   /** Citation format for the project */
   citationFormat: CitationFormat
-  /** Project type: ACADEMIC, BOOK, or STORY */
+  /** Project type: ACADEMIC or CREATIVE */
   projectType: ProjectType
   /** Style profile (may be partial) */
   styleProfile: Partial<StyleProfile> | null

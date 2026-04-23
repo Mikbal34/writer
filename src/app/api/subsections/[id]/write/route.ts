@@ -19,13 +19,18 @@ function buildSystemPrompt(ctx: WritingContext): string {
   const style = ctx.styleProfile
   const lang = ctx.citationFormat
   const isAcademic = ctx.projectType === 'ACADEMIC'
-  const isStory = ctx.projectType === 'STORY'
+  const isCreative = !isAcademic
+  // A CREATIVE project that fills narrativePOV/genre/dialogueStyle is
+  // fiction-leaning; one that fills tone/targetReader is non-fiction-leaning.
+  const isFictionLeaning = Boolean(
+    style?.narrativePOV || style?.genre || style?.dialogueStyle || style?.moodAtmosphere
+  )
 
   const styleInstructions = style
     ? `
 STYLE PROFILE:
 - Sentence length: ${style.sentenceLength ?? 'varied'}
-- Tone: ${style.tone ?? (isStory ? 'varied' : 'formal')}
+- Tone: ${style.tone ?? (isCreative ? 'varied' : 'formal')}
 - Voice preference: ${style.voicePreference ?? 'mixed'}
 - Paragraph length: ${style.paragraphLength ?? 'medium'}
 ${isAcademic ? `- Terminology density: ${style.terminologyDensity ?? 'medium'}` : ''}
@@ -76,35 +81,25 @@ ${ctx.position.sectionLast ? '- This is the LAST subsection of its section.' : '
 ${ctx.position.chapterFirst ? '- This is the FIRST subsection of the chapter.' : ''}
 ${ctx.position.chapterLast ? '- This is the LAST subsection of the chapter.' : ''}`
 
-  if (isStory) {
-    return `You are an expert fiction writer and storytelling craftsman. Your task is to write compelling, immersive narrative prose for the specified subsection.
-
-${bookContext}
-${styleInstructions}${guidelinesBlock}
-INSTRUCTIONS:
-- Write ONLY the content for this specific subsection.
-- Do not include headings/titles (they are rendered separately).
-- Write vivid, engaging prose with strong sensory details.
+  if (isCreative) {
+    const modeGuidance = isFictionLeaning
+      ? `- Write vivid, engaging prose with strong sensory details.
 - Develop characters through actions, dialogue, and internal thoughts.
 - Show, don't tell — convey emotions through behavior, not labels.
-- Maintain consistent voice and point of view throughout.
-- Ensure smooth transitions with the surrounding subsections.
-- Do NOT include academic footnotes, citations, or references.
-- Estimated length: ${ctx.subsection.estimatedPages ?? 1} page(s).`
-  }
+- Maintain consistent voice and point of view throughout.`
+      : `- Write in an accessible, engaging tone — informative but not academic.
+- Use concrete examples and anecdotes to illustrate points.
+- Define technical terms naturally within context.
+- Maintain a conversational yet authoritative voice.`
 
-  if (ctx.projectType === 'BOOK') {
-    return `You are an expert non-fiction writer and communicator. Your task is to write clear, engaging, and informative prose for the specified subsection.
+    return `You are an expert creative writer. Your task is to write well-crafted, engaging prose for the specified subsection. Adapt your technique to the material — lean into narrative/sensory craft when the content is scenic, and into clear exposition when the content explains.
 
 ${bookContext}
 ${styleInstructions}${guidelinesBlock}
 INSTRUCTIONS:
 - Write ONLY the content for this specific subsection.
 - Do not include headings/titles (they are rendered separately).
-- Write in an accessible, engaging tone — informative but not academic.
-- Use concrete examples and anecdotes to illustrate points.
-- Define technical terms naturally within context.
-- Maintain a conversational yet authoritative voice.
+${modeGuidance}
 - Ensure smooth transitions with the surrounding subsections.
 - Do NOT include academic footnotes, citations, or references.
 - Estimated length: ${ctx.subsection.estimatedPages ?? 1} page(s).`
@@ -137,17 +132,13 @@ function buildUserPrompt(ctx: WritingContext, ragChunks: RagChunk[]): string {
           .join('\n\n')}`
       : ''
 
-  const writeVerb = ctx.projectType === 'STORY'
-    ? 'Write the narrative content'
-    : ctx.projectType === 'BOOK'
-    ? 'Write the content'
-    : 'Write the academic content'
+  const writeVerb = ctx.projectType === 'ACADEMIC'
+    ? 'Write the academic content'
+    : 'Write the content'
 
-  const defaultStrategy = ctx.projectType === 'STORY'
-    ? 'Narrative storytelling with scene-setting and character development'
-    : ctx.projectType === 'BOOK'
-    ? 'Clear, engaging exposition'
-    : 'Standard academic exposition'
+  const defaultStrategy = ctx.projectType === 'ACADEMIC'
+    ? 'Standard academic exposition'
+    : 'Engaging prose adapted to the subsection — narrative or expository as the content demands'
 
   return `${writeVerb} for the following subsection:
 

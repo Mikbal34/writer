@@ -193,18 +193,7 @@ export function getSessionContextPrompt(
     return `Write approximately ${target}–${target + tolerance} words.`
   })()
 
-  if (projectType === 'STORY') {
-    parts.push(
-      `Write the full narrative text for subsection ${subsection.subsectionId}: "${subsection.title}".`
-    )
-    parts.push(wordTarget)
-    parts.push(
-      `Do not include the subsection heading — just the narrative body.`
-    )
-    parts.push(
-      `Focus on storytelling: scene-setting, character development, dialogue, and emotional resonance. Do NOT include academic footnotes or citations.`
-    )
-  } else if (projectType === 'BOOK') {
+  if (projectType !== 'ACADEMIC') {
     parts.push(
       `Write the full text for subsection ${subsection.subsectionId}: "${subsection.title}".`
     )
@@ -213,7 +202,7 @@ export function getSessionContextPrompt(
       `Do not include the subsection heading — just the body text.`
     )
     parts.push(
-      `Write in an engaging, informative style. Do NOT include academic footnotes or citations.`
+      `Adapt your voice to the content: vivid sensory narrative where the subsection is scenic, clear engaging exposition where it explains. Do NOT include academic footnotes or citations.`
     )
   } else {
     // ACADEMIC
@@ -329,44 +318,35 @@ function buildSystemPromptParts(
   // --- Part 1: Core rules (cacheable, same across project) ---
   const coreLines: string[] = []
 
-  if (projectType === 'STORY') {
-    coreLines.push(
-      `You are an expert fiction writer and storytelling craftsman. Your task is to write compelling, immersive narrative prose for the section described in the user prompt.`
+  if (projectType !== 'ACADEMIC') {
+    const fictionLeaning = Boolean(
+      styleProfile?.narrativePOV ||
+        styleProfile?.genre ||
+        styleProfile?.dialogueStyle ||
+        styleProfile?.moodAtmosphere
     )
-    coreLines.push('')
-    coreLines.push(`## Core Writing Rules`)
-    coreLines.push(`- Write vivid, engaging prose with strong sensory details.`)
-    coreLines.push(`- Develop characters through actions, dialogue, and internal thoughts.`)
-    coreLines.push(`- Build atmosphere and tension appropriate to the scene.`)
-    coreLines.push(`- Use varied sentence structures for rhythm and pacing.`)
-    coreLines.push(`- Show, don't tell — convey emotions through behavior, not labels.`)
-    coreLines.push(`- Maintain consistent voice and point of view throughout.`)
-    coreLines.push(`- Create natural, believable dialogue that reveals character.`)
-    coreLines.push(`- Use scene transitions that maintain narrative flow.`)
-    coreLines.push(`- Do NOT include academic footnotes, citations, or references.`)
-    coreLines.push('')
-    coreLines.push(FORMATTING_RULES)
 
-    // Inject narrative preferences from styleProfile
-    const narrativePrefs = buildNarrativePreferences(styleProfile)
-    if (narrativePrefs) {
-      coreLines.push('')
-      coreLines.push(`## Narrative Preferences`)
-      coreLines.push(narrativePrefs)
-    }
-  } else if (projectType === 'BOOK') {
     coreLines.push(
-      `You are an expert non-fiction writer and communicator. Your task is to write clear, engaging, and informative prose for the section described in the user prompt.`
+      `You are an expert creative writer. Your task is to write well-crafted, engaging prose for the section described in the user prompt. Adapt your technique to the material — lean into narrative and sensory craft when the content is scenic, and into clear accessible exposition when the content explains.`
     )
     coreLines.push('')
     coreLines.push(`## Core Writing Rules`)
-    coreLines.push(`- Write in an accessible, engaging tone — informative but not academic.`)
-    coreLines.push(`- Use concrete examples and anecdotes to illustrate points.`)
-    coreLines.push(`- Structure arguments clearly with smooth transitions.`)
-    coreLines.push(`- Define technical terms naturally within context.`)
-    coreLines.push(`- Maintain a conversational yet authoritative voice.`)
-    coreLines.push(`- Use analogies and metaphors to explain complex ideas.`)
-    coreLines.push(`- Keep the reader engaged with varied paragraph structures.`)
+    if (fictionLeaning) {
+      coreLines.push(`- Write vivid, engaging prose with strong sensory details.`)
+      coreLines.push(`- Develop characters through actions, dialogue, and internal thoughts.`)
+      coreLines.push(`- Build atmosphere and tension appropriate to the scene.`)
+      coreLines.push(`- Show, don't tell — convey emotions through behavior, not labels.`)
+      coreLines.push(`- Maintain consistent voice and point of view throughout.`)
+      coreLines.push(`- Create natural, believable dialogue that reveals character.`)
+    } else {
+      coreLines.push(`- Write in an accessible, engaging tone — informative but not academic.`)
+      coreLines.push(`- Use concrete examples and anecdotes to illustrate points.`)
+      coreLines.push(`- Structure arguments clearly with smooth transitions.`)
+      coreLines.push(`- Define technical terms naturally within context.`)
+      coreLines.push(`- Maintain a conversational yet authoritative voice.`)
+      coreLines.push(`- Use analogies and metaphors to explain complex ideas.`)
+    }
+    coreLines.push(`- Use varied sentence structures for rhythm and pacing.`)
     coreLines.push(`- Do NOT include academic footnotes, citations, or references.`)
     coreLines.push('')
     coreLines.push(FORMATTING_RULES)
