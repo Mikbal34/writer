@@ -730,6 +730,11 @@ const PAGE_SIZES: Record<string, [number, number]> = {
   'B5': [498.90, 708.66],
   '6x9': [432, 648],
   '5x8': [360, 576],
+  '5.5x8.5': [396, 612],
+  'letter': [612, 792],
+  // Turkish thesis trim sizes (YÖK-friendly)
+  '16x24cm': [453.54, 680.31],
+  '17x24cm': [481.89, 680.31],
 }
 
 function buildPdf(
@@ -1292,6 +1297,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         keywordsEn: true,
         acknowledgments: true,
         dedication: true,
+        blindReview: true,
       },
     }) as unknown as (
       | ({
@@ -1311,6 +1317,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           keywordsEn: string[]
           acknowledgments: string | null
           dedication: string | null
+          blindReview: boolean
         })
       | null
     )
@@ -1429,19 +1436,25 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Academic metadata — only attached for ACADEMIC projects with the
     // structural toggle on. When `academic` is null, both builders fall
     // back to the plain title-page / chapter-heading rendering.
+    //
+    // Double-blind mode: strip every field that could identify the author
+    // (name, institution, department, advisor) but keep content-side
+    // elements (abstract, keywords, dedication, acknowledgments). The
+    // title page builder falls back gracefully on nulls.
+    const blindReview = Boolean(project.blindReview)
     const academic: AcademicStructuralInput | null =
       includeStructural && project.projectType === 'ACADEMIC'
         ? {
-            author: project.author,
-            institution: project.institution,
-            department: project.department,
-            advisor: project.advisor,
+            author: blindReview ? null : project.author,
+            institution: blindReview ? null : project.institution,
+            department: blindReview ? null : project.department,
+            advisor: blindReview ? null : project.advisor,
             abstractTr: project.abstractTr,
             abstractEn: project.abstractEn,
             keywordsTr: project.keywordsTr ?? [],
             keywordsEn: project.keywordsEn ?? [],
-            acknowledgments: project.acknowledgments,
-            dedication: project.dedication,
+            acknowledgments: blindReview ? null : project.acknowledgments,
+            dedication: blindReview ? null : project.dedication,
             language: project.language,
             date: String(new Date().getFullYear()),
             // Optional fields not yet surfaced in the schema — left blank

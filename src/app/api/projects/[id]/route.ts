@@ -104,6 +104,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       keywordsEn,
       acknowledgments,
       dedication,
+      blindReview,
     } = body as {
       title?: string
       description?: string
@@ -126,6 +127,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       keywordsEn?: string[]
       acknowledgments?: string | null
       dedication?: string | null
+      blindReview?: boolean
     }
 
     const validFormats: CitationFormat[] = ['ISNAD', 'APA', 'CHICAGO', 'MLA', 'HARVARD', 'VANCOUVER', 'IEEE', 'AMA', 'TURABIAN']
@@ -165,6 +167,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         ...(keywordsEn !== undefined && { keywordsEn: { set: keywordsEn } }),
         ...(acknowledgments !== undefined && { acknowledgments }),
         ...(dedication !== undefined && { dedication }),
+        ...(blindReview !== undefined && { blindReview }),
       },
     })
 

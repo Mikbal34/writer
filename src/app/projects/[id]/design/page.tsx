@@ -280,8 +280,12 @@ function DesignControls({
   const pageSizeOptions = [
     { value: "A4", label: "A4 (210×297mm)" },
     { value: "A5", label: "A5 (148×210mm)" },
+    { value: "16x24cm", label: "16×24cm (YÖK tez)" },
+    { value: "17x24cm", label: "17×24cm (YÖK tez)" },
     { value: "5x8", label: "5×8 inch (novel)" },
-    { value: "letter", label: "US Letter" },
+    { value: "5.5x8.5", label: "5.5×8.5 inch (trade)" },
+    { value: "6x9", label: "6×9 inch (trade)" },
+    { value: "letter", label: "US Letter (8.5×11)" },
   ];
 
   const imageLayoutOptions = [
@@ -562,7 +566,11 @@ function LivePreview({ design }: { design: BookDesign }) {
   const pageAspects: Record<string, { w: number; h: number }> = {
     A4: { w: 210, h: 297 },
     A5: { w: 148, h: 210 },
+    "16x24cm": { w: 160, h: 240 },
+    "17x24cm": { w: 170, h: 240 },
     "5x8": { w: 127, h: 203 },
+    "5.5x8.5": { w: 140, h: 216 },
+    "6x9": { w: 152, h: 229 },
     letter: { w: 216, h: 279 },
   };
   const dims = pageAspects[design.pageSize] ?? pageAspects["A4"];
@@ -578,8 +586,11 @@ function LivePreview({ design }: { design: BookDesign }) {
     A4: 595,
     A5: 420,
     B5: 499,
+    "16x24cm": 454,
+    "17x24cm": 482,
     "6x9": 432,
     "5x8": 360,
+    "5.5x8.5": 396,
     letter: 612,
   };
   const pageWidthPt = pageSizePtWidth[design.pageSize] ?? 595;

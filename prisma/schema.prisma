@@ -166,6 +166,9 @@ model Project {
   keywordsEn       String[]
   acknowledgments  String?        @db.Text
   dedication       String?        @db.Text
+  // When true the title page and running heads omit author/institution/
+  // department/advisor — used for double-blind journal submissions.
+  blindReview      Boolean        @default(false)
 
   user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   linkedStyleProfile UserStyleProfile?       @relation("ProjectLinkedStyle", fields: [styleProfileId], references: [id], onDelete: SetNull)

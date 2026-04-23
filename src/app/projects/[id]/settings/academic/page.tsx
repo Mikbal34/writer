@@ -22,6 +22,10 @@ interface AcademicMeta {
   keywordsEn: string;
   acknowledgments: string;
   dedication: string;
+  // Presentation toggles — persisted via bookDesign + project.blindReview
+  pageSize: string;
+  doubleSpaced: boolean;
+  blindReview: boolean;
 }
 
 const EMPTY: AcademicMeta = {
@@ -35,7 +39,21 @@ const EMPTY: AcademicMeta = {
   keywordsEn: "",
   acknowledgments: "",
   dedication: "",
+  pageSize: "A4",
+  doubleSpaced: false,
+  blindReview: false,
 };
+
+const PAGE_SIZE_OPTIONS: { value: string; label: string }[] = [
+  { value: "A4", label: "A4 (210×297mm)" },
+  { value: "A5", label: "A5 (148×210mm)" },
+  { value: "16x24cm", label: "16×24cm (YÖK tez)" },
+  { value: "17x24cm", label: "17×24cm (YÖK tez)" },
+  { value: "5x8", label: "5×8 inch (trade)" },
+  { value: "5.5x8.5", label: "5.5×8.5 inch (trade)" },
+  { value: "6x9", label: "6×9 inch (trade)" },
+  { value: "letter", label: "US Letter (8.5×11)" },
+];
 
 export default function AcademicSettingsPage() {
   const params = useParams();
@@ -59,6 +77,8 @@ export default function AcademicSettingsPage() {
         const data = await res.json();
         setProjectTitle(data.title ?? "");
         setProjectType(data.projectType ?? "ACADEMIC");
+        const design = (data.bookDesign as Record<string, unknown> | null) ?? {};
+        const designLineHeight = typeof design.lineHeight === "number" ? design.lineHeight : null;
         setForm({
           author: data.author ?? "",
           institution: data.institution ?? "",
@@ -70,6 +90,9 @@ export default function AcademicSettingsPage() {
           keywordsEn: Array.isArray(data.keywordsEn) ? data.keywordsEn.join(", ") : "",
           acknowledgments: data.acknowledgments ?? "",
           dedication: data.dedication ?? "",
+          pageSize: typeof design.pageSize === "string" ? design.pageSize : "A4",
+          doubleSpaced: designLineHeight !== null && designLineHeight >= 1.95,
+          blindReview: Boolean(data.blindReview),
         });
       } finally {
         setLoading(false);
@@ -84,6 +107,18 @@ export default function AcademicSettingsPage() {
   async function handleSave() {
     setSaving(true);
     try {
+      // Merge presentation toggles into the existing bookDesign so other
+      // design fields (fonts, colors, margins) set on the Design page
+      // survive this save.
+      const projRes = await fetch(`/api/projects/${projectId}`);
+      const current = projRes.ok ? await projRes.json() : {};
+      const existingDesign = (current.bookDesign as Record<string, unknown> | null) ?? {};
+      const nextDesign = {
+        ...existingDesign,
+        pageSize: form.pageSize,
+        lineHeight: form.doubleSpaced ? 2.0 : (existingDesign.lineHeight ?? 1.5),
+      };
+
       const payload = {
         author: form.author.trim() || null,
         institution: form.institution.trim() || null,
@@ -101,6 +136,8 @@ export default function AcademicSettingsPage() {
           .filter(Boolean),
         acknowledgments: form.acknowledgments.trim() || null,
         dedication: form.dedication.trim() || null,
+        bookDesign: nextDesign,
+        blindReview: form.blindReview,
       };
       const res = await fetch(`/api/projects/${projectId}`, {
         method: "PATCH",
@@ -232,6 +269,79 @@ export default function AcademicSettingsPage() {
               <Label htmlFor="acknowledgments" className="text-xs">Önsöz / Teşekkür</Label>
               <Textarea id="acknowledgments" rows={5} value={form.acknowledgments} onChange={(e) => update("acknowledgments", e.target.value)} />
             </div>
+          </section>
+
+          <section className="space-y-4">
+            <h2 className="font-ui text-xs uppercase tracking-widest text-[#5C4A32]">
+              Sunum Ayarları
+            </h2>
+            <p className="font-body text-[11px] text-[#8a7a65] -mt-2">
+              Baskı boyutu, satır aralığı ve hakem modu — tez veya dergi
+              gönderimi için en sık ihtiyaç duyulanlar.
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="pageSize" className="text-xs">Sayfa Boyutu (Trim Size)</Label>
+              <select
+                id="pageSize"
+                value={form.pageSize}
+                onChange={(e) => update("pageSize", e.target.value)}
+                className="w-full h-9 rounded-md border border-[#d4c9b5] bg-white px-2 text-xs font-ui focus:outline-none focus:ring-2 focus:ring-forest/30"
+              >
+                {PAGE_SIZE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <p className="font-body text-[10px] text-[#8a7a65]">
+                Design sayfasındaki sayfa boyutu ile senkrondur.
+              </p>
+            </div>
+
+            <label
+              htmlFor="doubleSpaced"
+              className="flex items-start gap-3 rounded-md border border-[#d4c9b5] bg-white px-3 py-2.5 cursor-pointer hover:bg-[#FAF7F0] transition-colors"
+            >
+              <input
+                id="doubleSpaced"
+                type="checkbox"
+                checked={form.doubleSpaced}
+                onChange={(e) => update("doubleSpaced", e.target.checked)}
+                className="mt-0.5 h-4 w-4"
+              />
+              <span className="flex-1">
+                <span className="block font-ui text-xs font-medium text-[#2D1F0E]">
+                  Tez çift aralık (1.5 → 2.0 satır aralığı)
+                </span>
+                <span className="block font-body text-[11px] text-[#8a7a65] leading-snug mt-0.5">
+                  YÖK ve çoğu üniversitenin tez şartnamesi için zorunlu. Kapalıyken
+                  Design sayfasındaki değerin aynen korunur.
+                </span>
+              </span>
+            </label>
+
+            <label
+              htmlFor="blindReview"
+              className="flex items-start gap-3 rounded-md border border-[#d4c9b5] bg-white px-3 py-2.5 cursor-pointer hover:bg-[#FAF7F0] transition-colors"
+            >
+              <input
+                id="blindReview"
+                type="checkbox"
+                checked={form.blindReview}
+                onChange={(e) => update("blindReview", e.target.checked)}
+                className="mt-0.5 h-4 w-4"
+              />
+              <span className="flex-1">
+                <span className="block font-ui text-xs font-medium text-[#2D1F0E]">
+                  Hakem kör değerlendirme modu
+                </span>
+                <span className="block font-body text-[11px] text-[#8a7a65] leading-snug mt-0.5">
+                  Kapak sayfası ve running head'lerden yazar / kurum / bölüm /
+                  danışman isimleri gizlenir — double-blind dergi gönderimleri
+                  için.
+                </span>
+              </span>
+            </label>
           </section>
 
           <div className="flex justify-end pt-2">
