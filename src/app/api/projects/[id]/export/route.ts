@@ -708,7 +708,9 @@ interface ProjectImageData {
 }
 
 interface BookDesignSettings {
+  bodyFont?: string
   bodyFontSize?: number
+  headingFont?: string
   headingFontSize?: number
   lineHeight?: number
   paragraphSpacing?: number
@@ -721,11 +723,14 @@ interface BookDesignSettings {
   marginRight?: number
   chapterTitleSize?: number
   chapterTitleAlign?: string
+  chapterTitleStyle?: string
   sectionTitleSize?: number
   subsectionTitleSize?: number
   textColor?: string
   headingColor?: string
+  accentColor?: string
   showPageNumbers?: boolean
+  pageNumberPosition?: string
   showChapterDivider?: boolean
   imageLayout?: string
   imageWidthPercent?: number
