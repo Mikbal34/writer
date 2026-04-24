@@ -1258,6 +1258,7 @@ export default function DesignPage() {
 
   const [design, setDesign] = useState<BookDesign>(DEFAULT_DESIGN);
   const [artStyle, setArtStyle] = useState<string | null>(null);
+  const [projectType, setProjectType] = useState<string>("ACADEMIC");
   const [isLoading, setIsLoading] = useState(true);
   const [citationFormat, setCitationFormat] = useState<CitationFormat | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1273,6 +1274,9 @@ export default function DesignPage() {
       }
       if (data.citationFormat) {
         setCitationFormat(data.citationFormat as CitationFormat);
+      }
+      if (data.projectType) {
+        setProjectType(data.projectType as string);
       }
       const guidelines = data.writingGuidelines as Record<string, unknown> | null;
       setArtStyle(guidelines?.artStyle ? (guidelines.artStyle as string) : null);
@@ -1379,7 +1383,11 @@ export default function DesignPage() {
                   { key: "magazine", label: "Magazine" },
                   { key: "poetry", label: "Poetry" },
                 ] as const
-              ).map((preset) => (
+              )
+                .filter(
+                  (preset) => projectType === "ACADEMIC" || preset.key !== "academic"
+                )
+                .map((preset) => (
                 <button
                   key={preset.key}
                   onClick={async () => {
@@ -1410,8 +1418,10 @@ export default function DesignPage() {
               ))}
             </div>
 
-            {/* Citation format spec-based layout */}
-            {citationFormat && (
+            {/* Citation format spec-based layout — academic only.
+                Creative projects default to ISNAD under the hood but the
+                citation layout defaults are irrelevant to them. */}
+            {citationFormat && projectType === "ACADEMIC" && (
               <div className="w-full space-y-2">
                 <p className="font-ui text-[10px] uppercase tracking-wide text-muted-foreground text-center">
                   Citation Format Layout
