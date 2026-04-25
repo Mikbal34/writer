@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { getCitationFormatter, CitationFormatter } from '@/lib/citations/formatter'
+import { getFormatDefaults, type FormatDefaults } from '@/lib/citations/format-defaults'
 import {
   createResolverState,
   resolveInlineCitations,
@@ -266,6 +267,21 @@ function buildDocx(
   let currentSection = ''
   let chapterIndex = 0
 
+  // Per-format body styling pulled from the style-guide research in
+  // src/lib/citations/format-defaults. Applied to every body paragraph
+  // and blockquote so Vancouver renders 11pt + 1.15 line + no first-line
+  // indent + left-aligned (not the APA defaults the route used to bake in).
+  const fmtDefaults: FormatDefaults = getFormatDefaults(format)
+  const bodyHalfPoints = Math.round(fmtDefaults.bodyFontSize * 2)
+  // DOCX line-spacing units are 1/240ths of a line (240 = single, 360 = 1.5x).
+  const lineSpacingTwips = Math.round(fmtDefaults.lineHeight * 240)
+  // firstLineIndent in our spec is in points; DOCX wants twips (1pt = 20twips).
+  const firstLineIndentTwips = Math.round(fmtDefaults.firstLineIndent * 20)
+  const paragraphSpacingTwips = Math.round(fmtDefaults.paragraphSpacing * 20)
+  const bodyAlignment = fmtDefaults.textAlign === 'justify'
+    ? AlignmentType.JUSTIFIED
+    : AlignmentType.LEFT
+
   const children: Paragraph[] = []
 
   // Structural front matter (academic projects only). For non-academic or
@@ -397,9 +413,12 @@ function buildDocx(
           case 'paragraph': {
             children.push(
               new Paragraph({
-                children: buildRunsWithFootnotes(mdBlock.text, 24),
-                spacing: { after: 120, line: 360 },
-                indent: { firstLine: convertInchesToTwip(0.5) },
+                children: buildRunsWithFootnotes(mdBlock.text, bodyHalfPoints),
+                spacing: { after: Math.max(120, paragraphSpacingTwips), line: lineSpacingTwips },
+                indent: firstLineIndentTwips > 0
+                  ? { firstLine: firstLineIndentTwips }
+                  : undefined,
+                alignment: bodyAlignment,
               })
             )
             break
@@ -445,8 +464,8 @@ function buildDocx(
           case 'blockquote': {
             children.push(
               new Paragraph({
-                children: buildRunsWithFootnotes(mdBlock.text, 24, { bold: false }),
-                spacing: { after: 120, line: 360 },
+                children: buildRunsWithFootnotes(mdBlock.text, bodyHalfPoints, { bold: false }),
+                spacing: { after: Math.max(120, paragraphSpacingTwips), line: lineSpacingTwips },
                 indent: { left: convertInchesToTwip(0.5), right: convertInchesToTwip(0.5) },
                 border: {
                   left: { style: BorderStyle.SINGLE, size: 6, color: '999999', space: 8 },
@@ -538,17 +557,25 @@ function buildDocx(
       const prefixStr = CitationFormatter.renderPrefix(idx, prefix)
       const runs: TextRun[] = []
       if (prefixStr) {
-        runs.push(new TextRun({ text: prefixStr, size: 24, font: 'Times New Roman' }))
+        runs.push(new TextRun({ text: prefixStr, size: bodyHalfPoints, font: 'Times New Roman' }))
       }
       // parseInlineRuns turns `*italic*` markdown into italic TextRuns.
-      runs.push(...parseInlineRuns(item.entry, 24))
+      runs.push(...parseInlineRuns(item.entry, bodyHalfPoints))
+      // Indent strategy depends on the format's bibliography style:
+      //  - Numeric formats (IEEE 'bracket', Vancouver/AMA 'period'):
+      //    flush-left, the number prefix marks each entry visually.
+      //  - Author–date / footnote formats (APA, MLA, Chicago, Harvard,
+      //    Turabian, ISNAD): hanging indent so wrapped lines align under
+      //    the first character past the number/author.
+      const indent = prefix === null
+        ? { left: convertInchesToTwip(0.5), hanging: convertInchesToTwip(0.5) }
+        : undefined
       children.push(
         new Paragraph({
           children: runs,
-          spacing: { after: 80 },
-          indent: prefix === 'bracket'
-            ? { left: convertInchesToTwip(0.5) }
-            : { left: convertInchesToTwip(0.5), hanging: convertInchesToTwip(0.5) },
+          spacing: { after: 80, line: lineSpacingTwips },
+          indent,
+          alignment: AlignmentType.LEFT,
         })
       )
     })
@@ -876,12 +903,22 @@ function buildPdf(
     const CONTENT_WIDTH = PAGE_WIDTH - mLeft - mRight
 
     // Font sizes from design settings
-    const BODY_SIZE = d.bodyFontSize ?? 11
-    const CHAPTER_SIZE = d.chapterTitleSize ?? 18
-    const SECTION_SIZE = d.sectionTitleSize ?? 14
-    const SUBSECTION_SIZE = d.subsectionTitleSize ?? 12
-    const LINE_GAP = Math.round((d.lineHeight ?? 1.5) * BODY_SIZE - BODY_SIZE)
-    const PARA_INDENT = d.firstLineIndent ?? 36
+    // Per-format body styling (from format-defaults.ts) is the *base*;
+    // bookDesign overrides win when the user has explicitly set them on
+    // the design page. Falls back to ISNAD-ish defaults for non-academic
+    // exports that don't have a citation format assigned.
+    const fmtPdf: FormatDefaults = getFormatDefaults(format)
+    const BODY_SIZE = d.bodyFontSize ?? fmtPdf.bodyFontSize
+    const CHAPTER_SIZE = d.chapterTitleSize ?? fmtPdf.chapterTitleSize
+    const SECTION_SIZE = d.sectionTitleSize ?? fmtPdf.sectionTitleSize
+    const SUBSECTION_SIZE = d.subsectionTitleSize ?? fmtPdf.subsectionTitleSize
+    const effectiveLineHeight = d.lineHeight ?? fmtPdf.lineHeight
+    const LINE_GAP = Math.round(effectiveLineHeight * BODY_SIZE - BODY_SIZE)
+    const PARA_INDENT = d.firstLineIndent ?? fmtPdf.firstLineIndent
+    const PARA_SPACING_AFTER = d.paragraphSpacing ?? fmtPdf.paragraphSpacing
+    const BODY_ALIGN: 'justify' | 'left' = (d.textAlign === 'justify' || d.textAlign === 'left'
+      ? d.textAlign
+      : fmtPdf.textAlign === 'justify' ? 'justify' : 'left')
 
     // Per-page footnote storage
     const pageFootnotes: Map<number, Array<{ num: number; text: string }>> = new Map()
@@ -1100,9 +1137,9 @@ function buildPdf(
                 fontSize: BODY_SIZE,
                 lineGap: LINE_GAP,
                 indent: PARA_INDENT,
-                align: d.textAlign ?? 'justify',
+                align: BODY_ALIGN,
               })
-              doc.moveDown(0.3)
+              doc.moveDown(PARA_SPACING_AFTER > 0 ? PARA_SPACING_AFTER / 24 : 0.3)
               break
             }
             case 'heading': {
