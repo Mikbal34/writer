@@ -39,6 +39,8 @@ import {
 } from '@/lib/export/epub-builder'
 import type { BibliographyEntry } from '@/types/bibliography'
 import type { CitationFormat } from '@prisma/client'
+import { parseAcademicMeta } from '@/lib/academic-meta'
+import { structuralAcademicFromMeta } from '@/lib/academic-meta/legacy-adapter'
 import {
   Document,
   Packer,
@@ -1459,6 +1461,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         acknowledgments: true,
         dedication: true,
         blindReview: true,
+        academicMeta: { select: { format: true, meta: true } },
       },
     }) as unknown as (
       | ({
@@ -1480,6 +1483,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           acknowledgments: string | null
           dedication: string | null
           blindReview: boolean
+          academicMeta: { format: CitationFormat; meta: unknown } | null
         })
       | null
     )
@@ -1604,29 +1608,48 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // elements (abstract, keywords, dedication, acknowledgments). The
     // title page builder falls back gracefully on nulls.
     const blindReview = Boolean(project.blindReview)
-    const academic: AcademicStructuralInput | null =
-      includeStructural && project.projectType === 'ACADEMIC'
-        ? {
-            author: blindReview ? null : project.author,
-            institution: blindReview ? null : project.institution,
-            department: blindReview ? null : project.department,
-            advisor: blindReview ? null : project.advisor,
-            abstractTr: project.abstractTr,
-            abstractEn: project.abstractEn,
-            keywordsTr: project.keywordsTr ?? [],
-            keywordsEn: project.keywordsEn ?? [],
-            acknowledgments: blindReview ? null : project.acknowledgments,
-            dedication: blindReview ? null : project.dedication,
-            language: project.language,
-            date: String(new Date().getFullYear()),
-            // Optional fields not yet surfaced in the schema — left blank
-            // so the title-page builder skips them cleanly.
-            degreeType: null,
-            course: null,
-            instructor: null,
-            city: null,
-          }
-        : null
+
+    // Prefer the typed AcademicMeta row when present — that's the
+    // authoritative source written by the new format-aware form. Fall
+    // back to the legacy flat columns only when the new row is missing
+    // (e.g., for projects that haven't been opened in the new form yet).
+    const newAcademicMeta = (() => {
+      if (!project.academicMeta?.meta) return null
+      const parsed = parseAcademicMeta(project.academicMeta.meta)
+      return parsed.ok ? parsed.data : null
+    })()
+
+    const academic: AcademicStructuralInput | null = (() => {
+      if (!includeStructural || project.projectType !== 'ACADEMIC') return null
+      if (newAcademicMeta) {
+        const { title: _title, ...rest } = structuralAcademicFromMeta(
+          newAcademicMeta,
+          { title: project.title, language: project.language },
+          blindReview
+        )
+        return rest
+      }
+      return {
+        author: blindReview ? null : project.author,
+        institution: blindReview ? null : project.institution,
+        department: blindReview ? null : project.department,
+        advisor: blindReview ? null : project.advisor,
+        abstractTr: project.abstractTr,
+        abstractEn: project.abstractEn,
+        keywordsTr: project.keywordsTr ?? [],
+        keywordsEn: project.keywordsEn ?? [],
+        acknowledgments: blindReview ? null : project.acknowledgments,
+        dedication: blindReview ? null : project.dedication,
+        language: project.language,
+        date: String(new Date().getFullYear()),
+        // Optional fields not surfaced on the legacy Project columns —
+        // populated only when the new ProjectAcademicMeta row exists.
+        degreeType: null,
+        course: null,
+        instructor: null,
+        city: null,
+      }
+    })()
 
     // Creative structural spec (chapter opener / drop cap / scene break
     // conventions) — attached by the Book Style picker via

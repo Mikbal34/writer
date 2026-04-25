@@ -11,19 +11,19 @@ datasource db {
 // ==================== AUTH ====================
 
 model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token                  String? @db.Text
-  session_state             String?
-  refresh_token_expires_in  Int?
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String? @db.Text
+  access_token             String? @db.Text
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String? @db.Text
+  session_state            String?
+  refresh_token_expires_in Int?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -39,23 +39,23 @@ model Session {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  accounts      Account[]
-  sessions      Session[]
-  projects      Project[]
-  libraryEntries LibraryEntry[]
-  libraryTags    LibraryTag[]
-  zoteroConnection ZoteroConnection?
-  creditBalance       Int                 @default(1500)
-  creditTransactions  CreditTransaction[]
-  styleProfiles       UserStyleProfile[]
-  backgroundJobs      BackgroundJob[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                 String              @id @default(cuid())
+  name               String?
+  email              String?             @unique
+  emailVerified      DateTime?
+  image              String?
+  accounts           Account[]
+  sessions           Session[]
+  projects           Project[]
+  libraryEntries     LibraryEntry[]
+  libraryTags        LibraryTag[]
+  zoteroConnection   ZoteroConnection?
+  creditBalance      Int                 @default(1500)
+  creditTransactions CreditTransaction[]
+  styleProfiles      UserStyleProfile[]
+  backgroundJobs     BackgroundJob[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 }
 
 model VerificationToken {
@@ -69,24 +69,24 @@ model VerificationToken {
 // ==================== ADMIN ====================
 
 model AdminUser {
-  id           String   @id @default(cuid())
-  username     String   @unique
+  id           String    @id @default(cuid())
+  username     String    @unique
   passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
   lastLoginAt  DateTime?
 }
 
 // ==================== USER STYLE PROFILES ====================
 
 model UserStyleProfile {
-  id          String   @id @default(cuid())
-  userId      String
-  name        String
-  profile     Json?
-  method      String   @default("chat")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  profile   Json?
+  method    String   @default("chat")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   chatMessages StyleChatMessage[]
@@ -96,12 +96,12 @@ model UserStyleProfile {
 }
 
 model StyleChatMessage {
-  id              String   @id @default(cuid())
-  styleProfileId  String
-  sessionId       String
-  role            String
-  content         String   @db.Text
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  styleProfileId String
+  sessionId      String
+  role           String
+  content        String   @db.Text
+  createdAt      DateTime @default(now())
 
   styleProfile UserStyleProfile @relation(fields: [styleProfileId], references: [id], onDelete: Cascade)
 
@@ -138,50 +138,69 @@ enum CitationFormat {
 }
 
 model Project {
-  id               String         @id @default(cuid())
-  userId           String
-  title            String
-  description      String?        @db.Text
-  topic            String?        @db.Text
-  purpose          String?        @db.Text
-  audience         String?
-  language         String         @default("en")
-  projectType      ProjectType    @default(ACADEMIC)
-  citationFormat   CitationFormat @default(ISNAD)
-  styleProfile     Json?
-  styleProfileId   String?
+  id                String         @id @default(cuid())
+  userId            String
+  title             String
+  description       String?        @db.Text
+  topic             String?        @db.Text
+  purpose           String?        @db.Text
+  audience          String?
+  language          String         @default("en")
+  projectType       ProjectType    @default(ACADEMIC)
+  citationFormat    CitationFormat @default(ISNAD)
+  styleProfile      Json?
+  styleProfileId    String?
   writingGuidelines Json?
-  bookDesign       Json?
-  status           ProjectStatus  @default(onboarding)
+  bookDesign        Json?
+  status            ProjectStatus  @default(onboarding)
 
   // Academic metadata — populates title page, abstract, TOC, running heads
   // when the project is exported in an academic citation format.
-  author           String?
-  institution      String?
-  department       String?
-  advisor          String?
-  abstractTr       String?        @db.Text
-  abstractEn       String?        @db.Text
-  keywordsTr       String[]
-  keywordsEn       String[]
-  acknowledgments  String?        @db.Text
-  dedication       String?        @db.Text
+  author          String?
+  institution     String?
+  department      String?
+  advisor         String?
+  abstractTr      String?  @db.Text
+  abstractEn      String?  @db.Text
+  keywordsTr      String[]
+  keywordsEn      String[]
+  acknowledgments String?  @db.Text
+  dedication      String?  @db.Text
   // When true the title page and running heads omit author/institution/
   // department/advisor — used for double-blind journal submissions.
-  blindReview      Boolean        @default(false)
+  blindReview     Boolean  @default(false)
 
-  user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  linkedStyleProfile UserStyleProfile?       @relation("ProjectLinkedStyle", fields: [styleProfileId], references: [id], onDelete: SetNull)
-  chapters          Chapter[]
-  sources           Source[]
-  bibliography      Bibliography[]
-  outputs           Output[]
-  chatMessages      RoadmapChatMessage[]
-  characters        Character[]
-  projectImages     ProjectImage[]
-  illustrationChats IllustrationChatMessage[]
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedStyleProfile UserStyleProfile?         @relation("ProjectLinkedStyle", fields: [styleProfileId], references: [id], onDelete: SetNull)
+  academicMeta       ProjectAcademicMeta?
+  chapters           Chapter[]
+  sources            Source[]
+  bibliography       Bibliography[]
+  outputs            Output[]
+  chatMessages       RoadmapChatMessage[]
+  characters         Character[]
+  projectImages      ProjectImage[]
+  illustrationChats  IllustrationChatMessage[]
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+}
+
+// ==================== ACADEMIC METADATA ====================
+
+// Format-discriminated academic metadata. `meta` is a JSON blob whose
+// shape is governed by src/lib/academic-meta/schemas.ts — one Zod
+// variant per CitationFormat. `format` and `schemaVersion` are duplicated
+// out of the JSON so reads can branch without parsing.
+model ProjectAcademicMeta {
+  projectId     String         @id
+  format        CitationFormat
+  schemaVersion Int            @default(1)
+  meta          Json
+  updatedAt     DateTime       @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([format])
 }
 
 // ==================== ROADMAP CHAT ====================
@@ -190,7 +209,7 @@ model RoadmapChatMessage {
   id              String   @id @default(cuid())
   projectId       String
   sessionId       String
-  role            String   // "user" | "assistant"
+  role            String // "user" | "assistant"
   content         String   @db.Text
   commands        Json?
   commandsApplied Boolean  @default(false)
@@ -204,11 +223,11 @@ model RoadmapChatMessage {
 // ==================== BOOK STRUCTURE ====================
 
 model Chapter {
-  id             String    @id @default(cuid())
+  id             String  @id @default(cuid())
   projectId      String
   number         Int
   title          String
-  purpose        String?   @db.Text
+  purpose        String? @db.Text
   estimatedPages Int?
   sortOrder      Int
 
@@ -222,7 +241,7 @@ model Chapter {
 model Section {
   id          String   @id @default(cuid())
   chapterId   String
-  sectionId   String   // "1.1" format
+  sectionId   String // "1.1" format
   title       String
   keyConcepts String[]
   sortOrder   Int
@@ -244,10 +263,10 @@ enum SubsectionStatus {
 model Subsection {
   id              String           @id @default(cuid())
   sectionId       String
-  subsectionId    String           // "1.1.1" format
+  subsectionId    String // "1.1.1" format
   title           String
   description     String?          @db.Text
-  whatToWrite      String?          @db.Text
+  whatToWrite     String?          @db.Text
   keyPoints       String[]
   writingStrategy String?          @db.Text
   estimatedPages  Int?
@@ -294,29 +313,29 @@ enum EntryType {
 }
 
 model Bibliography {
-  id             String    @id @default(cuid())
-  projectId      String
-  sourceId       String?
-  entryType      EntryType @default(kitap)
-  authorSurname  String
-  authorName     String?
-  title          String
-  shortTitle     String?
-  editor         String?
-  translator     String?
-  publisher      String?
-  publishPlace   String?
-  year           String?
-  volume         String?
-  edition        String?
-  journalName    String?
-  journalVolume  String?
-  journalIssue   String?
-  pageRange      String?
-  doi            String?
-  url            String?
-  accessDate     String?
-  metadata       Json?
+  id            String    @id @default(cuid())
+  projectId     String
+  sourceId      String?
+  entryType     EntryType @default(kitap)
+  authorSurname String
+  authorName    String?
+  title         String
+  shortTitle    String?
+  editor        String?
+  translator    String?
+  publisher     String?
+  publishPlace  String?
+  year          String?
+  volume        String?
+  edition       String?
+  journalName   String?
+  journalVolume String?
+  journalIssue  String?
+  pageRange     String?
+  doi           String?
+  url           String?
+  accessDate    String?
+  metadata      Json?
 
   libraryEntryId String?
   project        Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -329,10 +348,10 @@ model Bibliography {
 }
 
 model BibliographyAttachment {
-  id             String       @id @default(cuid())
+  id             String   @id @default(cuid())
   bibliographyId String
   sourceId       String
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime @default(now())
 
   bibliography Bibliography @relation(fields: [bibliographyId], references: [id], onDelete: Cascade)
   source       Source       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
@@ -358,14 +377,14 @@ model SourceMapping {
 }
 
 model SourceChunk {
-  id              String  @id @default(cuid())
-  sourceId        String
-  bibliographyId  String?
-  pageNumber      Int?
-  chunkIndex      Int
-  content         String  @db.Text
-  embedding       Unsupported("vector(768)")?
-  metadata        Json?
+  id             String                      @id @default(cuid())
+  sourceId       String
+  bibliographyId String?
+  pageNumber     Int?
+  chunkIndex     Int
+  content        String                      @db.Text
+  embedding      Unsupported("vector(768)")?
+  metadata       Json?
 
   source       Source        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   bibliography Bibliography? @relation(fields: [bibliographyId], references: [id], onDelete: SetNull)
@@ -406,50 +425,50 @@ model Output {
 // ==================== USER LIBRARY ====================
 
 model LibraryEntry {
-  id             String    @id @default(cuid())
-  userId         String
-  entryType      EntryType @default(kitap)
-  authorSurname  String
-  authorName     String?
-  title          String
-  shortTitle     String?
-  editor         String?
-  translator     String?
-  publisher      String?
-  publishPlace   String?
-  year           String?
-  volume         String?
-  edition        String?
-  journalName    String?
-  journalVolume  String?
-  journalIssue   String?
-  pageRange      String?
-  doi            String?
-  url            String?
-  accessDate     String?
-  metadata       Json?
-  importSource   String?   // "manual" | "bibtex" | "zotero" | "literature-search" | "pdf-upload"
-  bibtexKey      String?
-  zoteroKey      String?
-  filePath       String?   // Local path to downloaded PDF/file
-  fileType       String?   // "pdf" | "doc" | etc.
+  id            String    @id @default(cuid())
+  userId        String
+  entryType     EntryType @default(kitap)
+  authorSurname String
+  authorName    String?
+  title         String
+  shortTitle    String?
+  editor        String?
+  translator    String?
+  publisher     String?
+  publishPlace  String?
+  year          String?
+  volume        String?
+  edition       String?
+  journalName   String?
+  journalVolume String?
+  journalIssue  String?
+  pageRange     String?
+  doi           String?
+  url           String?
+  accessDate    String?
+  metadata      Json?
+  importSource  String? // "manual" | "bibtex" | "zotero" | "literature-search" | "pdf-upload"
+  bibtexKey     String?
+  zoteroKey     String?
+  filePath      String? // Local path to downloaded PDF/file
+  fileType      String? // "pdf" | "doc" | etc.
 
   // Literature-search enrichment
-  abstract        String?  @db.Text
-  keywords        String[]
-  citationCount   Int?
-  relevanceScore  Float?            // Haiku-scored against the user's query
-  openAccessUrl   String?           // Direct PDF URL when open access
-  pdfStatus       String   @default("none") // "none" | "pending" | "downloading" | "extracting" | "embedding" | "ready" | "failed"
-  pdfError        String?
+  abstract       String?  @db.Text
+  keywords       String[]
+  citationCount  Int?
+  relevanceScore Float? // Haiku-scored against the user's query
+  openAccessUrl  String? // Direct PDF URL when open access
+  pdfStatus      String   @default("none") // "none" | "pending" | "downloading" | "extracting" | "embedding" | "ready" | "failed"
+  pdfError       String?
 
-  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   bibliographies Bibliography[]
   tags           LibraryEntryTag[]
   chunks         LibraryChunk[]
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, authorSurname, title])
   @@index([userId])
@@ -457,37 +476,37 @@ model LibraryEntry {
 }
 
 model LibraryChunk {
-  id             String                       @id @default(cuid())
+  id             String                      @id @default(cuid())
   libraryEntryId String
   pageNumber     Int?
   chunkIndex     Int
-  content        String                       @db.Text
+  content        String                      @db.Text
   embedding      Unsupported("vector(768)")?
   metadata       Json?
 
-  libraryEntry   LibraryEntry @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
+  libraryEntry LibraryEntry @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
 
   @@index([libraryEntryId])
 }
 
 model LiteratureSearchCache {
-  id         String   @id @default(cuid())
-  userId     String
-  queryHash  String   // sha256(normalized query + filters)
-  query      String
-  filters    Json?
-  results    Json     // AcademicSearchResult[] after ranking
-  createdAt  DateTime @default(now())
-  expiresAt  DateTime
+  id        String   @id @default(cuid())
+  userId    String
+  queryHash String // sha256(normalized query + filters)
+  query     String
+  filters   Json?
+  results   Json // AcademicSearchResult[] after ranking
+  createdAt DateTime @default(now())
+  expiresAt DateTime
 
   @@unique([userId, queryHash])
   @@index([expiresAt])
 }
 
 model LibraryTag {
-  id      String @id @default(cuid())
-  userId  String
-  name    String
+  id     String @id @default(cuid())
+  userId String
+  name   String
 
   user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   entries LibraryEntryTag[]
@@ -509,8 +528,8 @@ model LibraryEntryTag {
 // ==================== ZOTERO ====================
 
 model ZoteroConnection {
-  id              String   @id @default(cuid())
-  userId          String   @unique
+  id              String    @id @default(cuid())
+  userId          String    @unique
   apiKey          String
   zoteroUserId    String
   lastSyncAt      DateTime?
@@ -532,20 +551,20 @@ enum CreditTransactionType {
 }
 
 model CreditTransaction {
-  id                 String                  @id @default(cuid())
-  userId             String
-  amount             Int
-  balance            Int
-  type               CreditTransactionType
-  operation          String?
-  inputTokens        Int?
-  outputTokens       Int?
-  cacheReadTokens    Int?
+  id                  String                @id @default(cuid())
+  userId              String
+  amount              Int
+  balance             Int
+  type                CreditTransactionType
+  operation           String?
+  inputTokens         Int?
+  outputTokens        Int?
+  cacheReadTokens     Int?
   cacheCreationTokens Int?
-  creditsUsed        Int?
-  model              String?
-  metadata           Json?
-  createdAt          DateTime                @default(now())
+  creditsUsed         Int?
+  model               String?
+  metadata            Json?
+  createdAt           DateTime              @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -570,21 +589,21 @@ model Character {
 }
 
 model ProjectImage {
-  id           String      @id @default(cuid())
+  id           String   @id @default(cuid())
   projectId    String
   chapterId    String?
   subsectionId String?
   imageData    Bytes
-  prompt       String      @db.Text
+  prompt       String   @db.Text
   style        String?
-  aspectRatio  String      @default("4:3")
-  layout       String      @default("float_right")
-  position     String      @default("after")
-  widthPercent Int         @default(50)
-  posX         Float       @default(0)
-  posY         Float       @default(0)
-  sortOrder    Int         @default(0)
-  createdAt    DateTime    @default(now())
+  aspectRatio  String   @default("4:3")
+  layout       String   @default("float_right")
+  position     String   @default("after")
+  widthPercent Int      @default(50)
+  posX         Float    @default(0)
+  posY         Float    @default(0)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
 
   project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   chapter    Chapter?    @relation(fields: [chapterId], references: [id], onDelete: SetNull)
@@ -613,19 +632,19 @@ model IllustrationChatMessage {
 // a notification bell even after the user navigates away.
 
 model BackgroundJob {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
-  type         String   // 'roadmap' | 'subsection' | 'batch_writing' | 'literature_search' | 'zotero_sync' | 'pdf_pipeline'
-  status       String   @default("running") // 'running' | 'done' | 'failed'
+  type         String // 'roadmap' | 'subsection' | 'batch_writing' | 'literature_search' | 'zotero_sync' | 'pdf_pipeline'
+  status       String    @default("running") // 'running' | 'done' | 'failed'
   title        String
-  projectId    String?  // optional — for deep-linking
-  subsectionId String?  // optional — for deep-linking
-  resultUrl    String?  // where to send the user on click
-  progress     Int?     // 0..100 when known
-  message      String?  // latest status message
-  error        String?  @db.Text
-  acknowledged Boolean  @default(false)
-  startedAt    DateTime @default(now())
+  projectId    String? // optional — for deep-linking
+  subsectionId String? // optional — for deep-linking
+  resultUrl    String? // where to send the user on click
+  progress     Int? // 0..100 when known
+  message      String? // latest status message
+  error        String?   @db.Text
+  acknowledged Boolean   @default(false)
+  startedAt    DateTime  @default(now())
   finishedAt   DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

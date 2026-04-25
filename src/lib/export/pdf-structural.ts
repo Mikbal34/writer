@@ -80,7 +80,11 @@ function resolveTitleElement(
 ): string | null {
   switch (element) {
     case 'institution_tr_header':
-      return meta.institution ? `T.C.\n${meta.institution.toUpperCase()}` : null
+      if (!meta.institution) return null
+      if (meta.isStateUniversity === false) {
+        return meta.institution.toUpperCase()
+      }
+      return `T.C.\n${meta.institution.toUpperCase()}`
     case 'institution':
       return meta.institution
     case 'department':
@@ -88,11 +92,13 @@ function resolveTitleElement(
     case 'title':
       return meta.title
     case 'subtitle':
-      return null
+      return meta.subtitle ?? null
     case 'author':
       return meta.author
     case 'advisor':
-      return meta.advisor ? `Danışman: ${meta.advisor}` : null
+      return meta.advisor
+        ? `${meta.advisorLabel ?? 'Danışman:'} ${meta.advisor}`
+        : null
     case 'degree_type':
       return meta.degreeType ?? null
     case 'course':

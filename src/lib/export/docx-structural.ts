@@ -33,6 +33,7 @@ import {
 
 export interface AcademicMeta {
   title: string
+  subtitle?: string | null
   author: string | null
   institution: string | null
   department: string | null
@@ -46,11 +47,15 @@ export interface AcademicMeta {
   language: string | null
   /** Rendered on ISNAD title page; caller passes current year if absent. */
   date: string
-  /** "Yüksek Lisans Tezi" / "Doktora Tezi" — ISNAD only today. */
+  /** "Yüksek Lisans Tezi" / "Doktora Tezi" / "Master of Arts" / etc. */
   degreeType?: string | null
   course?: string | null
   instructor?: string | null
   city?: string | null
+  /** ISNAD: false suppresses the "T.C." prefix on the title page. */
+  isStateUniversity?: boolean
+  /** Localised label for the advisor line. Defaults to "Danışman:" when omitted. */
+  advisorLabel?: string
 }
 
 // =================================================================
@@ -111,7 +116,13 @@ function resolveTitleElement(
 ): string | null {
   switch (element) {
     case 'institution_tr_header':
-      return meta.institution ? `T.C.\n${meta.institution.toUpperCase()}` : null
+      // Skip the "T.C." prefix when the project is hosted by a private
+      // (non-state) university — the meta carries an explicit toggle.
+      if (!meta.institution) return null
+      if (meta.isStateUniversity === false) {
+        return meta.institution.toUpperCase()
+      }
+      return `T.C.\n${meta.institution.toUpperCase()}`
     case 'institution':
       return meta.institution
     case 'department':
@@ -119,11 +130,13 @@ function resolveTitleElement(
     case 'title':
       return meta.title
     case 'subtitle':
-      return null // we don't track subtitle separately yet
+      return meta.subtitle ?? null
     case 'author':
       return meta.author ? meta.author : null
     case 'advisor':
-      return meta.advisor ? `Danışman: ${meta.advisor}` : null
+      return meta.advisor
+        ? `${meta.advisorLabel ?? 'Danışman:'} ${meta.advisor}`
+        : null
     case 'degree_type':
       return meta.degreeType ?? null
     case 'course':
