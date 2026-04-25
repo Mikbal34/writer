@@ -15,6 +15,8 @@ interface Props {
   onGenerateKeywords?: () => void
   generatingAbstract?: boolean
   generatingKeywords?: boolean
+  onAutoFillDate?: () => void
+  autoFillingDate?: boolean
 }
 
 export default function MlaForm({
@@ -24,6 +26,8 @@ export default function MlaForm({
   onGenerateKeywords,
   generatingAbstract,
   generatingKeywords,
+  onAutoFillDate,
+  autoFillingDate,
 }: Props) {
   const set = <K extends keyof MlaMeta>(k: K, v: MlaMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -71,6 +75,9 @@ export default function MlaForm({
           onChange={(v) => set("date", v)}
           placeholder="14 October 2025"
           hint="MLA prescribes the day-month-year format."
+          onAutoFill={onAutoFillDate}
+          autoFillLoading={autoFillingDate}
+          autoFillHint="Use today's date in MLA format"
         />
       </FormSection>
 

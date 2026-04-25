@@ -19,6 +19,10 @@ interface Props {
   generatingAbstract?: boolean
   generatingKeyPoints?: boolean
   generatingKeywords?: boolean
+  onAutoFillWordCountAbstract?: () => void
+  onAutoFillWordCountText?: () => void
+  autoFillingWordCountAbstract?: boolean
+  autoFillingWordCountText?: boolean
 }
 
 const emptyAuthor = (): AuthorBlock => ({
@@ -41,6 +45,10 @@ export default function AmaForm({
   generatingAbstract,
   generatingKeyPoints,
   generatingKeywords,
+  onAutoFillWordCountAbstract,
+  onAutoFillWordCountText,
+  autoFillingWordCountAbstract,
+  autoFillingWordCountText,
 }: Props) {
   const set = <K extends keyof AmaMeta>(k: K, v: AmaMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -277,11 +285,17 @@ export default function AmaForm({
             label="Abstract word count"
             value={meta.wordCountAbstract}
             onChange={(v) => set("wordCountAbstract", v)}
+            onAutoFill={onAutoFillWordCountAbstract}
+            autoFillLoading={autoFillingWordCountAbstract}
+            autoFillHint="Count words in the structured abstract"
           />
           <NumberField
             label="Text word count"
             value={meta.wordCountText}
             onChange={(v) => set("wordCountText", v)}
+            onAutoFill={onAutoFillWordCountText}
+            autoFillLoading={autoFillingWordCountText}
+            autoFillHint="Count words in all written subsections"
           />
         </div>
         <TextAreaField

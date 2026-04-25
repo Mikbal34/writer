@@ -16,6 +16,8 @@ interface Props {
   onGenerateKeywords?: () => void
   generatingAbstract?: boolean
   generatingKeywords?: boolean
+  onAutoFillDate?: () => void
+  autoFillingDate?: boolean
 }
 
 export default function ChicagoForm({
@@ -25,6 +27,8 @@ export default function ChicagoForm({
   onGenerateKeywords,
   generatingAbstract,
   generatingKeywords,
+  onAutoFillDate,
+  autoFillingDate,
 }: Props) {
   const set = <K extends keyof ChicagoMeta>(k: K, v: ChicagoMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -126,6 +130,9 @@ export default function ChicagoForm({
           value={meta.date}
           onChange={(v) => set("date", v)}
           placeholder="October 14, 2025"
+          onAutoFill={onAutoFillDate}
+          autoFillLoading={autoFillingDate}
+          autoFillHint="Use today's date"
         />
       </FormSection>
 

@@ -11,6 +11,16 @@ import VancouverForm from "./VancouverForm"
 import AmaForm from "./AmaForm"
 import IsnadForm from "./IsnadForm"
 
+export type AutoFillTarget =
+  | 'wordCountText'
+  | 'wordCountAbstract'
+  | 'tableCount'
+  | 'figureCount'
+  | 'wordCount'
+  | 'date'
+  | 'subtitle'
+  | 'year'
+
 export interface AiHandlers {
   onGenerateAbstract?: () => void
   onGenerateKeywords?: () => void
@@ -21,6 +31,9 @@ export interface AiHandlers {
   onGenerateAbstractEn?: () => void
   onGenerateKeywordsTr?: () => void
   onGenerateKeywordsEn?: () => void
+
+  /** Computes/derives a value from project content rather than calling AI. */
+  onAutoFill?: (target: AutoFillTarget) => void
 
   generating?: {
     abstract?: boolean
@@ -33,6 +46,7 @@ export interface AiHandlers {
     keywordsTr?: boolean
     keywordsEn?: boolean
   }
+  autoFilling?: Partial<Record<AutoFillTarget, boolean>>
 }
 
 interface Props extends AiHandlers {
@@ -46,7 +60,13 @@ interface Props extends AiHandlers {
  * variant; no optional-chain or `?? {}` ever appears inside them.
  */
 export default function MetaFormRouter(props: Props) {
-  const { meta, onChange, generating, ...handlers } = props
+  const { meta, onChange, generating, autoFilling, onAutoFill, ...handlers } = props
+
+  // Tiny binders so each form receives a no-arg callback for its
+  // specific auto-fill targets; the parent's onAutoFill takes the
+  // discriminator string so we don't need 10 separate handlers there.
+  const af = (target: AutoFillTarget) =>
+    onAutoFill ? () => onAutoFill(target) : undefined
 
   switch (meta.format) {
     case "APA":
@@ -58,6 +78,8 @@ export default function MetaFormRouter(props: Props) {
           onGenerateKeywords={handlers.onGenerateKeywords}
           generatingAbstract={generating?.abstract}
           generatingKeywords={generating?.keywords}
+          onAutoFillDate={af("date")}
+          autoFillingDate={autoFilling?.date}
         />
       )
     case "MLA":
@@ -69,6 +91,8 @@ export default function MetaFormRouter(props: Props) {
           onGenerateKeywords={handlers.onGenerateKeywords}
           generatingAbstract={generating?.abstract}
           generatingKeywords={generating?.keywords}
+          onAutoFillDate={af("date")}
+          autoFillingDate={autoFilling?.date}
         />
       )
     case "CHICAGO":
@@ -80,6 +104,8 @@ export default function MetaFormRouter(props: Props) {
           onGenerateKeywords={handlers.onGenerateKeywords}
           generatingAbstract={generating?.abstract}
           generatingKeywords={generating?.keywords}
+          onAutoFillDate={af("date")}
+          autoFillingDate={autoFilling?.date}
         />
       )
     case "TURABIAN":
@@ -91,6 +117,8 @@ export default function MetaFormRouter(props: Props) {
           onGenerateKeywords={handlers.onGenerateKeywords}
           generatingAbstract={generating?.abstract}
           generatingKeywords={generating?.keywords}
+          onAutoFillDate={af("date")}
+          autoFillingDate={autoFilling?.date}
         />
       )
     case "HARVARD":
@@ -102,6 +130,10 @@ export default function MetaFormRouter(props: Props) {
           onGenerateKeywords={handlers.onGenerateKeywords}
           generatingAbstract={generating?.abstract}
           generatingKeywords={generating?.keywords}
+          onAutoFillWordCount={af("wordCount")}
+          onAutoFillDate={af("date")}
+          autoFillingWordCount={autoFilling?.wordCount}
+          autoFillingDate={autoFilling?.date}
         />
       )
     case "IEEE":
@@ -124,6 +156,14 @@ export default function MetaFormRouter(props: Props) {
           onGenerateKeywords={handlers.onGenerateKeywords}
           generatingAbstract={generating?.structuredAbstract}
           generatingKeywords={generating?.keywords}
+          onAutoFillWordCountAbstract={af("wordCountAbstract")}
+          onAutoFillWordCountText={af("wordCountText")}
+          onAutoFillTableCount={af("tableCount")}
+          onAutoFillFigureCount={af("figureCount")}
+          autoFillingWordCountAbstract={autoFilling?.wordCountAbstract}
+          autoFillingWordCountText={autoFilling?.wordCountText}
+          autoFillingTableCount={autoFilling?.tableCount}
+          autoFillingFigureCount={autoFilling?.figureCount}
         />
       )
     case "AMA":
@@ -137,6 +177,10 @@ export default function MetaFormRouter(props: Props) {
           generatingAbstract={generating?.structuredAbstract}
           generatingKeyPoints={generating?.keyPoints}
           generatingKeywords={generating?.keywords}
+          onAutoFillWordCountAbstract={af("wordCountAbstract")}
+          onAutoFillWordCountText={af("wordCountText")}
+          autoFillingWordCountAbstract={autoFilling?.wordCountAbstract}
+          autoFillingWordCountText={autoFilling?.wordCountText}
         />
       )
     case "ISNAD":
@@ -148,6 +192,8 @@ export default function MetaFormRouter(props: Props) {
           onGenerateAbstractEn={handlers.onGenerateAbstractEn}
           onGenerateKeywordsTr={handlers.onGenerateKeywordsTr}
           onGenerateKeywordsEn={handlers.onGenerateKeywordsEn}
+          onAutoFillYear={af("year")}
+          autoFillingYear={autoFilling?.year}
           generatingAbstractTr={generating?.abstractTr}
           generatingAbstractEn={generating?.abstractEn}
           generatingKeywordsTr={generating?.keywordsTr}

@@ -16,9 +16,40 @@ import {
 } from "@/lib/academic-meta"
 import MetaFormRouter, {
   type AiHandlers,
+  type AutoFillTarget,
 } from "@/components/academic-meta/MetaFormRouter"
 
 type GeneratingFlags = NonNullable<AiHandlers["generating"]>
+type AutoFillFlags = NonNullable<AiHandlers["autoFilling"]>
+
+/**
+ * Word count over a Vancouver/AMA structured abstract — sum each
+ * labelled section's word count.
+ */
+function structuredAbstractWordCount(meta: AcademicMeta): number {
+  if (meta.format === "VANCOUVER") {
+    return Object.values(meta.structuredAbstract)
+      .map((v) => (v ? v.trim().split(/\s+/).filter(Boolean).length : 0))
+      .reduce((a, b) => a + b, 0)
+  }
+  if (meta.format === "AMA") {
+    return Object.values(meta.structuredAbstract)
+      .map((v) => (v ? v.trim().split(/\s+/).filter(Boolean).length : 0))
+      .reduce((a, b) => a + b, 0)
+  }
+  return 0
+}
+
+interface ComputeResponse {
+  wordCountText: number
+  tableCount: number
+  figureCount: number
+  isoDate: string
+  mlaDate: string
+  apaDate: string
+  currentYear: string
+  subtitleFromTitle: string | null
+}
 
 export default function AcademicSettingsPage() {
   const params = useParams()
@@ -31,6 +62,7 @@ export default function AcademicSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState<GeneratingFlags>({})
+  const [autoFilling, setAutoFilling] = useState<AutoFillFlags>({})
 
   useEffect(() => {
     (async () => {
@@ -118,9 +150,78 @@ export default function AcademicSettingsPage() {
     [meta, projectId]
   )
 
+  const handleAutoFill = useCallback(
+    async (target: AutoFillTarget) => {
+      if (!meta) return
+      setAutoFilling((s) => ({ ...s, [target]: true }))
+      try {
+        // wordCountAbstract for Vancouver/AMA is local — no network call.
+        if (target === "wordCountAbstract") {
+          const count = structuredAbstractWordCount(meta)
+          setMeta((m) => {
+            if (!m) return m
+            if (m.format === "VANCOUVER") return { ...m, wordCountAbstract: count }
+            if (m.format === "AMA") return { ...m, wordCountAbstract: count }
+            return m
+          })
+          return
+        }
+
+        const res = await fetch(
+          `/api/projects/${projectId}/academic-meta/compute`
+        )
+        if (!res.ok) throw new Error("Auto-fill failed")
+        const data = (await res.json()) as ComputeResponse
+
+        setMeta((m) => {
+          if (!m) return m
+          switch (target) {
+            case "wordCountText":
+              if (m.format === "VANCOUVER") return { ...m, wordCountText: data.wordCountText }
+              if (m.format === "AMA") return { ...m, wordCountText: data.wordCountText }
+              return m
+            case "wordCount":
+              if (m.format === "HARVARD") return { ...m, wordCount: data.wordCountText }
+              return m
+            case "tableCount":
+              if (m.format === "VANCOUVER") return { ...m, tableCount: data.tableCount }
+              return m
+            case "figureCount":
+              if (m.format === "VANCOUVER") return { ...m, figureCount: data.figureCount }
+              return m
+            case "year":
+              if (m.format === "ISNAD") return { ...m, year: data.currentYear }
+              return m
+            case "date":
+              if (m.format === "MLA") return { ...m, date: data.mlaDate }
+              if (m.format === "CHICAGO") return { ...m, date: data.apaDate }
+              if (m.format === "TURABIAN") return { ...m, date: data.apaDate }
+              if (m.format === "HARVARD") return { ...m, dateOfSubmission: data.mlaDate }
+              if (m.format === "APA" && m.variant === "student")
+                return { ...m, dueDate: data.apaDate }
+              return m
+            case "subtitle":
+              if ("subtitle" in m && data.subtitleFromTitle) {
+                // All formats with subtitle accept it via a partial spread.
+                return { ...m, subtitle: data.subtitleFromTitle } as AcademicMeta
+              }
+              return m
+          }
+        })
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Auto-fill failed")
+      } finally {
+        setAutoFilling((s) => ({ ...s, [target]: false }))
+      }
+    },
+    [meta, projectId]
+  )
+
   const handlers = useMemo<AiHandlers>(
     () => ({
       generating,
+      autoFilling,
+      onAutoFill: handleAutoFill,
       onGenerateAbstract: () =>
         generate("abstract", (m, r) => ({ ...m, abstract: String(r ?? "") })),
       onGenerateKeywords: () =>
@@ -197,7 +298,7 @@ export default function AcademicSettingsPage() {
           return next
         }),
     }),
-    [generate, generating]
+    [generate, generating, autoFilling, handleAutoFill]
   )
 
   if (loading) {

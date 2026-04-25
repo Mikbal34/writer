@@ -10,11 +10,47 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
+import { Loader2, Plus, Sparkles, Trash2, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+
+// =================================================================
+//  Auto-fill icon button — used next to fields that have a derivable
+//  default (word counts from content, today's date, subtitle from
+//  title, etc.). Keeps the button-row visually distinct from the
+//  Sparkles AI button.
+// =================================================================
+
+export function AutoFillButton({
+  onClick,
+  loading,
+  hint,
+}: {
+  onClick: () => void
+  loading?: boolean
+  hint?: string
+}) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      onClick={onClick}
+      disabled={loading}
+      title={hint ?? "Auto-fill"}
+      className="h-6 px-2 text-[10px] gap-1 text-[#5C4A32] hover:bg-[#F0E8D8]"
+    >
+      {loading ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : (
+        <Wand2 className="h-3 w-3" />
+      )}
+      Auto-fill
+    </Button>
+  )
+}
 
 // =================================================================
 //  FormSection — labelled group wrapper
@@ -59,6 +95,9 @@ export function TextField({
   maxLength,
   hint,
   type = "text",
+  onAutoFill,
+  autoFillLoading,
+  autoFillHint,
 }: {
   label: string
   value: string | null
@@ -68,13 +107,25 @@ export function TextField({
   maxLength?: number
   hint?: string
   type?: "text" | "number" | "email"
+  onAutoFill?: () => void
+  autoFillLoading?: boolean
+  autoFillHint?: string
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs">
-        {label}
-        {required ? <span className="text-red-600 ml-0.5">*</span> : null}
-      </Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs">
+          {label}
+          {required ? <span className="text-red-600 ml-0.5">*</span> : null}
+        </Label>
+        {onAutoFill ? (
+          <AutoFillButton
+            onClick={onAutoFill}
+            loading={autoFillLoading}
+            hint={autoFillHint}
+          />
+        ) : null}
+      </div>
       <Input
         type={type}
         value={value ?? ""}
@@ -103,6 +154,9 @@ export function NumberField({
   placeholder,
   hint,
   min = 0,
+  onAutoFill,
+  autoFillLoading,
+  autoFillHint,
 }: {
   label: string
   value: number | null
@@ -110,10 +164,22 @@ export function NumberField({
   placeholder?: string
   hint?: string
   min?: number
+  onAutoFill?: () => void
+  autoFillLoading?: boolean
+  autoFillHint?: string
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs">{label}</Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs">{label}</Label>
+        {onAutoFill ? (
+          <AutoFillButton
+            onClick={onAutoFill}
+            loading={autoFillLoading}
+            hint={autoFillHint}
+          />
+        ) : null}
+      </div>
       <Input
         type="number"
         min={min}

@@ -16,6 +16,10 @@ interface Props {
   onGenerateKeywords?: () => void
   generatingAbstract?: boolean
   generatingKeywords?: boolean
+  onAutoFillWordCount?: () => void
+  onAutoFillDate?: () => void
+  autoFillingWordCount?: boolean
+  autoFillingDate?: boolean
 }
 
 export default function HarvardForm({
@@ -25,6 +29,10 @@ export default function HarvardForm({
   onGenerateKeywords,
   generatingAbstract,
   generatingKeywords,
+  onAutoFillWordCount,
+  onAutoFillDate,
+  autoFillingWordCount,
+  autoFillingDate,
 }: Props) {
   const set = <K extends keyof HarvardMeta>(k: K, v: HarvardMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -82,12 +90,18 @@ export default function HarvardForm({
             value={meta.wordCount}
             onChange={(v) => set("wordCount", v)}
             placeholder="8000"
+            onAutoFill={onAutoFillWordCount}
+            autoFillLoading={autoFillingWordCount}
+            autoFillHint="Count words in all written subsections"
           />
           <TextField
             label="Date of submission"
             value={meta.dateOfSubmission}
             onChange={(v) => set("dateOfSubmission", v)}
             placeholder="14 October 2025"
+            onAutoFill={onAutoFillDate}
+            autoFillLoading={autoFillingDate}
+            autoFillHint="Use today's date"
           />
         </div>
       </FormSection>

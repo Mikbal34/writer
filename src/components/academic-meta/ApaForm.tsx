@@ -16,6 +16,8 @@ interface Props {
   onGenerateKeywords?: () => void
   generatingAbstract?: boolean
   generatingKeywords?: boolean
+  onAutoFillDate?: () => void
+  autoFillingDate?: boolean
 }
 
 export default function ApaForm({
@@ -25,6 +27,8 @@ export default function ApaForm({
   onGenerateKeywords,
   generatingAbstract,
   generatingKeywords,
+  onAutoFillDate,
+  autoFillingDate,
 }: Props) {
   const set = <K extends keyof ApaMeta>(k: K, v: ApaMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -114,6 +118,9 @@ export default function ApaForm({
               value={meta.dueDate}
               onChange={(v) => set("dueDate", v)}
               placeholder="e.g. October 14, 2025"
+              onAutoFill={onAutoFillDate}
+              autoFillLoading={autoFillingDate}
+              autoFillHint="Use today's date"
             />
           </>
         ) : (

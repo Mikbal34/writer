@@ -17,6 +17,14 @@ interface Props {
   onGenerateKeywords?: () => void
   generatingAbstract?: boolean
   generatingKeywords?: boolean
+  onAutoFillWordCountAbstract?: () => void
+  onAutoFillWordCountText?: () => void
+  onAutoFillTableCount?: () => void
+  onAutoFillFigureCount?: () => void
+  autoFillingWordCountAbstract?: boolean
+  autoFillingWordCountText?: boolean
+  autoFillingTableCount?: boolean
+  autoFillingFigureCount?: boolean
 }
 
 const emptyAuthor = (): AuthorBlock => ({
@@ -37,6 +45,14 @@ export default function VancouverForm({
   onGenerateKeywords,
   generatingAbstract,
   generatingKeywords,
+  onAutoFillWordCountAbstract,
+  onAutoFillWordCountText,
+  onAutoFillTableCount,
+  onAutoFillFigureCount,
+  autoFillingWordCountAbstract,
+  autoFillingWordCountText,
+  autoFillingTableCount,
+  autoFillingFigureCount,
 }: Props) {
   const set = <K extends keyof VancouverMeta>(k: K, v: VancouverMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -195,27 +211,42 @@ export default function VancouverForm({
         />
       </FormSection>
 
-      <FormSection title="Submission metadata">
+      <FormSection
+        title="Submission metadata"
+        description="Word counts, tables and figures count from the project's written content with one click."
+      >
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <NumberField
             label="Abstract word count"
             value={meta.wordCountAbstract}
             onChange={(v) => set("wordCountAbstract", v)}
+            onAutoFill={onAutoFillWordCountAbstract}
+            autoFillLoading={autoFillingWordCountAbstract}
+            autoFillHint="Count words in the structured abstract"
           />
           <NumberField
             label="Text word count"
             value={meta.wordCountText}
             onChange={(v) => set("wordCountText", v)}
+            onAutoFill={onAutoFillWordCountText}
+            autoFillLoading={autoFillingWordCountText}
+            autoFillHint="Count words in all written subsections"
           />
           <NumberField
             label="Tables"
             value={meta.tableCount}
             onChange={(v) => set("tableCount", v)}
+            onAutoFill={onAutoFillTableCount}
+            autoFillLoading={autoFillingTableCount}
+            autoFillHint="Detect markdown tables in the manuscript"
           />
           <NumberField
             label="Figures"
             value={meta.figureCount}
             onChange={(v) => set("figureCount", v)}
+            onAutoFill={onAutoFillFigureCount}
+            autoFillLoading={autoFillingFigureCount}
+            autoFillHint="Count images and figures in the manuscript"
           />
         </div>
         <TextAreaField

@@ -21,6 +21,8 @@ interface Props {
   generatingAbstractEn?: boolean
   generatingKeywordsTr?: boolean
   generatingKeywordsEn?: boolean
+  onAutoFillYear?: () => void
+  autoFillingYear?: boolean
 }
 
 const DEGREE_OPTIONS: Array<{ value: IsnadDegreeType; label: string }> = [
@@ -41,6 +43,8 @@ export default function IsnadForm({
   generatingAbstractEn,
   generatingKeywordsTr,
   generatingKeywordsEn,
+  onAutoFillYear,
+  autoFillingYear,
 }: Props) {
   const set = <K extends keyof IsnadMeta>(k: K, v: IsnadMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -131,6 +135,9 @@ export default function IsnadForm({
             value={meta.year}
             onChange={(v) => set("year", v)}
             placeholder="2025"
+            onAutoFill={onAutoFillYear}
+            autoFillLoading={autoFillingYear}
+            autoFillHint="Bu yılı kullan"
           />
         </div>
       </FormSection>

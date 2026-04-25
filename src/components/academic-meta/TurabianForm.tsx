@@ -15,6 +15,8 @@ interface Props {
   onGenerateKeywords?: () => void
   generatingAbstract?: boolean
   generatingKeywords?: boolean
+  onAutoFillDate?: () => void
+  autoFillingDate?: boolean
 }
 
 export default function TurabianForm({
@@ -24,6 +26,8 @@ export default function TurabianForm({
   onGenerateKeywords,
   generatingAbstract,
   generatingKeywords,
+  onAutoFillDate,
+  autoFillingDate,
 }: Props) {
   const set = <K extends keyof TurabianMeta>(k: K, v: TurabianMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -84,6 +88,9 @@ export default function TurabianForm({
             value={meta.date}
             onChange={(v) => set("date", v)}
             placeholder="October 2025"
+            onAutoFill={onAutoFillDate}
+            autoFillLoading={autoFillingDate}
+            autoFillHint="Use today's date"
           />
         </div>
       </FormSection>
