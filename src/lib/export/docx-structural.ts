@@ -26,6 +26,20 @@ import {
   type TitlePageElement,
   type ChapterOpeningSpec,
 } from './structural-specs'
+import { getFormatDefaults } from '@/lib/citations/format-defaults'
+
+/** Half-points (DOCX size unit) for the body text of `format`. */
+function bodyHp(format: CitationFormat): number {
+  return Math.round(getFormatDefaults(format).bodyFontSize * 2)
+}
+/** Half-points for the chapter title (Heading 1) of `format`. */
+function chapterHp(format: CitationFormat): number {
+  return Math.round(getFormatDefaults(format).chapterTitleSize * 2)
+}
+/** Half-points for the section title (Heading 2) of `format`. */
+function sectionHp(format: CitationFormat): number {
+  return Math.round(getFormatDefaults(format).sectionTitleSize * 2)
+}
 
 // =================================================================
 //  ACADEMIC METADATA — shape we receive from the project model
@@ -115,7 +129,10 @@ export function buildTitlePage(format: CitationFormat, meta: AcademicMeta): Para
             new TextRun({
               text: spec.titlePage.titleUppercase && isTitle ? line.toUpperCase() : line,
               bold: isTitle,
-              size: isTitle ? 32 : 24,
+              // Cover title is a fixed 16pt across formats (it's the
+              // single biggest visual element), other title-page lines
+              // follow the format's body size.
+              size: isTitle ? 32 : bodyHp(format),
               font: 'Times New Roman',
               color: '000000',
             }),
@@ -190,13 +207,18 @@ export function buildAbstractPages(format: CitationFormat, meta: AcademicMeta): 
 
   const paragraphs: Paragraph[] = []
 
+  const body = bodyHp(format)
+  const heading = sectionHp(format) // abstract heading sized like a section title
+  const lineTwips = Math.round(getFormatDefaults(format).lineHeight * 240)
+
   // Turkish özet first (when dual-language), then English abstract.
   if (spec.abstract.dualLanguage && meta.abstractTr) {
     paragraphs.push(...renderAbstractPage(
       spec.abstract.labelUppercase ? 'ÖZET' : 'Özet',
       meta.abstractTr,
       'Anahtar Kelimeler',
-      meta.keywordsTr
+      meta.keywordsTr,
+      body, heading, lineTwips
     ))
     paragraphs.push(new Paragraph({ children: [new PageBreak()] }))
   }
@@ -207,7 +229,8 @@ export function buildAbstractPages(format: CitationFormat, meta: AcademicMeta): 
       spec.abstract.labelUppercase ? spec.abstract.label.toUpperCase() : spec.abstract.label,
       englishBody,
       spec.abstract.keywordsLabel,
-      spec.abstract.dualLanguage ? meta.keywordsEn : (meta.keywordsEn.length > 0 ? meta.keywordsEn : meta.keywordsTr)
+      spec.abstract.dualLanguage ? meta.keywordsEn : (meta.keywordsEn.length > 0 ? meta.keywordsEn : meta.keywordsTr),
+      body, heading, lineTwips
     ))
     paragraphs.push(new Paragraph({ children: [new PageBreak()] }))
   }
@@ -228,11 +251,19 @@ function splitStructuredLabel(para: string): { label: string; body: string } | n
   return { label: m[1], body: m[2] }
 }
 
-function renderAbstractPage(label: string, body: string, keywordsLabel: string, keywords: string[]): Paragraph[] {
+function renderAbstractPage(
+  label: string,
+  body: string,
+  keywordsLabel: string,
+  keywords: string[],
+  bodyHalfPoints: number,
+  headingHalfPoints: number,
+  lineSpacingTwips: number,
+): Paragraph[] {
   const out: Paragraph[] = []
   out.push(
     new Paragraph({
-      children: [new TextRun({ text: label, bold: true, size: 28, font: 'Times New Roman', color: '000000' })],
+      children: [new TextRun({ text: label, bold: true, size: headingHalfPoints, font: 'Times New Roman', color: '000000' })],
       heading: HeadingLevel.HEADING_1,
       alignment: AlignmentType.CENTER,
       spacing: { after: 300 },
@@ -242,14 +273,14 @@ function renderAbstractPage(label: string, body: string, keywordsLabel: string, 
     const structured = splitStructuredLabel(para)
     const runs = structured
       ? [
-          new TextRun({ text: `${structured.label} `, bold: true, size: 24, font: 'Times New Roman', color: '000000' }),
-          new TextRun({ text: structured.body, size: 24, font: 'Times New Roman', color: '000000' }),
+          new TextRun({ text: `${structured.label} `, bold: true, size: bodyHalfPoints, font: 'Times New Roman', color: '000000' }),
+          new TextRun({ text: structured.body, size: bodyHalfPoints, font: 'Times New Roman', color: '000000' }),
         ]
-      : [new TextRun({ text: para, size: 24, font: 'Times New Roman', color: '000000' })]
+      : [new TextRun({ text: para, size: bodyHalfPoints, font: 'Times New Roman', color: '000000' })]
     out.push(
       new Paragraph({
         children: runs,
-        spacing: { after: 120, line: 360 },
+        spacing: { after: 120, line: lineSpacingTwips },
         // Modern Vancouver / APA / Chicago all recommend left-aligned
         // (NOT justified) for the abstract — justified abstracts read
         // awkwardly with the inline bold labels and uneven word gaps.
@@ -261,8 +292,8 @@ function renderAbstractPage(label: string, body: string, keywordsLabel: string, 
     out.push(
       new Paragraph({
         children: [
-          new TextRun({ text: `${keywordsLabel}: `, bold: true, size: 24, font: 'Times New Roman', color: '000000' }),
-          new TextRun({ text: keywords.join(', '), size: 24, font: 'Times New Roman', color: '000000' }),
+          new TextRun({ text: `${keywordsLabel}: `, bold: true, size: bodyHalfPoints, font: 'Times New Roman', color: '000000' }),
+          new TextRun({ text: keywords.join(', '), size: bodyHalfPoints, font: 'Times New Roman', color: '000000' }),
         ],
         spacing: { before: 200 },
       })
@@ -285,6 +316,8 @@ export function buildTableOfContents(format: CitationFormat, entries: TocEntry[]
   const spec = getStructuralSpec(format)
   if (!spec.toc.enabled) return []
 
+  const headingSize = chapterHp(format)
+  const entrySize = bodyHp(format)
   const paragraphs: Paragraph[] = []
   paragraphs.push(
     new Paragraph({
@@ -292,8 +325,9 @@ export function buildTableOfContents(format: CitationFormat, entries: TocEntry[]
         new TextRun({
           text: spec.toc.labelUppercase ? spec.toc.label.toUpperCase() : spec.toc.label,
           bold: true,
-          size: 28,
+          size: headingSize,
           font: 'Times New Roman',
+          color: '000000',
         }),
       ],
       heading: HeadingLevel.HEADING_1,
@@ -308,10 +342,10 @@ export function buildTableOfContents(format: CitationFormat, entries: TocEntry[]
 
     const indent = entry.depth * 360 // 0.25" per level in twips
     const runs: TextRun[] = [
-      new TextRun({ text: entry.label, size: 22, font: 'Times New Roman', color: '000000', bold: entry.depth === 0 }),
+      new TextRun({ text: entry.label, size: entrySize, font: 'Times New Roman', color: '000000', bold: entry.depth === 0 }),
     ]
     if (entry.page !== undefined) {
-      runs.push(new TextRun({ text: `\t${entry.page}`, size: 22, font: 'Times New Roman', color: '000000' }))
+      runs.push(new TextRun({ text: `\t${entry.page}`, size: entrySize, font: 'Times New Roman', color: '000000' }))
     }
     paragraphs.push(
       new Paragraph({
@@ -361,10 +395,12 @@ export function buildChapterOpening(
   // styles still render on their own line above the title.
   const isInline = c.numberStyle === 'numeric' || c.numberStyle === 'roman-intro'
 
+  const titleSize = chapterHp(format)
+  const numberSize = sectionHp(format)
   if (numberStr && !isInline) {
     paragraphs.push(
       new Paragraph({
-        children: [new TextRun({ text: numberStr, bold: true, size: 28, font: 'Times New Roman', color: '000000' })],
+        children: [new TextRun({ text: numberStr, bold: true, size: numberSize, font: 'Times New Roman', color: '000000' })],
         heading: HeadingLevel.HEADING_1,
         alignment: align,
         spacing: { after: 120 * Math.max(1, c.gapAfterNumber) },
@@ -378,7 +414,7 @@ export function buildChapterOpening(
 
   paragraphs.push(
     new Paragraph({
-      children: [new TextRun({ text: inlineHeadingText, bold: true, size: 32, font: 'Times New Roman', color: '000000' })],
+      children: [new TextRun({ text: inlineHeadingText, bold: true, size: titleSize, font: 'Times New Roman', color: '000000' })],
       heading: numberStr && !isInline ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_1,
       alignment: align,
       spacing: { after: 120 * Math.max(1, c.gapAfterTitle) },
@@ -397,13 +433,16 @@ export function buildChapterOpening(
  * sentences (Question / Findings / Meaning), each prefixed with a bold
  * label. Renders as a compact block on its own page, before the abstract.
  */
-export function buildKeyPointsPage(meta: AcademicMeta): Paragraph[] {
+export function buildKeyPointsPage(format: CitationFormat, meta: AcademicMeta): Paragraph[] {
   const kp = meta.submission?.keyPoints
   if (!kp || (!kp.question && !kp.findings && !kp.meaning)) return []
+  const body = bodyHp(format)
+  const heading = sectionHp(format)
+  const lineTwips = Math.round(getFormatDefaults(format).lineHeight * 240)
   const out: Paragraph[] = []
   out.push(
     new Paragraph({
-      children: [new TextRun({ text: 'Key Points', bold: true, size: 28, font: 'Times New Roman', color: '000000' })],
+      children: [new TextRun({ text: 'Key Points', bold: true, size: heading, font: 'Times New Roman', color: '000000' })],
       heading: HeadingLevel.HEADING_1,
       alignment: AlignmentType.CENTER,
       spacing: { after: 240 },
@@ -414,10 +453,10 @@ export function buildKeyPointsPage(meta: AcademicMeta): Paragraph[] {
     out.push(
       new Paragraph({
         children: [
-          new TextRun({ text: `${label} `, bold: true, size: 24, font: 'Times New Roman', color: '000000' }),
-          new TextRun({ text, size: 24, font: 'Times New Roman', color: '000000' }),
+          new TextRun({ text: `${label} `, bold: true, size: body, font: 'Times New Roman', color: '000000' }),
+          new TextRun({ text, size: body, font: 'Times New Roman', color: '000000' }),
         ],
-        spacing: { after: 120, line: 320 },
+        spacing: { after: 120, line: lineTwips },
       })
     )
   }
@@ -439,7 +478,7 @@ export function buildKeyPointsPage(meta: AcademicMeta): Paragraph[] {
  * and trial registration number — the standard submission packet
  * journals expect alongside the manuscript itself.
  */
-export function buildSubmissionInfoPage(meta: AcademicMeta): Paragraph[] {
+export function buildSubmissionInfoPage(format: CitationFormat, meta: AcademicMeta): Paragraph[] {
   const sub = meta.submission
   if (!sub) return []
   const fields: Array<[string, string | null]> = [
@@ -455,10 +494,13 @@ export function buildSubmissionInfoPage(meta: AcademicMeta): Paragraph[] {
   const present = fields.filter(([, v]) => v && String(v).trim().length > 0)
   if (present.length === 0) return []
 
+  const body = bodyHp(format)
+  const heading = sectionHp(format)
+  const lineTwips = Math.round(getFormatDefaults(format).lineHeight * 240)
   const out: Paragraph[] = []
   out.push(
     new Paragraph({
-      children: [new TextRun({ text: 'Manuscript Information', bold: true, size: 28, font: 'Times New Roman', color: '000000' })],
+      children: [new TextRun({ text: 'Manuscript Information', bold: true, size: heading, font: 'Times New Roman', color: '000000' })],
       heading: HeadingLevel.HEADING_1,
       alignment: AlignmentType.CENTER,
       spacing: { after: 240 },
@@ -468,10 +510,10 @@ export function buildSubmissionInfoPage(meta: AcademicMeta): Paragraph[] {
     out.push(
       new Paragraph({
         children: [
-          new TextRun({ text: `${label}: `, bold: true, size: 24, font: 'Times New Roman', color: '000000' }),
-          new TextRun({ text: String(value), size: 24, font: 'Times New Roman', color: '000000' }),
+          new TextRun({ text: `${label}: `, bold: true, size: body, font: 'Times New Roman', color: '000000' }),
+          new TextRun({ text: String(value), size: body, font: 'Times New Roman', color: '000000' }),
         ],
-        spacing: { after: 120, line: 320 },
+        spacing: { after: 120, line: lineTwips },
       })
     )
   }
@@ -489,7 +531,7 @@ export function buildBibliographyHeader(format: CitationFormat): Paragraph {
     ? spec.bibliography.label.toUpperCase()
     : spec.bibliography.label
   return new Paragraph({
-    children: [new TextRun({ text: label, bold: true, size: 32, font: 'Times New Roman', color: '000000' })],
+    children: [new TextRun({ text: label, bold: true, size: chapterHp(format), font: 'Times New Roman', color: '000000' })],
     heading: HeadingLevel.HEADING_1,
     alignment: spec.bibliography.align === 'center' ? AlignmentType.CENTER : AlignmentType.LEFT,
     spacing: { after: 300 },
@@ -500,13 +542,13 @@ export function buildBibliographyHeader(format: CitationFormat): Paragraph {
 //  FRONT-MATTER EXTRAS: dedication, acknowledgments
 // =================================================================
 
-export function buildDedicationPage(text: string | null): Paragraph[] {
+export function buildDedicationPage(format: CitationFormat, text: string | null): Paragraph[] {
   if (!text?.trim()) return []
   return [
     // Push the text toward the middle of the page.
     ...Array.from({ length: 10 }, () => new Paragraph({ children: [new TextRun({ text: '' })] })),
     new Paragraph({
-      children: [new TextRun({ text, italics: true, size: 24, font: 'Times New Roman', color: '000000' })],
+      children: [new TextRun({ text, italics: true, size: bodyHp(format), font: 'Times New Roman', color: '000000' })],
       alignment: AlignmentType.CENTER,
     }),
     new Paragraph({ children: [new PageBreak()] }),
@@ -519,10 +561,16 @@ export function buildAcknowledgmentsPage(format: CitationFormat, text: string | 
   const label = format === 'ISNAD' ? 'ÖNSÖZ' : 'Acknowledgments'
   const upper = format === 'ISNAD' || spec.toc.labelUppercase
 
+  const body = bodyHp(format)
+  const heading = sectionHp(format)
+  const f = getFormatDefaults(format)
+  const lineTwips = Math.round(f.lineHeight * 240)
+  const ackAlignment = f.textAlign === 'justify' ? AlignmentType.JUSTIFIED : AlignmentType.LEFT
+
   const out: Paragraph[] = []
   out.push(
     new Paragraph({
-      children: [new TextRun({ text: upper ? label.toUpperCase() : label, bold: true, size: 28, font: 'Times New Roman', color: '000000' })],
+      children: [new TextRun({ text: upper ? label.toUpperCase() : label, bold: true, size: heading, font: 'Times New Roman', color: '000000' })],
       heading: HeadingLevel.HEADING_1,
       alignment: AlignmentType.CENTER,
       spacing: { after: 300 },
@@ -531,9 +579,9 @@ export function buildAcknowledgmentsPage(format: CitationFormat, text: string | 
   for (const para of text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)) {
     out.push(
       new Paragraph({
-        children: [new TextRun({ text: para, size: 24, font: 'Times New Roman', color: '000000' })],
-        spacing: { after: 120, line: 360 },
-        alignment: AlignmentType.JUSTIFIED,
+        children: [new TextRun({ text: para, size: body, font: 'Times New Roman', color: '000000' })],
+        spacing: { after: 120, line: lineTwips },
+        alignment: ackAlignment,
       })
     )
   }

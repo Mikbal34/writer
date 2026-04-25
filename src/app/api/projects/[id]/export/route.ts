@@ -281,6 +281,12 @@ function buildDocx(
   const bodyAlignment = fmtDefaults.textAlign === 'justify'
     ? AlignmentType.JUSTIFIED
     : AlignmentType.LEFT
+  // Heading sizes in half-points (DOCX uses 2 × pt). Pulled from the same
+  // per-format spec as the body so the visual hierarchy stays consistent
+  // (e.g. Vancouver: 11pt body / 13pt chapter / 12pt section / 11pt subsection).
+  const chapterTitleHalfPoints = fmtDefaults.chapterTitleSize * 2
+  const sectionTitleHalfPoints = fmtDefaults.sectionTitleSize * 2
+  const subsectionTitleHalfPoints = fmtDefaults.subsectionTitleSize * 2
 
   const children: Paragraph[] = []
 
@@ -293,13 +299,13 @@ function buildDocx(
     if (spec.titlePage.enabled) {
       children.push(...buildTitlePage(format, meta))
     }
-    children.push(...buildDedicationPage(meta.dedication))
+    children.push(...buildDedicationPage(format, meta.dedication))
     children.push(...buildAcknowledgmentsPage(format, meta.acknowledgments))
     // AMA Key Points box renders ABOVE the abstract; Vancouver / AMA
     // submission info follows the abstract on its own page.
-    children.push(...buildKeyPointsPage(meta))
+    children.push(...buildKeyPointsPage(format, meta))
     children.push(...buildAbstractPages(format, meta))
-    children.push(...buildSubmissionInfoPage(meta))
+    children.push(...buildSubmissionInfoPage(format, meta))
 
     // Build TOC entries from subsection data.
     const tocEntries: TocEntry[] = []
@@ -354,7 +360,7 @@ function buildDocx(
         }
         children.push(
           new Paragraph({
-            children: [new TextRun({ text: `${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, bold: true, size: 32, font: 'Times New Roman', color: '000000' })],
+            children: [new TextRun({ text: `${labels.chapter} ${sub.chapterNumber}: ${sub.chapterTitle}`, bold: true, size: chapterTitleHalfPoints, font: 'Times New Roman', color: '000000' })],
             heading: HeadingLevel.HEADING_1,
             spacing: { after: 300 },
           })
@@ -367,7 +373,7 @@ function buildDocx(
       currentSection = sub.sectionTitle
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: sub.sectionTitle, bold: true, size: 28, font: 'Times New Roman', color: '000000' })],
+          children: [new TextRun({ text: sub.sectionTitle, bold: true, size: sectionTitleHalfPoints, font: 'Times New Roman', color: '000000' })],
           heading: HeadingLevel.HEADING_2,
           spacing: { before: 200, after: 200 },
         })
@@ -377,7 +383,7 @@ function buildDocx(
     // Subsection heading
     children.push(
       new Paragraph({
-        children: [new TextRun({ text: sub.title, bold: true, size: 26, font: 'Times New Roman', color: '000000' })],
+        children: [new TextRun({ text: sub.title, bold: true, size: subsectionTitleHalfPoints, font: 'Times New Roman', color: '000000' })],
         heading: HeadingLevel.HEADING_3,
         spacing: { before: 150, after: 100 },
       })
@@ -426,7 +432,7 @@ function buildDocx(
           case 'heading': {
             children.push(
               new Paragraph({
-                children: [new TextRun({ text: mdBlock.text, bold: true, size: mdBlock.level === 2 ? 28 : 26, font: 'Times New Roman', color: '000000' })],
+                children: [new TextRun({ text: mdBlock.text, bold: true, size: mdBlock.level === 2 ? sectionTitleHalfPoints : subsectionTitleHalfPoints, font: 'Times New Roman', color: '000000' })],
                 heading: mdBlock.level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
                 spacing: { before: 200, after: 100 },
               })
@@ -437,7 +443,7 @@ function buildDocx(
             for (const item of mdBlock.items) {
               children.push(
                 new Paragraph({
-                  children: buildRunsWithFootnotes(item, 24),
+                  children: buildRunsWithFootnotes(item, bodyHalfPoints),
                   bullet: { level: 0 },
                   spacing: { after: 60 },
                   indent: { left: convertInchesToTwip(0.5) },
@@ -587,11 +593,14 @@ function buildDocx(
       {
         properties: {
           page: {
+            // Margins from format-defaults: APA / MLA / Chicago / Turabian /
+            // Harvard / Vancouver / AMA / ISNAD all want 1"; IEEE wants 0.75".
+            // The values in fmtDefaults are PDF points; DOCX twips = points * 20.
             margin: {
-              top: convertInchesToTwip(1),
-              right: convertInchesToTwip(1),
-              bottom: convertInchesToTwip(1),
-              left: convertInchesToTwip(1),
+              top: fmtDefaults.marginTop * 20,
+              right: fmtDefaults.marginRight * 20,
+              bottom: fmtDefaults.marginBottom * 20,
+              left: fmtDefaults.marginLeft * 20,
             },
           },
         },
