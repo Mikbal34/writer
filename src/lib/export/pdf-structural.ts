@@ -42,10 +42,13 @@ export function renderTitlePage(
   if (!spec.titlePage.enabled) return
 
   const pageHeight = doc.page.height
-  const topReserve = format === 'ISNAD' ? pageHeight * 0.12 : pageHeight * 0.2
+  const topReserve =
+    format === 'ISNAD' ? pageHeight * 0.10
+    : format === 'IEEE' || format === 'VANCOUVER' || format === 'AMA' ? pageHeight * 0.08
+    : pageHeight * 0.18
   doc.y = topReserve
 
-  const gapBetweenGroups = format === 'ISNAD' ? 12 : 20
+  const gapBetweenGroups = format === 'ISNAD' ? 12 : 16
 
   spec.titlePage.groups.forEach((group, groupIdx) => {
     for (const element of group) {
@@ -169,9 +172,15 @@ function renderOneAbstract(
   doc.text(label, { align: 'center' })
   doc.moveDown(1)
 
-  doc.font(fonts.regular).fontSize(bodyFontSize)
+  doc.fontSize(bodyFontSize)
   for (const para of body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)) {
-    doc.text(para, { align: 'justify', lineGap: 2 })
+    const m = para.match(/^([A-Z][A-Za-z][A-Za-z, ]{1,38}\.)\s+(.*)$/)
+    if (m) {
+      doc.font(fonts.bold).text(`${m[1]} `, { continued: true })
+      doc.font(fonts.regular).text(m[2], { align: 'justify', lineGap: 2 })
+    } else {
+      doc.font(fonts.regular).text(para, { align: 'justify', lineGap: 2 })
+    }
     doc.moveDown(0.4)
   }
 
@@ -182,6 +191,76 @@ function renderOneAbstract(
     doc.font(fonts.regular)
     doc.text(keywords.join(', '))
   }
+}
+
+// =================================================================
+//  AMA KEY POINTS + SUBMISSION INFO PAGES (PDF)
+// =================================================================
+
+/**
+ * Renders the AMA "Key Points" call-out (Question / Findings / Meaning)
+ * on its own page. No-op when no key points are populated.
+ */
+export function renderKeyPointsPage(
+  doc: Doc,
+  meta: AcademicMeta,
+  fonts: FontBundle,
+  bodyFontSize: number
+): void {
+  const kp = meta.submission?.keyPoints
+  if (!kp || (!kp.question && !kp.findings && !kp.meaning)) return
+  doc.font(fonts.bold).fontSize(16)
+  doc.text('Key Points', { align: 'center' })
+  doc.moveDown(1)
+  doc.fontSize(bodyFontSize)
+  const row = (label: string, text: string | null) => {
+    if (!text) return
+    doc.font(fonts.bold).text(`${label} `, { continued: true })
+    doc.font(fonts.regular).text(text, { lineGap: 2 })
+    doc.moveDown(0.4)
+  }
+  row('Question.', kp.question)
+  row('Findings.', kp.findings)
+  row('Meaning.', kp.meaning)
+  doc.addPage()
+}
+
+/**
+ * Renders the manuscript-information page (Vancouver / AMA): short
+ * title, word counts, table/figure counts, conflict-of-interest, funding
+ * and trial-registration values. No-op when no submission fields exist.
+ */
+export function renderSubmissionInfoPage(
+  doc: Doc,
+  meta: AcademicMeta,
+  fonts: FontBundle,
+  bodyFontSize: number
+): void {
+  const sub = meta.submission
+  if (!sub) return
+  const fields: Array<[string, string | null]> = [
+    ['Short title', sub.shortTitle ?? null],
+    ['Abstract word count', sub.wordCountAbstract != null ? String(sub.wordCountAbstract) : null],
+    ['Manuscript word count', sub.wordCountText != null ? String(sub.wordCountText) : null],
+    ['Tables', sub.tableCount != null ? String(sub.tableCount) : null],
+    ['Figures', sub.figureCount != null ? String(sub.figureCount) : null],
+    ['Conflict of interest', sub.conflictOfInterest ?? null],
+    ['Funding', sub.funding ?? null],
+    ['Trial registration', sub.trialRegistration ?? null],
+  ]
+  const present = fields.filter(([, v]) => v && String(v).trim().length > 0)
+  if (present.length === 0) return
+
+  doc.font(fonts.bold).fontSize(16)
+  doc.text('Manuscript Information', { align: 'center' })
+  doc.moveDown(1)
+  doc.fontSize(bodyFontSize)
+  for (const [label, value] of present) {
+    doc.font(fonts.bold).text(`${label}: `, { continued: true })
+    doc.font(fonts.regular).text(String(value), { lineGap: 2 })
+    doc.moveDown(0.4)
+  }
+  doc.addPage()
 }
 
 // =================================================================
@@ -256,14 +335,18 @@ export function renderChapterOpening(
   const titleStr = c.titleUppercase ? chapterTitle.toUpperCase() : chapterTitle
   const align = c.align === 'center' ? 'center' : 'left'
 
-  if (numberStr) {
+  // Numeric / Roman intro styles render inline on a single line
+  // ("1. Title" / "I. INTRODUCTION") rather than on two separate lines.
+  const isInline = c.numberStyle === 'numeric' || c.numberStyle === 'roman-intro'
+
+  if (numberStr && !isInline) {
     doc.font(fonts.bold).fontSize(chapterTitleSize - 2)
     doc.text(numberStr, { align })
     for (let i = 0; i < Math.max(1, c.gapAfterNumber); i++) doc.moveDown(0.4)
   }
 
   doc.font(fonts.bold).fontSize(chapterTitleSize)
-  doc.text(titleStr, { align })
+  doc.text(numberStr && isInline ? `${numberStr}. ${titleStr}` : titleStr, { align })
   for (let i = 0; i < Math.max(1, c.gapAfterTitle); i++) doc.moveDown(0.4)
 }
 

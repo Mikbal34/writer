@@ -367,6 +367,41 @@ export function structuralAcademicFromMeta(
 
   const isStateUniversity = meta.format === 'ISNAD' ? meta.isStateUniversity : undefined
 
+  // Vancouver / AMA submission packet — surface every journal-specific
+  // field the structural builders can render on the manuscript-info page
+  // and (for AMA) the Key Points box above the abstract.
+  const submission = (() => {
+    if (meta.format === 'VANCOUVER') {
+      return {
+        shortTitle: meta.shortTitle,
+        wordCountAbstract: meta.wordCountAbstract,
+        wordCountText: meta.wordCountText,
+        tableCount: meta.tableCount,
+        figureCount: meta.figureCount,
+        conflictOfInterest: meta.conflictOfInterest,
+        funding: meta.funding,
+        trialRegistration: meta.trialRegistration,
+        keyPoints: null,
+        formatLabel: 'Vancouver' as const,
+      }
+    }
+    if (meta.format === 'AMA') {
+      return {
+        shortTitle: meta.shortTitle,
+        wordCountAbstract: meta.wordCountAbstract,
+        wordCountText: meta.wordCountText,
+        tableCount: null,
+        figureCount: null,
+        conflictOfInterest: meta.conflictOfInterest,
+        funding: meta.funding,
+        trialRegistration: meta.structuredAbstract.trialRegistration,
+        keyPoints: meta.keyPoints,
+        formatLabel: 'AMA' as const,
+      }
+    }
+    return null
+  })()
+
   return {
     title: ctx.title,
     subtitle,
@@ -389,5 +424,6 @@ export function structuralAcademicFromMeta(
     city,
     isStateUniversity,
     advisorLabel,
+    submission,
   }
 }

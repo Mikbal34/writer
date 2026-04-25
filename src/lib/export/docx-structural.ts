@@ -31,6 +31,26 @@ import {
 //  ACADEMIC METADATA — shape we receive from the project model
 // =================================================================
 
+/**
+ * Vancouver / AMA submission-info page block. Rendered after the abstract
+ * page when present. None of the fields are required individually — the
+ * builder skips a row whose value is null.
+ */
+export interface SubmissionMeta {
+  shortTitle?: string | null
+  wordCountAbstract?: number | null
+  wordCountText?: number | null
+  tableCount?: number | null
+  figureCount?: number | null
+  conflictOfInterest?: string | null
+  funding?: string | null
+  trialRegistration?: string | null
+  /** AMA-only: the three-bullet Key Points box that prints above the abstract. */
+  keyPoints?: { question: string | null; findings: string | null; meaning: string | null } | null
+  /** AMA-only: the format identifier so the builder can label the page header. */
+  formatLabel?: 'Vancouver' | 'AMA'
+}
+
 export interface AcademicMeta {
   title: string
   subtitle?: string | null
@@ -56,6 +76,8 @@ export interface AcademicMeta {
   isStateUniversity?: boolean
   /** Localised label for the advisor line. Defaults to "Danışman:" when omitted. */
   advisorLabel?: string
+  /** Vancouver / AMA only — drives the manuscript-info page after the abstract. */
+  submission?: SubmissionMeta | null
 }
 
 // =================================================================
@@ -68,14 +90,19 @@ export function buildTitlePage(format: CitationFormat, meta: AcademicMeta): Para
 
   const paragraphs: Paragraph[] = []
 
-  // A rough vertical spacer so the block sits around the upper third for
-  // most formats. ISNAD starts higher; we emit a smaller spacer for it.
-  const topSpacerLines = format === 'ISNAD' ? 4 : 8
+  // Vertical spacer above the title block. ISNAD prints the institution
+  // header right at the top so the spacer is small; journal formats
+  // (IEEE / Vancouver / AMA) place the title near the top of the page;
+  // student-paper formats centre the block lower.
+  const topSpacerLines =
+    format === 'ISNAD' ? 4
+    : format === 'IEEE' || format === 'VANCOUVER' || format === 'AMA' ? 2
+    : 6
   for (let i = 0; i < topSpacerLines; i++) {
     paragraphs.push(new Paragraph({ children: [new TextRun({ text: '' })] }))
   }
 
-  const gapBetweenGroups = format === 'ISNAD' ? 2 : 4
+  const gapBetweenGroups = format === 'ISNAD' ? 2 : 3
 
   spec.titlePage.groups.forEach((group, groupIdx) => {
     for (const element of group) {
@@ -187,6 +214,19 @@ export function buildAbstractPages(format: CitationFormat, meta: AcademicMeta): 
   return paragraphs
 }
 
+/**
+ * Detects a structured-abstract paragraph that begins with a label like
+ * "Background.", "Methods.", "Importance.", etc. Returns the label plus
+ * trailing space and the remainder, so the renderer can emit the label
+ * as a bold run followed by the regular-weight body — Vancouver / AMA
+ * structured abstract convention.
+ */
+function splitStructuredLabel(para: string): { label: string; body: string } | null {
+  const m = para.match(/^([A-Z][A-Za-z][A-Za-z, ]{1,38}\.)\s+(.*)$/)
+  if (!m) return null
+  return { label: m[1], body: m[2] }
+}
+
 function renderAbstractPage(label: string, body: string, keywordsLabel: string, keywords: string[]): Paragraph[] {
   const out: Paragraph[] = []
   out.push(
@@ -198,9 +238,16 @@ function renderAbstractPage(label: string, body: string, keywordsLabel: string, 
     })
   )
   for (const para of body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)) {
+    const structured = splitStructuredLabel(para)
+    const runs = structured
+      ? [
+          new TextRun({ text: `${structured.label} `, bold: true, size: 24, font: 'Times New Roman' }),
+          new TextRun({ text: structured.body, size: 24, font: 'Times New Roman' }),
+        ]
+      : [new TextRun({ text: para, size: 24, font: 'Times New Roman' })]
     out.push(
       new Paragraph({
-        children: [new TextRun({ text: para, size: 24, font: 'Times New Roman' })],
+        children: runs,
         spacing: { after: 120, line: 360 },
         alignment: AlignmentType.JUSTIFIED,
       })
@@ -304,7 +351,13 @@ export function buildChapterOpening(
       ? AlignmentType.CENTER
       : AlignmentType.LEFT
 
-  if (numberStr) {
+  // Numbering styles like 'numeric' and 'roman-intro' are conventionally
+  // rendered inline with the title on a single Heading 1 line ("1. Title"
+  // or "I. INTRODUCTION"). The traditional "Chapter N" / "BİRİNCİ BÖLÜM"
+  // styles still render on their own line above the title.
+  const isInline = c.numberStyle === 'numeric' || c.numberStyle === 'roman-intro'
+
+  if (numberStr && !isInline) {
     paragraphs.push(
       new Paragraph({
         children: [new TextRun({ text: numberStr, bold: true, size: 28, font: 'Times New Roman' })],
@@ -315,16 +368,111 @@ export function buildChapterOpening(
     )
   }
 
+  const inlineHeadingText = numberStr && isInline
+    ? `${numberStr}. ${titleStr}`
+    : titleStr
+
   paragraphs.push(
     new Paragraph({
-      children: [new TextRun({ text: titleStr, bold: true, size: 32, font: 'Times New Roman' })],
-      heading: numberStr ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: inlineHeadingText, bold: true, size: 32, font: 'Times New Roman' })],
+      heading: numberStr && !isInline ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_1,
       alignment: align,
       spacing: { after: 120 * Math.max(1, c.gapAfterTitle) },
     })
   )
 
   return paragraphs
+}
+
+// =================================================================
+//  AMA KEY POINTS BOX
+// =================================================================
+
+/**
+ * AMA prescribes a "Key Points" call-out above the abstract: three short
+ * sentences (Question / Findings / Meaning), each prefixed with a bold
+ * label. Renders as a compact block on its own page, before the abstract.
+ */
+export function buildKeyPointsPage(meta: AcademicMeta): Paragraph[] {
+  const kp = meta.submission?.keyPoints
+  if (!kp || (!kp.question && !kp.findings && !kp.meaning)) return []
+  const out: Paragraph[] = []
+  out.push(
+    new Paragraph({
+      children: [new TextRun({ text: 'Key Points', bold: true, size: 28, font: 'Times New Roman' })],
+      heading: HeadingLevel.HEADING_1,
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 240 },
+    })
+  )
+  const row = (label: string, text: string | null) => {
+    if (!text) return
+    out.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: `${label} `, bold: true, size: 24, font: 'Times New Roman' }),
+          new TextRun({ text, size: 24, font: 'Times New Roman' }),
+        ],
+        spacing: { after: 120, line: 320 },
+      })
+    )
+  }
+  row('Question.', kp.question)
+  row('Findings.', kp.findings)
+  row('Meaning.', kp.meaning)
+  out.push(new Paragraph({ children: [new PageBreak()] }))
+  return out
+}
+
+// =================================================================
+//  SUBMISSION-INFO PAGE  (Vancouver / AMA)
+// =================================================================
+
+/**
+ * Renders a "Manuscript Information" page after the abstract for
+ * Vancouver / AMA exports. Lists the running short title, word counts,
+ * table/figure counts, conflict of interest statement, funding source,
+ * and trial registration number — the standard submission packet
+ * journals expect alongside the manuscript itself.
+ */
+export function buildSubmissionInfoPage(meta: AcademicMeta): Paragraph[] {
+  const sub = meta.submission
+  if (!sub) return []
+  const fields: Array<[string, string | null]> = [
+    ['Short title', sub.shortTitle ?? null],
+    ['Abstract word count', sub.wordCountAbstract != null ? String(sub.wordCountAbstract) : null],
+    ['Manuscript word count', sub.wordCountText != null ? String(sub.wordCountText) : null],
+    ['Tables', sub.tableCount != null ? String(sub.tableCount) : null],
+    ['Figures', sub.figureCount != null ? String(sub.figureCount) : null],
+    ['Conflict of interest', sub.conflictOfInterest ?? null],
+    ['Funding', sub.funding ?? null],
+    ['Trial registration', sub.trialRegistration ?? null],
+  ]
+  const present = fields.filter(([, v]) => v && String(v).trim().length > 0)
+  if (present.length === 0) return []
+
+  const out: Paragraph[] = []
+  out.push(
+    new Paragraph({
+      children: [new TextRun({ text: 'Manuscript Information', bold: true, size: 28, font: 'Times New Roman' })],
+      heading: HeadingLevel.HEADING_1,
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 240 },
+    })
+  )
+  for (const [label, value] of present) {
+    out.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: `${label}: `, bold: true, size: 24, font: 'Times New Roman' }),
+          new TextRun({ text: String(value), size: 24, font: 'Times New Roman' }),
+        ],
+        spacing: { after: 120, line: 320 },
+      })
+    )
+  }
+  out.push(new Paragraph({ children: [new PageBreak()] }))
+  return out
 }
 
 // =================================================================

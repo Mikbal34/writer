@@ -422,7 +422,10 @@ const IEEE: StructuralSpec = {
     groups: [
       ['title'],
       ['author'],
-      ['affiliation', 'department', 'institution'],
+      // 'affiliation' resolves to "Department, Institution" — listing
+      // them again as separate elements would print the same data three
+      // times on the title page.
+      ['affiliation'],
     ],
     titleUppercase: false,
     centerBlock: true,
@@ -480,7 +483,7 @@ const VANCOUVER: StructuralSpec = {
     groups: [
       ['title'],
       ['author'],
-      ['affiliation', 'department', 'institution'],
+      ['affiliation'],
     ],
     titleUppercase: false,
     centerBlock: true,

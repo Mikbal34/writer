@@ -11,6 +11,8 @@ import {
 import {
   buildTitlePage,
   buildAbstractPages,
+  buildKeyPointsPage,
+  buildSubmissionInfoPage,
   buildTableOfContents,
   buildChapterOpening,
   buildBibliographyHeader,
@@ -23,6 +25,8 @@ import {
 import {
   renderTitlePage,
   renderAbstractPages,
+  renderKeyPointsPage,
+  renderSubmissionInfoPage,
   renderTableOfContents,
   renderChapterOpening,
   getBibliographyHeaderText,
@@ -275,7 +279,11 @@ function buildDocx(
     }
     children.push(...buildDedicationPage(meta.dedication))
     children.push(...buildAcknowledgmentsPage(format, meta.acknowledgments))
+    // AMA Key Points box renders ABOVE the abstract; Vancouver / AMA
+    // submission info follows the abstract on its own page.
+    children.push(...buildKeyPointsPage(meta))
     children.push(...buildAbstractPages(format, meta))
+    children.push(...buildSubmissionInfoPage(meta))
 
     // Build TOC entries from subsection data.
     const tocEntries: TocEntry[] = []
@@ -936,7 +944,9 @@ function buildPdf(
     } else if (academic) {
       const meta: AcademicMeta = { ...academic, title: projectTitle }
       renderTitlePage(doc, format, meta, fonts)
+      renderKeyPointsPage(doc, meta, fonts, BODY_SIZE)
       renderAbstractPages(doc, format, meta, fonts, BODY_SIZE)
+      renderSubmissionInfoPage(doc, meta, fonts, BODY_SIZE)
       // Build TOC entries from subsection list (flat pass).
       const tocEntries: TocEntry[] = []
       const seenChapters = new Set<string>()
