@@ -25,6 +25,11 @@ interface Props {
   autoFillingWordCountText?: boolean
   autoFillingTableCount?: boolean
   autoFillingFigureCount?: boolean
+  onAutoFillShortTitle?: () => void
+  autoFillingShortTitle?: boolean
+  onAutoFillNoConflict?: () => void
+  onAutoFillNoFunding?: () => void
+  onAutoFillNoTrial?: () => void
 }
 
 const emptyAuthor = (): AuthorBlock => ({
@@ -53,6 +58,11 @@ export default function VancouverForm({
   autoFillingWordCountText,
   autoFillingTableCount,
   autoFillingFigureCount,
+  onAutoFillShortTitle,
+  autoFillingShortTitle,
+  onAutoFillNoConflict,
+  onAutoFillNoFunding,
+  onAutoFillNoTrial,
 }: Props) {
   const set = <K extends keyof VancouverMeta>(k: K, v: VancouverMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -84,6 +94,9 @@ export default function VancouverForm({
           onChange={(v) => set("shortTitle", v)}
           maxLength={50}
           hint="40–50 characters, printed on every page of the manuscript."
+          onAutoFill={onAutoFillShortTitle}
+          autoFillLoading={autoFillingShortTitle}
+          autoFillHint="Truncate project title at 50 characters"
         />
       </FormSection>
 
@@ -254,18 +267,24 @@ export default function VancouverForm({
           value={meta.conflictOfInterest}
           onChange={(v) => set("conflictOfInterest", v)}
           rows={3}
+          onAutoFill={onAutoFillNoConflict}
+          autoFillHint='Insert "The authors declare no conflict of interest."'
         />
         <TextAreaField
           label="Funding"
           value={meta.funding}
           onChange={(v) => set("funding", v)}
           rows={3}
+          onAutoFill={onAutoFillNoFunding}
+          autoFillHint='Insert "This research received no specific funding."'
         />
         <TextField
           label="Trial registration"
           value={meta.trialRegistration}
           onChange={(v) => set("trialRegistration", v)}
           placeholder="e.g. ClinicalTrials.gov NCT01234567"
+          onAutoFill={onAutoFillNoTrial}
+          autoFillHint='Insert "Not applicable" — non-clinical study'
         />
         <TextAreaField
           label="Acknowledgments"

@@ -111,6 +111,8 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       currentYear: String(yyyy),
       // Subtitle extraction — split on colon if present.
       subtitleFromTitle: extractSubtitle(project.title),
+      /** Truncated title for running heads (APA professional, Vancouver, AMA shortTitle). */
+      shortTitleFromTitle: shortenTitle(project.title, 50),
     })
   } catch (err) {
     if (err instanceof AuthError) {
@@ -130,4 +132,17 @@ function extractSubtitle(title: string): string | null {
   const split = title.split(/\s*[:—–]\s*/)
   if (split.length < 2) return null
   return split.slice(1).join(' — ').trim() || null
+}
+
+/**
+ * Truncate the project title for running-head fields (APA professional
+ * shortTitle, Vancouver/AMA shortTitle). Drops any subtitle, then trims
+ * at a word boundary at or below `max` characters.
+ */
+function shortenTitle(title: string, max: number): string {
+  const main = title.split(/\s*[:—–]\s*/)[0].trim()
+  if (main.length <= max) return main
+  const sliced = main.slice(0, max)
+  const lastSpace = sliced.lastIndexOf(' ')
+  return lastSpace > 0 ? sliced.slice(0, lastSpace) : sliced
 }

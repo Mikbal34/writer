@@ -212,6 +212,9 @@ export function TextAreaField({
   hint,
   onGenerate,
   generating,
+  onAutoFill,
+  autoFillLoading,
+  autoFillHint,
 }: {
   label: string
   value: string | null
@@ -221,28 +224,40 @@ export function TextAreaField({
   hint?: string
   onGenerate?: () => void
   generating?: boolean
+  onAutoFill?: () => void
+  autoFillLoading?: boolean
+  autoFillHint?: string
 }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <Label className="text-xs">{label}</Label>
-        {onGenerate ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={onGenerate}
-            disabled={generating}
-            className="h-6 px-2 text-[10px] gap-1 text-[#5C4A32] hover:bg-[#F0E8D8]"
-          >
-            {generating ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Sparkles className="h-3 w-3" />
-            )}
-            {generating ? "Generating…" : "Generate with AI"}
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-1">
+          {onAutoFill ? (
+            <AutoFillButton
+              onClick={onAutoFill}
+              loading={autoFillLoading}
+              hint={autoFillHint}
+            />
+          ) : null}
+          {onGenerate ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={onGenerate}
+              disabled={generating}
+              className="h-6 px-2 text-[10px] gap-1 text-[#5C4A32] hover:bg-[#F0E8D8]"
+            >
+              {generating ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              {generating ? "Generating…" : "Generate with AI"}
+            </Button>
+          ) : null}
+        </div>
       </div>
       <Textarea
         rows={rows}

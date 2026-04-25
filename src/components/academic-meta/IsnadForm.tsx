@@ -23,6 +23,8 @@ interface Props {
   generatingKeywordsEn?: boolean
   onAutoFillYear?: () => void
   autoFillingYear?: boolean
+  onAutoFillSubtitle?: () => void
+  autoFillingSubtitle?: boolean
 }
 
 const DEGREE_OPTIONS: Array<{ value: IsnadDegreeType; label: string }> = [
@@ -45,6 +47,8 @@ export default function IsnadForm({
   generatingKeywordsEn,
   onAutoFillYear,
   autoFillingYear,
+  onAutoFillSubtitle,
+  autoFillingSubtitle,
 }: Props) {
   const set = <K extends keyof IsnadMeta>(k: K, v: IsnadMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -84,6 +88,9 @@ export default function IsnadForm({
           value={meta.subtitle}
           onChange={(v) => set("subtitle", v)}
           placeholder="İsteğe bağlı"
+          onAutoFill={onAutoFillSubtitle}
+          autoFillLoading={autoFillingSubtitle}
+          autoFillHint="Proje başlığından çıkar (ör. başlıkta : varsa)"
         />
         <TextField
           label="Yazar"

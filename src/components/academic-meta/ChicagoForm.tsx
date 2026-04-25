@@ -18,6 +18,8 @@ interface Props {
   generatingKeywords?: boolean
   onAutoFillDate?: () => void
   autoFillingDate?: boolean
+  onAutoFillSubtitle?: () => void
+  autoFillingSubtitle?: boolean
 }
 
 export default function ChicagoForm({
@@ -29,6 +31,8 @@ export default function ChicagoForm({
   generatingKeywords,
   onAutoFillDate,
   autoFillingDate,
+  onAutoFillSubtitle,
+  autoFillingSubtitle,
 }: Props) {
   const set = <K extends keyof ChicagoMeta>(k: K, v: ChicagoMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -61,6 +65,9 @@ export default function ChicagoForm({
           value={meta.subtitle}
           onChange={(v) => set("subtitle", v)}
           placeholder="Optional"
+          onAutoFill={onAutoFillSubtitle}
+          autoFillLoading={autoFillingSubtitle}
+          autoFillHint="Extract from project title"
         />
         <TextField
           label="Author"

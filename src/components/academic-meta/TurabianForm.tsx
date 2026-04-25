@@ -17,6 +17,8 @@ interface Props {
   generatingKeywords?: boolean
   onAutoFillDate?: () => void
   autoFillingDate?: boolean
+  onAutoFillSubtitle?: () => void
+  autoFillingSubtitle?: boolean
 }
 
 export default function TurabianForm({
@@ -28,6 +30,8 @@ export default function TurabianForm({
   generatingKeywords,
   onAutoFillDate,
   autoFillingDate,
+  onAutoFillSubtitle,
+  autoFillingSubtitle,
 }: Props) {
   const set = <K extends keyof TurabianMeta>(k: K, v: TurabianMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -42,6 +46,9 @@ export default function TurabianForm({
           label="Subtitle"
           value={meta.subtitle}
           onChange={(v) => set("subtitle", v)}
+          onAutoFill={onAutoFillSubtitle}
+          autoFillLoading={autoFillingSubtitle}
+          autoFillHint="Extract from project title"
         />
         <TextField
           label="Author"

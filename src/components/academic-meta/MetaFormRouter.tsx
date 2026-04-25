@@ -20,6 +20,11 @@ export type AutoFillTarget =
   | 'date'
   | 'subtitle'
   | 'year'
+  | 'shortTitle'
+  | 'correspondingAuthorFromFirst'
+  | 'noConflictDeclared'
+  | 'noFundingDeclared'
+  | 'noTrialDeclared'
 
 export interface AiHandlers {
   onGenerateAbstract?: () => void
@@ -80,6 +85,10 @@ export default function MetaFormRouter(props: Props) {
           generatingKeywords={generating?.keywords}
           onAutoFillDate={af("date")}
           autoFillingDate={autoFilling?.date}
+          onAutoFillSubtitle={af("subtitle")}
+          autoFillingSubtitle={autoFilling?.subtitle}
+          onAutoFillShortTitle={af("shortTitle")}
+          autoFillingShortTitle={autoFilling?.shortTitle}
         />
       )
     case "MLA":
@@ -93,6 +102,8 @@ export default function MetaFormRouter(props: Props) {
           generatingKeywords={generating?.keywords}
           onAutoFillDate={af("date")}
           autoFillingDate={autoFilling?.date}
+          onAutoFillSubtitle={af("subtitle")}
+          autoFillingSubtitle={autoFilling?.subtitle}
         />
       )
     case "CHICAGO":
@@ -106,6 +117,8 @@ export default function MetaFormRouter(props: Props) {
           generatingKeywords={generating?.keywords}
           onAutoFillDate={af("date")}
           autoFillingDate={autoFilling?.date}
+          onAutoFillSubtitle={af("subtitle")}
+          autoFillingSubtitle={autoFilling?.subtitle}
         />
       )
     case "TURABIAN":
@@ -119,6 +132,8 @@ export default function MetaFormRouter(props: Props) {
           generatingKeywords={generating?.keywords}
           onAutoFillDate={af("date")}
           autoFillingDate={autoFilling?.date}
+          onAutoFillSubtitle={af("subtitle")}
+          autoFillingSubtitle={autoFilling?.subtitle}
         />
       )
     case "HARVARD":
@@ -134,6 +149,8 @@ export default function MetaFormRouter(props: Props) {
           onAutoFillDate={af("date")}
           autoFillingWordCount={autoFilling?.wordCount}
           autoFillingDate={autoFilling?.date}
+          onAutoFillSubtitle={af("subtitle")}
+          autoFillingSubtitle={autoFilling?.subtitle}
         />
       )
     case "IEEE":
@@ -145,6 +162,8 @@ export default function MetaFormRouter(props: Props) {
           onGenerateIndexTerms={handlers.onGenerateIndexTerms}
           generatingAbstract={generating?.abstract}
           generatingIndexTerms={generating?.indexTerms}
+          onAutoFillSubtitle={af("subtitle")}
+          autoFillingSubtitle={autoFilling?.subtitle}
         />
       )
     case "VANCOUVER":
@@ -164,6 +183,11 @@ export default function MetaFormRouter(props: Props) {
           autoFillingWordCountText={autoFilling?.wordCountText}
           autoFillingTableCount={autoFilling?.tableCount}
           autoFillingFigureCount={autoFilling?.figureCount}
+          onAutoFillShortTitle={af("shortTitle")}
+          autoFillingShortTitle={autoFilling?.shortTitle}
+          onAutoFillNoConflict={af("noConflictDeclared")}
+          onAutoFillNoFunding={af("noFundingDeclared")}
+          onAutoFillNoTrial={af("noTrialDeclared")}
         />
       )
     case "AMA":
@@ -181,6 +205,11 @@ export default function MetaFormRouter(props: Props) {
           onAutoFillWordCountText={af("wordCountText")}
           autoFillingWordCountAbstract={autoFilling?.wordCountAbstract}
           autoFillingWordCountText={autoFilling?.wordCountText}
+          onAutoFillShortTitle={af("shortTitle")}
+          autoFillingShortTitle={autoFilling?.shortTitle}
+          onAutoFillCorresponding={af("correspondingAuthorFromFirst")}
+          onAutoFillNoConflict={af("noConflictDeclared")}
+          onAutoFillNoFunding={af("noFundingDeclared")}
         />
       )
     case "ISNAD":
@@ -194,6 +223,8 @@ export default function MetaFormRouter(props: Props) {
           onGenerateKeywordsEn={handlers.onGenerateKeywordsEn}
           onAutoFillYear={af("year")}
           autoFillingYear={autoFilling?.year}
+          onAutoFillSubtitle={af("subtitle")}
+          autoFillingSubtitle={autoFilling?.subtitle}
           generatingAbstractTr={generating?.abstractTr}
           generatingAbstractEn={generating?.abstractEn}
           generatingKeywordsTr={generating?.keywordsTr}

@@ -20,6 +20,8 @@ interface Props {
   onAutoFillDate?: () => void
   autoFillingWordCount?: boolean
   autoFillingDate?: boolean
+  onAutoFillSubtitle?: () => void
+  autoFillingSubtitle?: boolean
 }
 
 export default function HarvardForm({
@@ -33,6 +35,8 @@ export default function HarvardForm({
   onAutoFillDate,
   autoFillingWordCount,
   autoFillingDate,
+  onAutoFillSubtitle,
+  autoFillingSubtitle,
 }: Props) {
   const set = <K extends keyof HarvardMeta>(k: K, v: HarvardMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -47,6 +51,9 @@ export default function HarvardForm({
           label="Subtitle"
           value={meta.subtitle}
           onChange={(v) => set("subtitle", v)}
+          onAutoFill={onAutoFillSubtitle}
+          autoFillLoading={autoFillingSubtitle}
+          autoFillHint="Extract from project title"
         />
         <TextField
           label="Author"

@@ -49,6 +49,7 @@ interface ComputeResponse {
   apaDate: string
   currentYear: string
   subtitleFromTitle: string | null
+  shortTitleFromTitle: string
 }
 
 export default function AcademicSettingsPage() {
@@ -167,6 +168,54 @@ export default function AcademicSettingsPage() {
           return
         }
 
+        // Local-only targets: pure functions on existing meta state.
+        if (target === "noConflictDeclared") {
+          setMeta((m) => {
+            if (!m) return m
+            const text = "The authors declare no conflict of interest."
+            if (m.format === "VANCOUVER") return { ...m, conflictOfInterest: text }
+            if (m.format === "AMA") return { ...m, conflictOfInterest: text }
+            return m
+          })
+          return
+        }
+        if (target === "noFundingDeclared") {
+          setMeta((m) => {
+            if (!m) return m
+            const text = "This research received no specific grant from any funding agency."
+            if (m.format === "VANCOUVER") return { ...m, funding: text }
+            if (m.format === "AMA") return { ...m, funding: text }
+            return m
+          })
+          return
+        }
+        if (target === "noTrialDeclared") {
+          setMeta((m) => {
+            if (!m) return m
+            if (m.format === "VANCOUVER")
+              return { ...m, trialRegistration: "Not applicable" }
+            return m
+          })
+          return
+        }
+        if (target === "correspondingAuthorFromFirst") {
+          setMeta((m) => {
+            if (!m) return m
+            if (m.format !== "AMA" && m.format !== "VANCOUVER") return m
+            const first = m.authors[0]
+            if (!first) return m
+            const block = {
+              name: first.name || null,
+              email: first.email,
+              phone: m.correspondingAuthor.phone,
+              address: m.correspondingAuthor.address,
+            }
+            if (m.format === "AMA") return { ...m, correspondingAuthor: block }
+            return { ...m, correspondingAuthor: block }
+          })
+          return
+        }
+
         const res = await fetch(
           `/api/projects/${projectId}/academic-meta/compute`
         )
@@ -202,9 +251,16 @@ export default function AcademicSettingsPage() {
               return m
             case "subtitle":
               if ("subtitle" in m && data.subtitleFromTitle) {
-                // All formats with subtitle accept it via a partial spread.
                 return { ...m, subtitle: data.subtitleFromTitle } as AcademicMeta
               }
+              return m
+            case "shortTitle":
+              if (m.format === "VANCOUVER")
+                return { ...m, shortTitle: data.shortTitleFromTitle }
+              if (m.format === "AMA")
+                return { ...m, shortTitle: data.shortTitleFromTitle }
+              if (m.format === "APA" && m.variant === "professional")
+                return { ...m, shortTitle: data.shortTitleFromTitle.slice(0, 50) }
               return m
           }
         })

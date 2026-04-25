@@ -23,6 +23,11 @@ interface Props {
   onAutoFillWordCountText?: () => void
   autoFillingWordCountAbstract?: boolean
   autoFillingWordCountText?: boolean
+  onAutoFillShortTitle?: () => void
+  autoFillingShortTitle?: boolean
+  onAutoFillCorresponding?: () => void
+  onAutoFillNoConflict?: () => void
+  onAutoFillNoFunding?: () => void
 }
 
 const emptyAuthor = (): AuthorBlock => ({
@@ -49,6 +54,11 @@ export default function AmaForm({
   onAutoFillWordCountText,
   autoFillingWordCountAbstract,
   autoFillingWordCountText,
+  onAutoFillShortTitle,
+  autoFillingShortTitle,
+  onAutoFillCorresponding,
+  onAutoFillNoConflict,
+  onAutoFillNoFunding,
 }: Props) {
   const set = <K extends keyof AmaMeta>(k: K, v: AmaMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -84,6 +94,9 @@ export default function AmaForm({
           value={meta.shortTitle}
           onChange={(v) => set("shortTitle", v)}
           maxLength={50}
+          onAutoFill={onAutoFillShortTitle}
+          autoFillLoading={autoFillingShortTitle}
+          autoFillHint="Truncate project title at 50 characters"
         />
       </FormSection>
 
@@ -142,7 +155,21 @@ export default function AmaForm({
         />
       </FormSection>
 
-      <FormSection title="Corresponding author">
+      <FormSection
+        title="Corresponding author"
+        description="Auto-fill copies the first author's contact info into this block."
+      >
+        <div className="flex justify-end">
+          {onAutoFillCorresponding ? (
+            <button
+              type="button"
+              onClick={onAutoFillCorresponding}
+              className="text-[11px] text-[#5C4A32] hover:underline"
+            >
+              ✨ Copy from first author
+            </button>
+          ) : null}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <TextField
             label="Name"
@@ -303,12 +330,16 @@ export default function AmaForm({
           value={meta.conflictOfInterest}
           onChange={(v) => set("conflictOfInterest", v)}
           rows={3}
+          onAutoFill={onAutoFillNoConflict}
+          autoFillHint='Insert "The authors declare no conflict of interest."'
         />
         <TextAreaField
           label="Funding"
           value={meta.funding}
           onChange={(v) => set("funding", v)}
           rows={3}
+          onAutoFill={onAutoFillNoFunding}
+          autoFillHint='Insert "This research received no specific funding."'
         />
         <TextAreaField
           label="Acknowledgments"

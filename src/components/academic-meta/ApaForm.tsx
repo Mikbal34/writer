@@ -18,6 +18,10 @@ interface Props {
   generatingKeywords?: boolean
   onAutoFillDate?: () => void
   autoFillingDate?: boolean
+  onAutoFillSubtitle?: () => void
+  autoFillingSubtitle?: boolean
+  onAutoFillShortTitle?: () => void
+  autoFillingShortTitle?: boolean
 }
 
 export default function ApaForm({
@@ -29,6 +33,10 @@ export default function ApaForm({
   generatingKeywords,
   onAutoFillDate,
   autoFillingDate,
+  onAutoFillSubtitle,
+  autoFillingSubtitle,
+  onAutoFillShortTitle,
+  autoFillingShortTitle,
 }: Props) {
   const set = <K extends keyof ApaMeta>(k: K, v: ApaMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -61,6 +69,9 @@ export default function ApaForm({
           value={meta.subtitle}
           onChange={(v) => set("subtitle", v)}
           placeholder="Optional"
+          onAutoFill={onAutoFillSubtitle}
+          autoFillLoading={autoFillingSubtitle}
+          autoFillHint="Extract from project title (after colon or em-dash)"
         />
         <TextField
           label="Author"
@@ -131,6 +142,9 @@ export default function ApaForm({
               onChange={(v) => set("shortTitle", v)}
               maxLength={50}
               hint="Printed ALL CAPS at the top of every page. Max 50 characters."
+              onAutoFill={onAutoFillShortTitle}
+              autoFillLoading={autoFillingShortTitle}
+              autoFillHint="Truncate project title at 50 characters"
             />
             <TextAreaField
               label="Author note"

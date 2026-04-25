@@ -16,6 +16,8 @@ interface Props {
   onGenerateIndexTerms?: () => void
   generatingAbstract?: boolean
   generatingIndexTerms?: boolean
+  onAutoFillSubtitle?: () => void
+  autoFillingSubtitle?: boolean
 }
 
 const emptyAuthor = (): AuthorBlock => ({
@@ -36,6 +38,8 @@ export default function IeeeForm({
   onGenerateIndexTerms,
   generatingAbstract,
   generatingIndexTerms,
+  onAutoFillSubtitle,
+  autoFillingSubtitle,
 }: Props) {
   const set = <K extends keyof IeeeMeta>(k: K, v: IeeeMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -47,6 +51,9 @@ export default function IeeeForm({
           label="Subtitle"
           value={meta.subtitle}
           onChange={(v) => set("subtitle", v)}
+          onAutoFill={onAutoFillSubtitle}
+          autoFillLoading={autoFillingSubtitle}
+          autoFillHint="Extract from project title"
         />
       </FormSection>
 

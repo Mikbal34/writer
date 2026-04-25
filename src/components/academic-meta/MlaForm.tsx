@@ -17,6 +17,8 @@ interface Props {
   generatingKeywords?: boolean
   onAutoFillDate?: () => void
   autoFillingDate?: boolean
+  onAutoFillSubtitle?: () => void
+  autoFillingSubtitle?: boolean
 }
 
 export default function MlaForm({
@@ -28,6 +30,8 @@ export default function MlaForm({
   generatingKeywords,
   onAutoFillDate,
   autoFillingDate,
+  onAutoFillSubtitle,
+  autoFillingSubtitle,
 }: Props) {
   const set = <K extends keyof MlaMeta>(k: K, v: MlaMeta[K]) =>
     onChange({ ...meta, [k]: v })
@@ -43,6 +47,9 @@ export default function MlaForm({
           value={meta.subtitle}
           onChange={(v) => set("subtitle", v)}
           placeholder="Optional"
+          onAutoFill={onAutoFillSubtitle}
+          autoFillLoading={autoFillingSubtitle}
+          autoFillHint="Extract from project title"
         />
         <TextField
           label="Author"
