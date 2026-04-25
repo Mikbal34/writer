@@ -82,7 +82,7 @@ export function projectColumnsFromMeta(
     case 'IEEE': {
       const primary = meta.authors[0]
       const authorNames = meta.authors
-        .map((a) => a.name.trim())
+        .map((a) => (a.name ?? '').trim())
         .filter(Boolean)
         .join(', ') || null
       return {
@@ -102,7 +102,7 @@ export function projectColumnsFromMeta(
     case 'VANCOUVER': {
       const primary = meta.authors[0]
       const authorNames = meta.authors
-        .map((a) => a.name.trim())
+        .map((a) => (a.name ?? '').trim())
         .filter(Boolean)
         .join(', ') || null
       const abstract = joinStructured([
@@ -127,8 +127,11 @@ export function projectColumnsFromMeta(
 
     case 'AMA': {
       const primary = meta.authors[0]
-      const authorName = (name: string, degrees: string[]) =>
-        degrees.length > 0 ? `${name.trim()} ${degrees.join(', ')}` : name.trim()
+      const authorName = (name: string | null, degrees: string[]) => {
+        const trimmed = (name ?? '').trim()
+        if (!trimmed) return ''
+        return degrees.length > 0 ? `${trimmed} ${degrees.join(', ')}` : trimmed
+      }
       const authorNames = meta.authors
         .map((a) => authorName(a.name, a.degrees))
         .filter(Boolean)

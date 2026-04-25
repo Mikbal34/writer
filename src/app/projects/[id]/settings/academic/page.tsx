@@ -108,6 +108,13 @@ export default function AcademicSettingsPage() {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: "Save failed" }))
+        // Surface the first Zod issue path + message so the user knows
+        // which field is rejected, instead of a generic "Validation failed".
+        if (body.issues && Array.isArray(body.issues) && body.issues.length > 0) {
+          const first = body.issues[0] as { path?: unknown[]; message?: string }
+          const path = Array.isArray(first.path) ? first.path.join(".") : "field"
+          throw new Error(`${path}: ${first.message ?? "invalid"}`)
+        }
         throw new Error(body.error ?? "Save failed")
       }
       toast.success("Academic metadata saved")

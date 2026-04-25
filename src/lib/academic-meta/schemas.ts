@@ -65,7 +65,7 @@ const nullableNonNegInt = z
  * Vancouver, AMA).
  */
 export const AuthorBlockSchema = z.object({
-  name: requiredText,
+  name: nullableText,
   degrees: z.array(z.string().trim().min(1)).default([]),
   department: nullableText,
   institution: nullableText,
@@ -93,7 +93,7 @@ export const ApaMetaSchema = z.object({
   variant: z.enum(['student', 'professional']),
 
   subtitle: nullableText,
-  author: requiredText,
+  author: nullableText,
   institution: nullableText,
   department: nullableText,
 
@@ -128,7 +128,7 @@ export const MlaMetaSchema = z.object({
   schemaVersion: z.literal(1),
 
   subtitle: nullableText,
-  author: requiredText,
+  author: nullableText,
   instructorTitle: nullableText,
   instructorName: nullableText,
   courseName: nullableText,
@@ -151,7 +151,7 @@ export const ChicagoMetaSchema = z.object({
   variant: z.enum(['student', 'thesis']),
 
   subtitle: nullableText,
-  author: requiredText,
+  author: nullableText,
   institution: nullableText,
   department: nullableText,
 
@@ -181,7 +181,7 @@ export const TurabianMetaSchema = z.object({
   schemaVersion: z.literal(1),
 
   subtitle: nullableText,
-  author: requiredText,
+  author: nullableText,
   institution: nullableText,
   department: nullableText,
   degreeType: nullableText,
@@ -205,7 +205,7 @@ export const HarvardMetaSchema = z.object({
   schemaVersion: z.literal(1),
 
   subtitle: nullableText,
-  author: requiredText,
+  author: nullableText,
   studentId: nullableText,
   moduleCode: nullableText,
   moduleName: nullableText,
@@ -370,7 +370,7 @@ export const IsnadMetaSchema = z.object({
   institute: nullableText,
   department: nullableText,
   subtitle: nullableText,
-  author: requiredText,
+  author: nullableText,
   degreeType: z
     .union([IsnadDegreeTypeSchema, z.null()])
     .nullable()
