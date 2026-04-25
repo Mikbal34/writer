@@ -69,10 +69,11 @@ export function renderTitlePage(
 
       doc
         .font(isTitle ? fonts.bold : fonts.regular)
-        // Cover title is a fixed 18pt across formats; body lines on the
-        // title page (institution / author / affiliation) use the format's
-        // own body size so the cover matches the rest of the document.
-        .fontSize(isTitle ? 18 : getFormatDefaults(format).bodyFontSize)
+        .fontSize(
+          isTitle
+            ? getFormatDefaults(format).coverTitleSize
+            : getFormatDefaults(format).bodyFontSize
+        )
 
       // `institution_tr_header` may contain a newline.
       doc.text(text, {

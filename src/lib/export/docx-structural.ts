@@ -129,10 +129,11 @@ export function buildTitlePage(format: CitationFormat, meta: AcademicMeta): Para
             new TextRun({
               text: spec.titlePage.titleUppercase && isTitle ? line.toUpperCase() : line,
               bold: isTitle,
-              // Cover title is a fixed 16pt across formats (it's the
-              // single biggest visual element), other title-page lines
-              // follow the format's body size.
-              size: isTitle ? 32 : bodyHp(format),
+              // Cover title size from format spec (APA 14pt, IEEE 18pt,
+              // ISNAD 14pt, etc.); other title-page lines follow body size.
+              size: isTitle
+                ? Math.round(getFormatDefaults(format).coverTitleSize * 2)
+                : bodyHp(format),
               font: 'Times New Roman',
               color: '000000',
             }),

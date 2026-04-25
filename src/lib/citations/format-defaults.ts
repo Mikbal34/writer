@@ -41,6 +41,12 @@ export interface FormatDefaults {
   chapterTitleAlign: 'left' | 'center'
   sectionTitleSize: number
   subsectionTitleSize: number
+  /**
+   * Size of the project title on the cover / title page. APA student
+   * keeps the title at body weight (12pt); journal-style and thesis
+   * formats run larger.
+   */
+  coverTitleSize: number
   showPageNumbers: boolean
   /** Short, human-readable summary for the UI tooltip. */
   description: string
@@ -69,6 +75,9 @@ const APA: FormatDefaults = {
   chapterTitleAlign: 'center',
   sectionTitleSize: 12,
   subsectionTitleSize: 12,
+  // APA 7: title bold, body-size on the cover; the visual hierarchy is
+  // carried by bold + center, not by size.
+  coverTitleSize: 14,
   showPageNumbers: true,
   description: 'APA 7: 1" margin, 12pt, çift aralık, 0.5" paragraf girintisi, sol hizalı',
 }
@@ -92,6 +101,8 @@ const MLA: FormatDefaults = {
   chapterTitleAlign: 'center',
   sectionTitleSize: 12,
   subsectionTitleSize: 12,
+  // MLA 9: title is body-size, centered, no bold; hierarchy by position.
+  coverTitleSize: 12,
   showPageNumbers: true,
   description: 'MLA 9: 1" margin, 12pt, çift aralık, 0.5" girinti, sol hizalı',
 }
@@ -115,6 +126,8 @@ const CHICAGO: FormatDefaults = {
   chapterTitleAlign: 'center',
   sectionTitleSize: 12,
   subsectionTitleSize: 12,
+  // Chicago 17 thesis: title displayed prominently, ~16pt bold.
+  coverTitleSize: 16,
   showPageNumbers: true,
   description: 'Chicago 17: 1" margin, 12pt, çift aralık, merkezlenmiş bölüm başlığı',
 }
@@ -146,6 +159,7 @@ const HARVARD: FormatDefaults = {
   chapterTitleAlign: 'left',
   sectionTitleSize: 12,
   subsectionTitleSize: 12,
+  coverTitleSize: 16,
   showPageNumbers: true,
   description: 'Harvard: 1" margin, 12pt, 1.5 aralık, blok paragraf (UK stili)',
 }
@@ -155,7 +169,7 @@ const HARVARD: FormatDefaults = {
  * spaced, justified text, first-line indent.
  */
 const IEEE: FormatDefaults = {
-  pageSize: 'A4',
+  pageSize: 'Letter',
   marginTop: 54,
   marginBottom: 54,
   marginLeft: 54,
@@ -169,6 +183,9 @@ const IEEE: FormatDefaults = {
   chapterTitleAlign: 'center',
   sectionTitleSize: 11,
   subsectionTitleSize: 10,
+  // IEEE journal manuscripts use a 24pt centered title above the
+  // author block on page 1 (no separate title page).
+  coverTitleSize: 18,
   showPageNumbers: true,
   description: 'IEEE: 0.75" margin, 10pt, tek aralık, iki yana dayalı (dergi stili)',
 }
@@ -191,6 +208,7 @@ const VANCOUVER: FormatDefaults = {
   chapterTitleAlign: 'left',
   sectionTitleSize: 12,
   subsectionTitleSize: 11,
+  coverTitleSize: 16,
   showPageNumbers: true,
   description: 'Vancouver: 1" margin, 11pt, 1.15 aralık (tıp dergisi stili)',
 }
@@ -224,6 +242,9 @@ const ISNAD: FormatDefaults = {
   chapterTitleAlign: 'center',
   sectionTitleSize: 12,
   subsectionTitleSize: 12,
+  // ISNAD: title page is heavily prescribed; 14pt bold ALL CAPS title
+  // sits in the upper-third of the cover.
+  coverTitleSize: 14,
   showPageNumbers: true,
   description: 'ISNAD 2: 2.5cm margin, 12pt, 1.5 aralık, 1cm girinti, iki yana dayalı',
 }

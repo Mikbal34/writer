@@ -28,6 +28,7 @@ import {
   renderAbstractPages,
   renderKeyPointsPage,
   renderSubmissionInfoPage,
+  formatPageNumber,
   renderTableOfContents,
   renderChapterOpening,
   getBibliographyHeaderText,
@@ -61,6 +62,10 @@ import {
   TableCell as DocxTableCell,
   WidthType,
   BorderStyle,
+  Header,
+  Footer,
+  PageNumber,
+  NumberFormat,
 } from 'docx'
 import PDFDocument from 'pdfkit'
 import { writeFile, mkdir } from 'fs/promises'
@@ -250,6 +255,174 @@ type AcademicStructuralInput = Omit<AcademicMeta, 'title'>
 
 
 
+/**
+ * Splits the academic DOCX `children` array into a 2-section document:
+ * front matter (title / abstract / TOC etc.) and body (chapters /
+ * bibliography). Each section gets its own header / footer / page
+ * numbering style based on the format's pagination + running-head spec.
+ */
+function buildDocxAcademicSections(args: {
+  format: CitationFormat
+  academic: AcademicStructuralInput
+  projectTitle: string
+  children: Paragraph[]
+  frontMatterEnd: number
+  pageProps: { page: object }
+}) {
+  const { format, academic, projectTitle, children, frontMatterEnd, pageProps } = args
+  const spec = getStructuralSpec(format)
+  const surname = academic.author
+    ? academic.author.trim().split(/\s+/).pop() ?? null
+    : null
+  const shortTitle = projectTitle.length <= 50
+    ? projectTitle
+    : projectTitle.slice(0, 50)
+
+  const frontChildren = children.slice(0, frontMatterEnd)
+  const bodyChildren = children.slice(frontMatterEnd)
+
+  const buildHeaderFooter = (isFront: boolean) => {
+    const numStyle = isFront ? spec.pagination.frontMatter : spec.pagination.body
+    const headPos = spec.runningHead.position
+    const numPos = spec.pagination.position
+
+    // Page-number paragraph (used for footer or top-aligned head).
+    const pageNumParagraph = (align: 'left' | 'center' | 'right') => new Paragraph({
+      alignment: align === 'right' ? AlignmentType.RIGHT
+        : align === 'center' ? AlignmentType.CENTER
+        : AlignmentType.LEFT,
+      children: [new TextRun({
+        children: [PageNumber.CURRENT],
+        size: 22,
+        font: 'Times New Roman',
+        color: '000000',
+      })],
+    })
+
+    // Combined running-head paragraph: surname/short-title + page number.
+    const runningHeadParagraph = () => {
+      const content = spec.runningHead.content
+      if (content === 'page-only') {
+        return pageNumParagraph(headPos === 'top-right' ? 'right' : 'center')
+      }
+      if (content === 'surname-page') {
+        return new Paragraph({
+          alignment: headPos === 'top-right' ? AlignmentType.RIGHT : AlignmentType.CENTER,
+          children: [
+            new TextRun({ text: surname ? `${surname} ` : '', size: 22, font: 'Times New Roman', color: '000000' }),
+            new TextRun({ children: [PageNumber.CURRENT], size: 22, font: 'Times New Roman', color: '000000' }),
+          ],
+        })
+      }
+      if (content === 'short-title-caps') {
+        return new Paragraph({
+          // Tab + right-align so the short title sits left and the
+          // page number lands at the right margin.
+          tabStops: [{ type: 'right' as const, position: 9360 }],
+          children: [
+            new TextRun({ text: shortTitle.toUpperCase(), size: 22, font: 'Times New Roman', color: '000000' }),
+            new TextRun({ text: '\t', size: 22, font: 'Times New Roman' }),
+            new TextRun({ children: [PageNumber.CURRENT], size: 22, font: 'Times New Roman', color: '000000' }),
+          ],
+        })
+      }
+      return null
+    }
+
+    const headers: { default?: Header } = {}
+    const footers: { default?: Footer } = {}
+
+    if (spec.runningHead.enabled) {
+      const head = runningHeadParagraph()
+      if (head) {
+        if (headPos === 'bottom-center') footers.default = new Footer({ children: [head] })
+        else headers.default = new Header({ children: [head] })
+      }
+    }
+
+    // Page-number alone (no running head, or running head is at a
+    // different position from the pagination position).
+    const headEnabled = spec.runningHead.enabled
+    const headOccupiesPaginationSlot = headEnabled && headPos === numPos
+    const showPageNumber = numStyle !== 'none'
+      && !headOccupiesPaginationSlot
+    if (showPageNumber) {
+      const align = numPos === 'top-right' ? 'right' : 'center'
+      const numPara = pageNumParagraph(align)
+      if (numPos === 'bottom-center') footers.default = new Footer({ children: [numPara] })
+      else if (!headers.default) headers.default = new Header({ children: [numPara] })
+    }
+
+    return { headers, footers }
+  }
+
+  const frontHF = buildHeaderFooter(true)
+  const bodyHF = buildHeaderFooter(false)
+
+  const numFmt = (style: 'lower-roman' | 'upper-roman' | 'arabic' | 'none') => {
+    switch (style) {
+      case 'lower-roman': return NumberFormat.LOWER_ROMAN
+      case 'upper-roman': return NumberFormat.UPPER_ROMAN
+      case 'arabic': return NumberFormat.DECIMAL
+      case 'none': return NumberFormat.DECIMAL
+    }
+  }
+
+  return [
+    {
+      properties: {
+        ...pageProps,
+        page: {
+          ...(pageProps as { page: Record<string, unknown> }).page,
+          pageNumbers: { formatType: numFmt(spec.pagination.frontMatter) },
+        },
+      },
+      headers: frontHF.headers,
+      footers: frontHF.footers,
+      children: frontChildren,
+    },
+    {
+      properties: {
+        ...pageProps,
+        page: {
+          ...(pageProps as { page: Record<string, unknown> }).page,
+          pageNumbers: { formatType: numFmt(spec.pagination.body), start: 1 },
+        },
+      },
+      headers: bodyHF.headers,
+      footers: bodyHF.footers,
+      children: bodyChildren,
+    },
+  ]
+}
+
+/**
+ * Compose the running-head text from the format spec's `content` style.
+ * APA professional → "SHORT TITLE                                    Page#",
+ * MLA → "Surname Page#", APA student → "Page#", others → "" (no head).
+ */
+function renderRunningHeadText(
+  content: 'none' | 'page-only' | 'surname-page' | 'short-title-caps',
+  surname: string | null,
+  shortTitle: string,
+  pageNumStr: string,
+): string {
+  switch (content) {
+    case 'page-only':
+      return pageNumStr
+    case 'surname-page':
+      return surname ? `${surname} ${pageNumStr}` : pageNumStr
+    case 'short-title-caps':
+      // APA 7 professional: ALL CAPS short title left, page right.
+      // We render as "TITLE  …  Page" — the renderer is single-line so
+      // we just join with a tab; alignment uses 'right' so the gap is
+      // padded by the page width.
+      return `${shortTitle.toUpperCase()}\t${pageNumStr}`
+    case 'none':
+      return ''
+  }
+}
+
 function buildDocx(
   projectTitle: string,
   subsections: SubsectionData[],
@@ -337,6 +510,13 @@ function buildDocx(
     )
     children.push(new Paragraph({ children: [new PageBreak()] }))
   }
+
+  // Anything pushed to `children` BEFORE the first chapter is front
+  // matter (title / abstract / TOC / acknowledgments / dedication / key
+  // points / submission info). The body starts on the next push and the
+  // 2-section split below uses this index to apply Roman vs Arabic
+  // numbering separately.
+  const frontMatterEnd = children.length
 
   for (const sub of subsections) {
     // Chapter heading — structural builders when academic, simple heading otherwise.
@@ -587,26 +767,46 @@ function buildDocx(
     })
   }
 
+  // DOCX page size — A4 (11906 × 16838 twips) for everything except IEEE
+  // (US Letter, 12240 × 15840). The width/height pair is in twips; 1pt =
+  // 20 twips, so a 612pt × 792pt Letter page is 12240 × 15840.
+  const isLetter = fmtDefaults.pageSize.toLowerCase() === 'letter'
+  const pageWidthTwips = isLetter ? 12240 : 11906
+  const pageHeightTwips = isLetter ? 15840 : 16838
+
+  const pageProps = {
+    page: {
+      size: { width: pageWidthTwips, height: pageHeightTwips },
+      // Margins from format-defaults: APA / MLA / Chicago / Turabian /
+      // Harvard / Vancouver / AMA / ISNAD all want 1"; IEEE wants 0.75".
+      // The values in fmtDefaults are PDF points; DOCX twips = points * 20.
+      margin: {
+        top: fmtDefaults.marginTop * 20,
+        right: fmtDefaults.marginRight * 20,
+        bottom: fmtDefaults.marginBottom * 20,
+        left: fmtDefaults.marginLeft * 20,
+      },
+    },
+  }
+
+  // Per-format running head + page numbering. Front matter and body use
+  // separate sections so DOCX can apply different number formats (Roman
+  // for front matter, Arabic for body — Chicago / Harvard / ISNAD
+  // convention) and the body section can restart numbering at 1.
+  const docxSections = academic
+    ? buildDocxAcademicSections({
+        format,
+        academic,
+        projectTitle,
+        children,
+        frontMatterEnd,
+        pageProps,
+      })
+    : [{ properties: pageProps, children }]
+
   return new Document({
     footnotes,
-    sections: [
-      {
-        properties: {
-          page: {
-            // Margins from format-defaults: APA / MLA / Chicago / Turabian /
-            // Harvard / Vancouver / AMA / ISNAD all want 1"; IEEE wants 0.75".
-            // The values in fmtDefaults are PDF points; DOCX twips = points * 20.
-            margin: {
-              top: fmtDefaults.marginTop * 20,
-              right: fmtDefaults.marginRight * 20,
-              bottom: fmtDefaults.marginBottom * 20,
-              left: fmtDefaults.marginLeft * 20,
-            },
-          },
-        },
-        children,
-      },
-    ],
+    sections: docxSections,
   })
 }
 
@@ -813,8 +1013,14 @@ function buildPdf(
   const labels = getLabels(language)
   const d = design ?? {}
 
-  // Page dimensions from design settings
-  const trimDimensions = PAGE_SIZES[d.pageSize ?? 'A4'] ?? PAGE_SIZES['A4']
+  // Page dimensions: bookDesign override > format-default > A4. Vancouver
+  // / APA / MLA / Chicago / Turabian / Harvard / AMA / ISNAD all default
+  // to A4; IEEE alone defaults to Letter (US journal convention).
+  const fmtPageSize = getFormatDefaults(format).pageSize.toLowerCase() === 'letter'
+    ? 'letter'
+    : 'A4'
+  const effectivePageSize = d.pageSize ?? fmtPageSize
+  const trimDimensions = PAGE_SIZES[effectivePageSize] ?? PAGE_SIZES['A4']
 
   // Print-ready output adds a 3mm bleed on every edge (≈ 8.5 pt) and
   // draws crop marks at each corner so the printer can trim back to
@@ -1018,6 +1224,12 @@ function buildPdf(
       doc.text(projectTitle, { align: 'center' })
       doc.addPage()
     }
+
+    // Capture the index of the first body page so the post-pass below
+    // knows where front-matter (lower-roman / no number) ends and the
+    // body (arabic) begins. Each format's pagination spec drives which
+    // numbering style + position to actually render.
+    const bodyStartPageIndex = doc.bufferedPageRange().count
 
     let currentChapter = ''
     let currentSection = ''
@@ -1373,6 +1585,80 @@ function buildPdf(
         }) + 3
       }
     })
+
+    // ---- Running head + page numbers (third pass) -----------------------
+    // Walks every buffered page, computes the format-specific page-number
+    // string + running-head text for that page's section (front matter vs
+    // body), and draws them in the top/bottom margin. Front-matter pages
+    // count from i (1-based); body pages restart from 1 so the user sees
+    // arabic numerals on the body even after Roman pre-matter.
+    if (academic) {
+      const spec = getStructuralSpec(format)
+      const pagSpec = spec.pagination
+      const headSpec = spec.runningHead
+      // Author surname for "Surname Page#" running heads (MLA convention).
+      const surname = academic.author
+        ? academic.author.trim().split(/\s+/).pop() ?? null
+        : null
+      // Short title for APA professional caps-style running heads.
+      const shortTitle = academic.submission?.shortTitle
+        ?? (projectTitle.length <= 50 ? projectTitle : projectTitle.slice(0, 50))
+
+      const totalRange = doc.bufferedPageRange()
+      for (let i = 0; i < totalRange.count; i++) {
+        const absIdx = totalRange.start + i
+        doc.switchToPage(absIdx)
+
+        const isFrontMatter = i < bodyStartPageIndex
+        const isTitlePage = i === 0
+        const inSectionIdx = isFrontMatter ? i + 1 : i - bodyStartPageIndex + 1
+        const numStyle = isFrontMatter ? pagSpec.frontMatter : pagSpec.body
+        const showNumber = numStyle !== 'none'
+          && !(isTitlePage && !pagSpec.showOnTitlePage)
+
+        // Page number text in the format spec'd numbering style.
+        const pageNumStr = showNumber
+          ? formatPageNumber(format, inSectionIdx, isFrontMatter)
+          : ''
+
+        // Pick where the page number goes (top-right / top-center /
+        // bottom-center) per the format's pagination + running-head specs.
+        // When the spec puts a running head ATOP the page, we tuck the
+        // page number into it; otherwise the number alone goes to the
+        // pagination position.
+        const headEnabled = headSpec.enabled && !isTitlePage
+        const headText = headEnabled
+          ? renderRunningHeadText(headSpec.content, surname, shortTitle, pageNumStr)
+          : ''
+
+        const drawPageNumber = pageNumStr && (!headEnabled || pagSpec.position !== headSpec.position)
+        const pageWidthMinusMargins = doc.page.width - doc.page.margins.left - doc.page.margins.right
+        const fontSize = Math.max(9, Math.round(BODY_SIZE * 0.9))
+        doc.font(fonts.regular).fontSize(fontSize).fillColor('#000000')
+
+        if (headEnabled && headText) {
+          const yTop = headSpec.position === 'bottom-center'
+            ? doc.page.height - doc.page.margins.bottom + 18
+            : Math.max(18, doc.page.margins.top - 24)
+          doc.text(headText, doc.page.margins.left, yTop, {
+            width: pageWidthMinusMargins,
+            align: headSpec.position === 'top-right' ? 'right' : 'center',
+            lineBreak: false,
+          })
+        }
+        if (drawPageNumber) {
+          const yPos = pagSpec.position === 'bottom-center'
+            ? doc.page.height - doc.page.margins.bottom + 18
+            : Math.max(18, doc.page.margins.top - 24)
+          const align = pagSpec.position === 'top-right' ? 'right' : 'center'
+          doc.text(pageNumStr, doc.page.margins.left, yPos, {
+            width: pageWidthMinusMargins,
+            align,
+            lineBreak: false,
+          })
+        }
+      }
+    }
 
     doc.end()
   })
