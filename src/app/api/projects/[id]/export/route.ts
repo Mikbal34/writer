@@ -824,10 +824,13 @@ function buildPdf(
     trimDimensions[0] + BLEED_PT * 2,
     trimDimensions[1] + BLEED_PT * 2,
   ]
-  const mTop = (d.marginTop ?? 72) + BLEED_PT
-  const mBottom = (d.marginBottom ?? 72) + BLEED_PT
-  const mLeft = (d.marginLeft ?? 72) + BLEED_PT
-  const mRight = (d.marginRight ?? 72) + BLEED_PT
+  // Margin precedence: bookDesign override > format-default > 1". IEEE
+  // ships with 0.75" margins per its style spec; everything else 1".
+  const fmtMargins = getFormatDefaults(format)
+  const mTop = (d.marginTop ?? fmtMargins.marginTop) + BLEED_PT
+  const mBottom = (d.marginBottom ?? fmtMargins.marginBottom) + BLEED_PT
+  const mLeft = (d.marginLeft ?? fmtMargins.marginLeft) + BLEED_PT
+  const mRight = (d.marginRight ?? fmtMargins.marginRight) + BLEED_PT
 
   return new Promise((resolve, reject) => {
     const fontFamily = resolvePdfFontFamily()
@@ -990,9 +993,9 @@ function buildPdf(
     } else if (academic) {
       const meta: AcademicMeta = { ...academic, title: projectTitle }
       renderTitlePage(doc, format, meta, fonts)
-      renderKeyPointsPage(doc, meta, fonts, BODY_SIZE)
+      renderKeyPointsPage(doc, format, meta, fonts, BODY_SIZE)
       renderAbstractPages(doc, format, meta, fonts, BODY_SIZE)
-      renderSubmissionInfoPage(doc, meta, fonts, BODY_SIZE)
+      renderSubmissionInfoPage(doc, format, meta, fonts, BODY_SIZE)
       // Build TOC entries from subsection list (flat pass).
       const tocEntries: TocEntry[] = []
       const seenChapters = new Set<string>()

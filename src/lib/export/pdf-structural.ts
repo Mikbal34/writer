@@ -17,6 +17,16 @@ import {
   type TitlePageElement,
   type StructuralSpec,
 } from './structural-specs'
+import { getFormatDefaults } from '@/lib/citations/format-defaults'
+
+/**
+ * Section-title size from the format spec — reused as the heading size
+ * for the abstract / key points / manuscript info / TOC pages so the
+ * visual hierarchy stays consistent across structural pages.
+ */
+function headingPt(format: CitationFormat): number {
+  return getFormatDefaults(format).sectionTitleSize
+}
 import type { AcademicMeta, TocEntry } from './docx-structural'
 
 type Doc = InstanceType<typeof PDFDocument>
@@ -59,7 +69,10 @@ export function renderTitlePage(
 
       doc
         .font(isTitle ? fonts.bold : fonts.regular)
-        .fontSize(isTitle ? 18 : 12)
+        // Cover title is a fixed 18pt across formats; body lines on the
+        // title page (institution / author / affiliation) use the format's
+        // own body size so the cover matches the rest of the document.
+        .fontSize(isTitle ? 18 : getFormatDefaults(format).bodyFontSize)
 
       // `institution_tr_header` may contain a newline.
       doc.text(text, {
@@ -131,6 +144,7 @@ export function renderAbstractPages(
   const spec = getStructuralSpec(format)
   if (!spec.abstract.enabled) return
 
+  const heading = headingPt(format)
   if (spec.abstract.dualLanguage && meta.abstractTr) {
     renderOneAbstract(
       doc,
@@ -139,7 +153,8 @@ export function renderAbstractPages(
       'Anahtar Kelimeler',
       meta.keywordsTr,
       fonts,
-      bodyFontSize
+      bodyFontSize,
+      heading
     )
     doc.addPage()
   }
@@ -153,7 +168,8 @@ export function renderAbstractPages(
       spec.abstract.keywordsLabel,
       spec.abstract.dualLanguage ? meta.keywordsEn : (meta.keywordsEn.length > 0 ? meta.keywordsEn : meta.keywordsTr),
       fonts,
-      bodyFontSize
+      bodyFontSize,
+      heading
     )
     doc.addPage()
   }
@@ -166,9 +182,10 @@ function renderOneAbstract(
   keywordsLabel: string,
   keywords: string[],
   fonts: FontBundle,
-  bodyFontSize: number
+  bodyFontSize: number,
+  headingFontSize: number
 ): void {
-  doc.font(fonts.bold).fontSize(16)
+  doc.font(fonts.bold).fontSize(headingFontSize)
   doc.text(label, { align: 'center' })
   doc.moveDown(1)
 
@@ -203,13 +220,14 @@ function renderOneAbstract(
  */
 export function renderKeyPointsPage(
   doc: Doc,
+  format: CitationFormat,
   meta: AcademicMeta,
   fonts: FontBundle,
   bodyFontSize: number
 ): void {
   const kp = meta.submission?.keyPoints
   if (!kp || (!kp.question && !kp.findings && !kp.meaning)) return
-  doc.font(fonts.bold).fontSize(16)
+  doc.font(fonts.bold).fontSize(headingPt(format))
   doc.text('Key Points', { align: 'center' })
   doc.moveDown(1)
   doc.fontSize(bodyFontSize)
@@ -232,6 +250,7 @@ export function renderKeyPointsPage(
  */
 export function renderSubmissionInfoPage(
   doc: Doc,
+  format: CitationFormat,
   meta: AcademicMeta,
   fonts: FontBundle,
   bodyFontSize: number
@@ -251,7 +270,7 @@ export function renderSubmissionInfoPage(
   const present = fields.filter(([, v]) => v && String(v).trim().length > 0)
   if (present.length === 0) return
 
-  doc.font(fonts.bold).fontSize(16)
+  doc.font(fonts.bold).fontSize(headingPt(format))
   doc.text('Manuscript Information', { align: 'center' })
   doc.moveDown(1)
   doc.fontSize(bodyFontSize)
@@ -276,7 +295,7 @@ export function renderTableOfContents(
   const spec = getStructuralSpec(format)
   if (!spec.toc.enabled) return
 
-  doc.font(fonts.bold).fontSize(16)
+  doc.font(fonts.bold).fontSize(getFormatDefaults(format).chapterTitleSize)
   doc.text(spec.toc.labelUppercase ? spec.toc.label.toUpperCase() : spec.toc.label, { align: 'center' })
   doc.moveDown(1)
 
@@ -286,7 +305,7 @@ export function renderTableOfContents(
     if (!spec.toc.includeSections && entry.depth === 1) continue
     if (!spec.toc.includeSubsections && entry.depth === 2) continue
 
-    doc.font(entry.depth === 0 ? fonts.bold : fonts.regular).fontSize(11)
+    doc.font(entry.depth === 0 ? fonts.bold : fonts.regular).fontSize(getFormatDefaults(format).bodyFontSize)
     const indent = entry.depth * 18
 
     const xStart = doc.page.margins.left + indent
