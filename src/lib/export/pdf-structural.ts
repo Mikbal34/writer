@@ -146,6 +146,11 @@ export function renderAbstractPages(
   if (!spec.abstract.enabled) return
 
   const heading = headingPt(format)
+  // Abstract body alignment follows the format's textAlign so the
+  // abstract reads the same as the manuscript body. Vancouver / APA /
+  // Chicago / AMA = 'left'; IEEE / Harvard / ISNAD = 'justify'.
+  const bodyAlign: 'left' | 'justify' =
+    getFormatDefaults(format).textAlign === 'justify' ? 'justify' : 'left'
   if (spec.abstract.dualLanguage && meta.abstractTr) {
     renderOneAbstract(
       doc,
@@ -155,7 +160,8 @@ export function renderAbstractPages(
       meta.keywordsTr,
       fonts,
       bodyFontSize,
-      heading
+      heading,
+      bodyAlign
     )
     doc.addPage()
   }
@@ -170,7 +176,8 @@ export function renderAbstractPages(
       spec.abstract.dualLanguage ? meta.keywordsEn : (meta.keywordsEn.length > 0 ? meta.keywordsEn : meta.keywordsTr),
       fonts,
       bodyFontSize,
-      heading
+      heading,
+      bodyAlign
     )
     doc.addPage()
   }
@@ -184,7 +191,8 @@ function renderOneAbstract(
   keywords: string[],
   fonts: FontBundle,
   bodyFontSize: number,
-  headingFontSize: number
+  headingFontSize: number,
+  bodyAlign: 'left' | 'justify',
 ): void {
   doc.font(fonts.bold).fontSize(headingFontSize)
   doc.text(label, { align: 'center' })
@@ -195,9 +203,9 @@ function renderOneAbstract(
     const m = para.match(/^([A-Z][A-Za-z][A-Za-z, ]{1,38}\.)\s+(.*)$/)
     if (m) {
       doc.font(fonts.bold).text(`${m[1]} `, { continued: true })
-      doc.font(fonts.regular).text(m[2], { align: 'justify', lineGap: 2 })
+      doc.font(fonts.regular).text(m[2], { align: bodyAlign, lineGap: 2 })
     } else {
-      doc.font(fonts.regular).text(para, { align: 'justify', lineGap: 2 })
+      doc.font(fonts.regular).text(para, { align: bodyAlign, lineGap: 2 })
     }
     doc.moveDown(0.4)
   }
