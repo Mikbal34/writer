@@ -1596,13 +1596,22 @@ function buildPdf(
       const spec = getStructuralSpec(format)
       const pagSpec = spec.pagination
       const headSpec = spec.runningHead
-      // Author surname for "Surname Page#" running heads (MLA convention).
       const surname = academic.author
         ? academic.author.trim().split(/\s+/).pop() ?? null
         : null
-      // Short title for APA professional caps-style running heads.
       const shortTitle = academic.submission?.shortTitle
         ?? (projectTitle.length <= 50 ? projectTitle : projectTitle.slice(0, 50))
+
+      // Geometry — compute once and reuse. Pdfkit's per-page state can
+      // be flaky after switchToPage, so we rely on the doc's constructor
+      // values rather than reading doc.page.* every iteration.
+      const pageW = pageDimensions[0]
+      const pageH = pageDimensions[1]
+      const numFontSize = Math.max(9, Math.round(BODY_SIZE * 0.9))
+      const headFontSize = numFontSize
+      const headBaselineTop = Math.max(20, mTop - 24)
+      const headBaselineBottom = pageH - mBottom + 14
+      const contentWidth = pageW - mLeft - mRight
 
       const totalRange = doc.bufferedPageRange()
       for (let i = 0; i < totalRange.count; i++) {
@@ -1615,48 +1624,44 @@ function buildPdf(
         const numStyle = isFrontMatter ? pagSpec.frontMatter : pagSpec.body
         const showNumber = numStyle !== 'none'
           && !(isTitlePage && !pagSpec.showOnTitlePage)
-
-        // Page number text in the format spec'd numbering style.
         const pageNumStr = showNumber
           ? formatPageNumber(format, inSectionIdx, isFrontMatter)
           : ''
-
-        // Pick where the page number goes (top-right / top-center /
-        // bottom-center) per the format's pagination + running-head specs.
-        // When the spec puts a running head ATOP the page, we tuck the
-        // page number into it; otherwise the number alone goes to the
-        // pagination position.
         const headEnabled = headSpec.enabled && !isTitlePage
         const headText = headEnabled
           ? renderRunningHeadText(headSpec.content, surname, shortTitle, pageNumStr)
           : ''
+        const drawPageNumber = !!pageNumStr && (!headEnabled || pagSpec.position !== headSpec.position)
+        if (!drawPageNumber && !(headEnabled && headText)) continue
 
-        const drawPageNumber = pageNumStr && (!headEnabled || pagSpec.position !== headSpec.position)
-        const pageWidthMinusMargins = doc.page.width - doc.page.margins.left - doc.page.margins.right
-        const fontSize = Math.max(9, Math.round(BODY_SIZE * 0.9))
-        doc.font(fonts.regular).fontSize(fontSize).fillColor('#000000')
+        // Reset state on each page — switchToPage doesn't reset fonts,
+        // and earlier passes (footnotes, running) may have left funky
+        // state behind. save/restore guards against bleeding into other
+        // page-level draws.
+        doc.save()
+        doc.font(fonts.regular).fontSize(numFontSize).fillColor('black')
 
         if (headEnabled && headText) {
-          const yTop = headSpec.position === 'bottom-center'
-            ? doc.page.height - doc.page.margins.bottom + 18
-            : Math.max(18, doc.page.margins.top - 24)
-          doc.text(headText, doc.page.margins.left, yTop, {
-            width: pageWidthMinusMargins,
+          const y = headSpec.position === 'bottom-center'
+            ? headBaselineBottom : headBaselineTop
+          doc.fontSize(headFontSize)
+          doc.text(headText, mLeft, y, {
+            width: contentWidth,
             align: headSpec.position === 'top-right' ? 'right' : 'center',
-            lineBreak: false,
           })
         }
         if (drawPageNumber) {
-          const yPos = pagSpec.position === 'bottom-center'
-            ? doc.page.height - doc.page.margins.bottom + 18
-            : Math.max(18, doc.page.margins.top - 24)
-          const align = pagSpec.position === 'top-right' ? 'right' : 'center'
-          doc.text(pageNumStr, doc.page.margins.left, yPos, {
-            width: pageWidthMinusMargins,
+          const y = pagSpec.position === 'bottom-center'
+            ? headBaselineBottom : headBaselineTop
+          const align: 'left' | 'center' | 'right' =
+            pagSpec.position === 'top-right' ? 'right' : 'center'
+          doc.fontSize(numFontSize)
+          doc.text(pageNumStr, mLeft, y, {
+            width: contentWidth,
             align,
-            lineBreak: false,
           })
         }
+        doc.restore()
       }
     }
 
