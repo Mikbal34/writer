@@ -102,6 +102,17 @@ function buildMeta(format: CitationFormat): AcademicMeta {
       ? (isIsnad ? 'Bandırma' : 'Chicago, Illinois') : null,
     isStateUniversity: isIsnad ? true : undefined,
     advisorLabel,
+    authors: (format === 'IEEE' || format === 'VANCOUVER' || format === 'AMA') ? [
+      { name: 'Jane Doe', degrees: ['MD', 'PhD'], department: 'Department of Cardiology',
+        institution: 'Mayo Clinic', city: 'Rochester', country: 'USA',
+        email: 'jdoe@mayo.edu', orcid: '0000-0001-0000-0001' },
+      { name: 'Ahmet Yılmaz', degrees: ['MD'], department: 'Department of Internal Medicine',
+        institution: 'Hacettepe University', city: 'Ankara', country: 'Turkey',
+        email: 'ayilmaz@hacettepe.edu.tr', orcid: '0000-0002-0000-0002' },
+      { name: 'Maria García', degrees: ['PhD'], department: 'School of Public Health',
+        institution: 'University of Barcelona', city: 'Barcelona', country: 'Spain',
+        email: 'mgarcia@ub.edu', orcid: null },
+    ] : null,
     submission,
   }
 }

@@ -60,7 +60,64 @@ export function renderTitlePage(
 
   const gapBetweenGroups = format === 'ISNAD' ? 12 : 16
 
+  // Multi-author rendering for journal formats (IEEE / Vancouver / AMA).
+  // When the meta carries an authors[] array, the author/affiliation
+  // group is replaced with a per-author block: name, affiliation,
+  // optional email — one author per stack, blank line between.
+  const hasMultiAuthor = !!meta.authors
+    && meta.authors.length > 1
+    && (format === 'IEEE' || format === 'VANCOUVER' || format === 'AMA')
+  const bodyFontSize = getFormatDefaults(format).bodyFontSize
+  let multiAuthorEmitted = false
+
   spec.titlePage.groups.forEach((group, groupIdx) => {
+    const isAuthorGroup = group.includes('author') || group.includes('affiliation')
+    if (hasMultiAuthor && isAuthorGroup) {
+      if (multiAuthorEmitted) return
+      multiAuthorEmitted = true
+    }
+    if (hasMultiAuthor && isAuthorGroup && meta.authors) {
+      meta.authors.forEach((a, authorIdx) => {
+        if (!a.name) return
+        const degrees = format === 'AMA' && a.degrees.length > 0
+          ? ` ${a.degrees.join(', ')}`
+          : ''
+        doc
+          .font(format === 'IEEE' ? fonts.bold : fonts.regular)
+          .fontSize(bodyFontSize)
+        doc.text(`${a.name}${degrees}`, {
+          align: 'center',
+          width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+        })
+        const affilParts = [a.department, a.institution, a.city, a.country]
+          .filter(Boolean)
+        if (affilParts.length > 0) {
+          doc
+            .font(format === 'IEEE' ? fonts.italic : fonts.regular)
+            .fontSize(bodyFontSize)
+          doc.text(affilParts.join(', '), {
+            align: 'center',
+            width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+          })
+        }
+        if (a.email) {
+          doc.font(fonts.regular).fontSize(bodyFontSize)
+          doc.text(a.email, {
+            align: 'center',
+            width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+          })
+        }
+        if (authorIdx < meta.authors!.length - 1) {
+          doc.moveDown(0.6)
+        } else {
+          doc.moveDown(0.4)
+        }
+      })
+      if (groupIdx < spec.titlePage.groups.length - 1) {
+        doc.y += gapBetweenGroups
+      }
+      return
+    }
     for (const element of group) {
       const line = resolveTitleElement(element, meta, spec)
       if (!line) continue
@@ -75,7 +132,6 @@ export function renderTitlePage(
             : getFormatDefaults(format).bodyFontSize
         )
 
-      // `institution_tr_header` may contain a newline.
       doc.text(text, {
         align: 'center',
         width: doc.page.width - doc.page.margins.left - doc.page.margins.right,

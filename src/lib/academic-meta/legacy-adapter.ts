@@ -425,5 +425,22 @@ export function structuralAcademicFromMeta(
     isStateUniversity,
     advisorLabel,
     submission,
+    // Multi-author title-page support — IEEE / Vancouver / AMA only.
+    // Single-author formats keep `authors: null` and the renderer falls
+    // back to the flat `author` string + `institution` element.
+    authors: (meta.format === 'IEEE'
+      || meta.format === 'VANCOUVER'
+      || meta.format === 'AMA')
+      ? meta.authors.map((a) => ({
+          name: a.name,
+          degrees: a.degrees,
+          department: a.department,
+          institution: a.institution,
+          city: a.city,
+          country: a.country,
+          email: a.email,
+          orcid: a.orcid,
+        }))
+      : null,
   }
 }

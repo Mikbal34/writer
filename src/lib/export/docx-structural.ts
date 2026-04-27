@@ -65,10 +65,28 @@ export interface SubmissionMeta {
   formatLabel?: 'Vancouver' | 'AMA'
 }
 
+/**
+ * One author's full block — used by IEEE / Vancouver / AMA title pages
+ * to render every co-author with their own affiliation, instead of
+ * collapsing the array to the first author only.
+ */
+export interface AuthorBlockMeta {
+  name: string | null
+  degrees: string[]              // AMA: "MD", "PhD"
+  department: string | null
+  institution: string | null
+  city: string | null
+  country: string | null
+  email: string | null
+  orcid: string | null
+}
+
 export interface AcademicMeta {
   title: string
   subtitle?: string | null
   author: string | null
+  /** IEEE / Vancouver / AMA only — full author array for title-page render. */
+  authors?: AuthorBlockMeta[] | null
   institution: string | null
   department: string | null
   advisor: string | null
@@ -118,7 +136,91 @@ export function buildTitlePage(format: CitationFormat, meta: AcademicMeta): Para
 
   const gapBetweenGroups = format === 'ISNAD' ? 2 : 3
 
+  // Multi-author rendering only kicks in on journal formats whose title
+  // page actually carries authors + affiliations as separate groups.
+  const hasMultiAuthor = !!meta.authors
+    && meta.authors.length > 1
+    && (format === 'IEEE' || format === 'VANCOUVER' || format === 'AMA')
+  let multiAuthorEmitted = false
+
   spec.titlePage.groups.forEach((group, groupIdx) => {
+    // Replace the single "author" / "affiliation" block with a stacked
+    // per-author render when we have multiple authors. Each author gets
+    // their own name + affiliation block; subsequent author/affiliation
+    // groups are skipped because the per-author block already includes
+    // both pieces of data.
+    const isAuthorGroup = group.includes('author') || group.includes('affiliation')
+    if (hasMultiAuthor && isAuthorGroup) {
+      if (multiAuthorEmitted) return
+      multiAuthorEmitted = true
+    }
+    if (hasMultiAuthor && isAuthorGroup && meta.authors) {
+      meta.authors.forEach((a, authorIdx) => {
+        if (!a.name) return
+        const degrees = format === 'AMA' && a.degrees.length > 0
+          ? ` ${a.degrees.join(', ')}`
+          : ''
+        // Author name (bold-ish via font weight? IEEE often bolds names,
+        // Vancouver doesn't — keep regular for portability).
+        paragraphs.push(
+          new Paragraph({
+            children: [new TextRun({
+              text: `${a.name}${degrees}`,
+              bold: format === 'IEEE',
+              size: bodyHp(format),
+              font: 'Times New Roman',
+              color: '000000',
+            })],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 60 },
+          })
+        )
+        // Affiliation line: department, institution, city, country.
+        const affilParts = [a.department, a.institution, a.city, a.country]
+          .filter(Boolean)
+        if (affilParts.length > 0) {
+          paragraphs.push(
+            new Paragraph({
+              children: [new TextRun({
+                text: affilParts.join(', '),
+                italics: format === 'IEEE',
+                size: bodyHp(format),
+                font: 'Times New Roman',
+                color: '000000',
+              })],
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 60 },
+            })
+          )
+        }
+        // Email — IEEE journal style prints email under affiliation.
+        if (a.email) {
+          paragraphs.push(
+            new Paragraph({
+              children: [new TextRun({
+                text: a.email,
+                size: bodyHp(format),
+                font: 'Times New Roman',
+                color: '000000',
+              })],
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 60 },
+            })
+          )
+        }
+        // Gap between authors.
+        if (authorIdx < meta.authors!.length - 1) {
+          paragraphs.push(new Paragraph({ children: [new TextRun({ text: '' })] }))
+        }
+      })
+      // Skip the default author/affiliation rendering for this group.
+      if (groupIdx < spec.titlePage.groups.length - 1) {
+        for (let i = 0; i < gapBetweenGroups; i++) {
+          paragraphs.push(new Paragraph({ children: [new TextRun({ text: '' })] }))
+        }
+      }
+      return
+    }
     for (const element of group) {
       const line = resolveTitleElement(element, meta, spec)
       if (!line) continue
@@ -129,8 +231,6 @@ export function buildTitlePage(format: CitationFormat, meta: AcademicMeta): Para
             new TextRun({
               text: spec.titlePage.titleUppercase && isTitle ? line.toUpperCase() : line,
               bold: isTitle,
-              // Cover title size from format spec (APA 14pt, IEEE 18pt,
-              // ISNAD 14pt, etc.); other title-page lines follow body size.
               size: isTitle
                 ? Math.round(getFormatDefaults(format).coverTitleSize * 2)
                 : bodyHp(format),
