@@ -14,6 +14,8 @@ import {
   buildAbstractPages,
   buildKeyPointsPage,
   buildSubmissionInfoPage,
+  buildCaptionParagraph,
+  buildListPage,
   buildTableOfContents,
   buildChapterOpening,
   buildBibliographyHeader,
@@ -29,6 +31,8 @@ import {
   renderKeyPointsPage,
   renderSubmissionInfoPage,
   formatPageNumber,
+  renderCaption,
+  renderListPage,
   renderTableOfContents,
   renderChapterOpening,
   getBibliographyHeaderText,
@@ -48,6 +52,18 @@ import type { CitationFormat } from '@prisma/client'
 import { parseAcademicMeta } from '@/lib/academic-meta'
 import { structuralAcademicFromMeta } from '@/lib/academic-meta/legacy-adapter'
 import {
+  createRegistryState,
+  registerCaption,
+  resolveCrossRefs,
+  captionsByKind,
+} from '@/lib/export/captions'
+import {
+  renderMermaidPng,
+  renderChartPng,
+  renderEquationPng,
+} from '@/lib/export/render-figures'
+import crypto from 'node:crypto'
+import {
   Document,
   Packer,
   Paragraph,
@@ -66,6 +82,7 @@ import {
   Footer,
   PageNumber,
   NumberFormat,
+  ImageRun,
 } from 'docx'
 import PDFDocument from 'pdfkit'
 import { writeFile, mkdir } from 'fs/promises'
@@ -162,14 +179,57 @@ type MdBlock =
   | { type: 'bullet_list'; items: string[] }
   | { type: 'ordered_list'; items: string[] }
   | { type: 'blockquote'; text: string }
-  | { type: 'table'; headers: string[]; rows: string[][] }
+  | {
+      type: 'table'
+      headers: string[]
+      rows: string[][]
+      /** Optional caption + cross-ref id parsed from `[table:id: caption]` markers. */
+      caption?: string
+      refId?: string
+    }
+  | {
+      type: 'figure'
+      /** Uploaded image referenced by ProjectImage.id or external URL marker. */
+      src: string
+      alt: string
+      caption?: string
+      refId?: string
+    }
+  | { type: 'chart'; spec: string; caption?: string; refId?: string }
+  | { type: 'mermaid'; src: string; caption?: string; refId?: string }
+  | { type: 'equation'; latex: string; refId?: string }
   | { type: 'hr' }
+
+/**
+ * Parses an optional `[table:id: caption]` / `[figure:id: caption]` /
+ * `[chart:id: caption]` / `[mermaid:id: caption]` / `[equation:id]`
+ * marker line and returns the caption + refId. The marker syntax:
+ *
+ *   [table: Caption only]                  → caption = "Caption only"
+ *   [table:tbl-rev: Quarterly revenue]     → caption + refId
+ *   [figure:fig-1: Schematic]              → caption + refId
+ *   [chart: Bar chart]                     → caption only
+ *
+ * Returns null when the line doesn't match the marker shape.
+ */
+function parseCaptionMarker(
+  line: string,
+  kind: 'table' | 'figure' | 'chart' | 'mermaid' | 'equation'
+): { caption?: string; refId?: string } | null {
+  const m = line.match(new RegExp(`^\\[${kind}(?::([a-zA-Z0-9_-]+))?(?::\\s*([^\\]]+))?\\]$`))
+  if (!m) return null
+  return {
+    refId: m[1] ?? undefined,
+    caption: m[2]?.trim() || undefined,
+  }
+}
 
 function parseMarkdownBlocks(content: string): MdBlock[] {
   const blocks: MdBlock[] = []
   const rawBlocks = content.split(/\n{2,}/)
 
-  for (const raw of rawBlocks) {
+  for (let i = 0; i < rawBlocks.length; i++) {
+    const raw = rawBlocks[i]
     const trimmed = raw.trim()
     if (!trimmed) continue
 
@@ -189,13 +249,103 @@ function parseMarkdownBlocks(content: string): MdBlock[] {
       continue
     }
 
+    // Fenced ```chart blocks → JSON spec (Vega-Lite or Chart.js style).
+    const chartFence = trimmed.match(/^```chart\s*\n([\s\S]*?)\n```\s*$/m)
+    if (chartFence) {
+      // Chart caption from preceding marker block, if present.
+      const prev = blocks[blocks.length - 1]
+      let caption: string | undefined
+      let refId: string | undefined
+      if (prev && prev.type === 'paragraph') {
+        const m = parseCaptionMarker(prev.text, 'chart')
+        if (m) {
+          caption = m.caption
+          refId = m.refId
+          blocks.pop()
+        }
+      }
+      blocks.push({ type: 'chart', spec: chartFence[1].trim(), caption, refId })
+      continue
+    }
+
+    // Fenced ```mermaid blocks → diagram source for Kroki rendering.
+    const mermaidFence = trimmed.match(/^```mermaid\s*\n([\s\S]*?)\n```\s*$/m)
+    if (mermaidFence) {
+      const prev = blocks[blocks.length - 1]
+      let caption: string | undefined
+      let refId: string | undefined
+      if (prev && prev.type === 'paragraph') {
+        const m = parseCaptionMarker(prev.text, 'mermaid')
+        if (m) {
+          caption = m.caption
+          refId = m.refId
+          blocks.pop()
+        }
+      }
+      blocks.push({ type: 'mermaid', src: mermaidFence[1].trim(), caption, refId })
+      continue
+    }
+
+    // Display equation: $$ ... $$
+    const eqDisplay = trimmed.match(/^\$\$([\s\S]+?)\$\$\s*$/)
+    if (eqDisplay) {
+      const prev = blocks[blocks.length - 1]
+      let refId: string | undefined
+      if (prev && prev.type === 'paragraph') {
+        const m = parseCaptionMarker(prev.text, 'equation')
+        if (m) {
+          refId = m.refId
+          blocks.pop()
+        }
+      }
+      blocks.push({ type: 'equation', latex: eqDisplay[1].trim(), refId })
+      continue
+    }
+
+    // Figure: ![alt text](upload:abc123) or ![alt](https://...)
+    // Optional preceding [figure:id: Caption] marker becomes the caption.
+    const figureMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/)
+    if (figureMatch) {
+      const prev = blocks[blocks.length - 1]
+      let caption: string | undefined
+      let refId: string | undefined
+      if (prev && prev.type === 'paragraph') {
+        const m = parseCaptionMarker(prev.text, 'figure')
+        if (m) {
+          caption = m.caption
+          refId = m.refId
+          blocks.pop()
+        }
+      }
+      blocks.push({
+        type: 'figure',
+        src: figureMatch[2].trim(),
+        alt: figureMatch[1],
+        caption,
+        refId,
+      })
+      continue
+    }
+
     // Table detection
     const lines = trimmed.split('\n')
     if (lines.length >= 2 && lines[0].includes('|') && /^\|[\s:*-]+(\|[\s:*-]+)*\|?$/.test(lines[1].trim())) {
       const parseCells = (row: string) => row.split('|').slice(1, -1).map(c => c.trim())
       const headers = parseCells(lines[0])
       const rows = lines.slice(2).filter(l => l.includes('|')).map(parseCells)
-      blocks.push({ type: 'table', headers, rows })
+      // Look for a preceding paragraph that's actually a [table:…] marker.
+      const prev = blocks[blocks.length - 1]
+      let caption: string | undefined
+      let refId: string | undefined
+      if (prev && prev.type === 'paragraph') {
+        const m = parseCaptionMarker(prev.text, 'table')
+        if (m) {
+          caption = m.caption
+          refId = m.refId
+          blocks.pop()
+        }
+      }
+      blocks.push({ type: 'table', headers, rows, caption, refId })
       continue
     }
 
@@ -431,7 +581,24 @@ function buildDocx(
   includeBibliography: boolean,
   language?: string | null,
   academic?: AcademicStructuralInput | null,
-  format: CitationFormat = 'ISNAD'
+  format: CitationFormat = 'ISNAD',
+  /**
+   * Project images keyed by id; manual `![](upload:<id>)` markdown
+   * blocks resolve through this list. Optional — undefined when the
+   * caller has no image data (most non-academic / non-creative paths).
+   */
+  projectImages?: ProjectImageData[],
+  /**
+   * Caption registry built earlier in the export pipeline; gives the
+   * body renderer the per-table/figure number assigned upstream.
+   */
+  captionState?: ReturnType<typeof createRegistryState>,
+  /**
+   * Pre-rendered chart / mermaid / equation PNG bytes keyed by
+   * SHA-256 of `${kind}:${source}`. Render misses are silently
+   * skipped — caption alone shows up.
+   */
+  figureCache?: Map<string, Buffer>,
 ): Document {
   const labels = getLabels(language)
   const footnotes: Record<number, { children: Paragraph[] }> = {}
@@ -683,7 +850,91 @@ function buildDocx(
             })
             children.push(new Paragraph({ spacing: { after: 60 } })) // gap before table
             children.push(table as unknown as Paragraph) // docx sections accept tables in children
-            children.push(new Paragraph({ spacing: { after: 120 } })) // gap after table
+            // Caption underneath when the table was registered via [table:…].
+            const num = (mdBlock as { __number?: number }).__number
+            if (num) {
+              children.push(
+                buildCaptionParagraph(format, 'table', num, mdBlock.caption ?? '', language ?? null)
+              )
+            } else {
+              children.push(new Paragraph({ spacing: { after: 120 } })) // gap after table
+            }
+            break
+          }
+          case 'figure': {
+            // Manual figure upload — `src` may be "upload:imageId" (a
+            // ProjectImage row) or an external URL. Look up the image
+            // bytes so we can embed via docx.ImageRun.
+            const num = (mdBlock as { __number?: number }).__number
+            const upload = mdBlock.src.match(/^upload:([a-zA-Z0-9_-]+)$/)
+            if (upload && projectImages) {
+              const img = projectImages.find((p) => p.id === upload[1])
+              if (img) {
+                children.push(
+                  new Paragraph({
+                    children: [
+                      new ImageRun({
+                        data: img.imageData,
+                        transformation: { width: 480, height: 320 },
+                        type: 'png',
+                      }),
+                    ],
+                    alignment: AlignmentType.CENTER,
+                    spacing: { before: 120 },
+                  })
+                )
+              }
+            }
+            if (num) {
+              children.push(
+                buildCaptionParagraph(format, 'figure', num, mdBlock.caption ?? '', language ?? null)
+              )
+            }
+            break
+          }
+          case 'chart':
+          case 'mermaid':
+          case 'equation': {
+            // Pull pre-rendered PNG (Vega-Lite / Mermaid / KaTeX via
+            // Kroki) from the cache built earlier. Embed at a sensible
+            // size, then drop the caption underneath.
+            const num = (mdBlock as { __number?: number }).__number
+            const source = mdBlock.type === 'equation' ? mdBlock.latex
+              : mdBlock.type === 'mermaid' ? mdBlock.src
+              : mdBlock.spec
+            const key = crypto.createHash('sha256').update(`${mdBlock.type}:${source}`).digest('hex')
+            const bytes = figureCache?.get(key)
+            if (bytes) {
+              const isEq = mdBlock.type === 'equation'
+              children.push(
+                new Paragraph({
+                  children: [
+                    new ImageRun({
+                      data: bytes,
+                      transformation: {
+                        width: isEq ? 240 : 480,
+                        height: isEq ? 60 : 320,
+                      },
+                      type: 'png',
+                    }),
+                  ],
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: 120 },
+                })
+              )
+            }
+            if (num) {
+              const cap = ('caption' in mdBlock && mdBlock.caption) || ''
+              children.push(
+                buildCaptionParagraph(
+                  format,
+                  mdBlock.type === 'equation' ? 'equation' : 'figure',
+                  num,
+                  cap,
+                  language ?? null,
+                )
+              )
+            }
             break
           }
           case 'hr': {
@@ -945,6 +1196,8 @@ function pdfRichText(
 }
 
 interface ProjectImageData {
+  /** ProjectImage.id — used as the lookup key for `![](upload:<id>)` markdown markers. */
+  id?: string
   imageData: Buffer
   chapterId: string | null
   subsectionId: string | null
@@ -1008,7 +1261,11 @@ function buildPdf(
   academic?: AcademicStructuralInput | null,
   format: CitationFormat = 'ISNAD',
   creativeSpec?: CreativeStructuralSpec | null,
-  printReady: boolean = false
+  printReady: boolean = false,
+  /** Caption registry built upstream — body uses it for per-block numbers. */
+  captionState?: ReturnType<typeof createRegistryState>,
+  /** Pre-rendered chart / mermaid / equation PNGs keyed by SHA-256(kind:source). */
+  figureCache?: Map<string, Buffer>,
 ): Promise<Buffer> {
   const labels = getLabels(language)
   const d = design ?? {}
@@ -1569,6 +1826,62 @@ function buildPdf(
                 doc.y = startY + rowH
               }
               doc.moveDown(0.5)
+              const tNum = (mdBlock as { __number?: number }).__number
+              if (tNum) {
+                renderCaption(doc, 'table', tNum, mdBlock.caption ?? '', fonts, BODY_SIZE, language ?? null)
+              }
+              break
+            }
+            case 'figure': {
+              const num = (mdBlock as { __number?: number }).__number
+              const upload = mdBlock.src.match(/^upload:([a-zA-Z0-9_-]+)$/)
+              if (upload && images) {
+                const img = images.find((p) => p.id === upload[1])
+                if (img) {
+                  ensureSpace(220)
+                  try {
+                    doc.image(img.imageData, MARGIN_LEFT + CONTENT_WIDTH * 0.1, undefined, {
+                      fit: [CONTENT_WIDTH * 0.8, 280],
+                      align: 'center',
+                    })
+                  } catch (e) {
+                    console.error('[export] Manual figure embed failed:', e)
+                  }
+                  doc.moveDown(0.3)
+                }
+              }
+              if (num) {
+                renderCaption(doc, 'figure', num, mdBlock.caption ?? '', fonts, BODY_SIZE, language ?? null)
+              }
+              break
+            }
+            case 'chart':
+            case 'mermaid':
+            case 'equation': {
+              const cnum = (mdBlock as { __number?: number }).__number
+              const csource = mdBlock.type === 'equation' ? mdBlock.latex
+                : mdBlock.type === 'mermaid' ? mdBlock.src
+                : mdBlock.spec
+              const ckey = crypto.createHash('sha256').update(`${mdBlock.type}:${csource}`).digest('hex')
+              const cbytes = figureCache?.get(ckey)
+              if (cbytes) {
+                const isEq = mdBlock.type === 'equation'
+                ensureSpace(isEq ? 80 : 280)
+                try {
+                  doc.image(cbytes, MARGIN_LEFT + CONTENT_WIDTH * (isEq ? 0.3 : 0.1), undefined, {
+                    fit: [CONTENT_WIDTH * (isEq ? 0.4 : 0.8), isEq ? 60 : 280],
+                    align: 'center',
+                  })
+                } catch (e) {
+                  console.error('[export] Figure embed failed:', e)
+                }
+                doc.moveDown(0.3)
+              }
+              if (cnum) {
+                const kind = mdBlock.type === 'equation' ? 'equation' : 'figure'
+                const cap = ('caption' in mdBlock && mdBlock.caption) || ''
+                renderCaption(doc, kind, cnum, cap, fonts, BODY_SIZE, language ?? null)
+              }
               break
             }
             case 'hr': {
@@ -1728,7 +2041,15 @@ async function buildEpubFromProject(args: BuildEpubFromProjectArgs): Promise<Buf
         }
         blocks.push({ type: 'heading', level: 3, text: sub.title })
         if (sub.content) {
-          blocks.push(...parseMarkdownBlocks(sub.content))
+          // Filter out the new academic block types (chart / mermaid /
+          // equation / figure) — EPUB rendering for those landed in a
+          // follow-up commit; for now drop them silently so the EPUB
+          // build keeps compiling.
+          const md = parseMarkdownBlocks(sub.content)
+          for (const b of md) {
+            if (b.type === 'chart' || b.type === 'mermaid' || b.type === 'equation' || b.type === 'figure') continue
+            blocks.push(b as RouteMdBlock)
+          }
         }
       }
       return {
@@ -1937,6 +2258,84 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       }
     }
 
+    // ---- Caption + cross-reference pass ----------------------------------
+    // First scan the body for [table:…] / [figure:…] / [chart:…] / [mermaid:…]
+    // / [equation:…] markers, assign sequential numbers per kind, and
+    // remember every refId so a later pass can replace [ref:id] in prose
+    // with the proper "Tablo 3" / "Figure 7" string.
+    const captionState = createRegistryState()
+    for (const sub of subsections) {
+      if (!sub.content) continue
+      const blocks = parseMarkdownBlocks(sub.content)
+      for (const block of blocks) {
+        if (block.type === 'table') {
+          const num = registerCaption(captionState, 'table', block.refId, block.caption)
+          ;(block as { __number?: number }).__number = num
+        } else if (block.type === 'figure') {
+          const num = registerCaption(captionState, 'figure', block.refId, block.caption)
+          ;(block as { __number?: number }).__number = num
+        } else if (block.type === 'chart') {
+          const num = registerCaption(captionState, 'chart', block.refId, block.caption)
+          ;(block as { __number?: number }).__number = num
+        } else if (block.type === 'mermaid') {
+          const num = registerCaption(captionState, 'mermaid', block.refId, block.caption)
+          ;(block as { __number?: number }).__number = num
+        } else if (block.type === 'equation') {
+          const num = registerCaption(captionState, 'equation', block.refId, undefined)
+          ;(block as { __number?: number }).__number = num
+        }
+      }
+    }
+    // Second pass: rewrite [ref:id] markers using the registry. This is
+    // applied to the entire subsection content so prose, lists, table
+    // cells, etc. all get resolved.
+    for (const sub of subsections) {
+      if (sub.content) {
+        sub.content = resolveCrossRefs(sub.content, captionState, project.language)
+      }
+    }
+
+    // ---- Figure pre-rendering pass --------------------------------------
+    // Mermaid / chart / equation blocks need a network call to Kroki to
+    // become PNG bytes; doing that synchronously inside the body render
+    // loop would either serialise every fetch or require restructuring
+    // the renderer. Pre-render every such block once, in parallel,
+    // keyed by source-text SHA-256 so the body loop just does a Map
+    // lookup.
+    const figureCache = new Map<string, Buffer>()
+    {
+      const jobs: Array<Promise<{ key: string; bytes: Buffer | null }>> = []
+      const seen = new Set<string>()
+      for (const sub of subsections) {
+        if (!sub.content) continue
+        const blocks = parseMarkdownBlocks(sub.content)
+        for (const block of blocks) {
+          if (block.type !== 'chart' && block.type !== 'mermaid' && block.type !== 'equation') continue
+          const source = block.type === 'equation' ? block.latex
+            : block.type === 'mermaid' ? block.src
+            : block.spec
+          const key = crypto.createHash('sha256').update(`${block.type}:${source}`).digest('hex')
+          if (seen.has(key)) continue
+          seen.add(key)
+          const renderer = block.type === 'equation' ? renderEquationPng
+            : block.type === 'mermaid' ? renderMermaidPng
+            : renderChartPng
+          jobs.push(renderer(source).then((bytes) => ({ key, bytes })))
+        }
+      }
+      const results = await Promise.all(jobs)
+      for (const { key, bytes } of results) {
+        if (bytes) figureCache.set(key, bytes)
+      }
+    }
+    function lookupFigurePng(
+      kind: 'chart' | 'mermaid' | 'equation',
+      source: string,
+    ): Buffer | undefined {
+      const key = crypto.createHash('sha256').update(`${kind}:${source}`).digest('hex')
+      return figureCache.get(key)
+    }
+
     // Citation-order formats (IEEE / Vancouver / AMA) render the
     // bibliography in first-appearance order; others keep the DB sort and
     // let CitationFormatter.orderBibliography handle the final alphabetical
@@ -1947,13 +2346,16 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     // Fetch project images if requested
     let projectImages: ProjectImageData[] = []
-    if (includeIllustrations && project.projectType !== 'ACADEMIC') {
+    // Academic exports also need projectImages so manual figure uploads
+    // (referenced via `![](upload:<id>)` markers in body) can be embedded.
+    if (includeIllustrations || project.projectType === 'ACADEMIC') {
       const imgs = await prisma.projectImage.findMany({
         where: { projectId },
-        select: { imageData: true, chapterId: true, subsectionId: true, sortOrder: true, layout: true, position: true },
+        select: { id: true, imageData: true, chapterId: true, subsectionId: true, sortOrder: true, layout: true, position: true },
         orderBy: { sortOrder: 'asc' },
       })
       projectImages = imgs.map((img) => ({
+        id: img.id,
         imageData: Buffer.from(img.imageData),
         chapterId: img.chapterId,
         subsectionId: img.subsectionId,
@@ -2042,7 +2444,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         academic,
         project.citationFormat,
         creativeSpec,
-        printReady
+        printReady,
+        captionState,
+        figureCache,
       )
     } else if (fileType === 'epub') {
       buffer = await buildEpubFromProject({
@@ -2062,7 +2466,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         includeBibliography,
         project.language,
         academic,
-        project.citationFormat
+        project.citationFormat,
+        projectImages,
+        captionState,
+        figureCache,
       )
       buffer = await Packer.toBuffer(doc)
     }

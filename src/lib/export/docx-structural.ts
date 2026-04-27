@@ -532,6 +532,82 @@ export function buildChapterOpening(
 }
 
 // =================================================================
+//  LIST OF TABLES / FIGURES PAGE
+// =================================================================
+
+import type { CaptionRecord } from './captions'
+import { listPageTitle } from './captions'
+
+export function buildListPage(
+  format: CitationFormat,
+  kind: 'table' | 'figure' | 'equation',
+  records: CaptionRecord[],
+  language: string | null,
+): Paragraph[] {
+  if (records.length === 0) return []
+
+  const out: Paragraph[] = []
+  const title = listPageTitle(kind, language)
+  out.push(
+    new Paragraph({
+      children: [new TextRun({ text: title, bold: true, size: chapterHp(format), font: 'Times New Roman', color: '000000' })],
+      heading: HeadingLevel.HEADING_1,
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 300 },
+    })
+  )
+  for (const rec of records) {
+    const isTable = rec.kind === 'table'
+    const isEq = rec.kind === 'equation'
+    const labelWord = isTable ? 'Table' : isEq ? 'Equation' : 'Figure'
+    const trWord = isTable ? 'Tablo' : isEq ? 'Eşitlik' : 'Şekil'
+    const word = language?.toLowerCase().startsWith('tr') ? trWord : labelWord
+    out.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: `${word} ${rec.number}: `, bold: true, size: bodyHp(format), font: 'Times New Roman', color: '000000' }),
+          new TextRun({ text: rec.caption, size: bodyHp(format), font: 'Times New Roman', color: '000000' }),
+        ],
+        spacing: { after: 80, line: Math.round(getFormatDefaults(format).lineHeight * 240) },
+      })
+    )
+  }
+  out.push(new Paragraph({ children: [new PageBreak()] }))
+  return out
+}
+
+/**
+ * Renders a caption line directly under a table or figure. Bold label
+ * + colon + caption text, centered.
+ */
+export function buildCaptionParagraph(
+  format: CitationFormat,
+  kind: 'table' | 'figure' | 'equation',
+  number: number,
+  caption: string,
+  language: string | null,
+): Paragraph {
+  const isTable = kind === 'table'
+  const isEq = kind === 'equation'
+  const trWord = isTable ? 'Tablo' : isEq ? 'Eşitlik' : 'Şekil'
+  const enWord = isTable ? 'Table' : isEq ? 'Equation' : 'Figure'
+  const word = language?.toLowerCase().startsWith('tr') ? trWord : enWord
+  return new Paragraph({
+    children: [
+      new TextRun({ text: `${word} ${number}`, bold: true, size: bodyHp(format), font: 'Times New Roman', color: '000000' }),
+      ...(caption
+        ? [
+            new TextRun({ text: '. ', bold: true, size: bodyHp(format), font: 'Times New Roman', color: '000000' }),
+            new TextRun({ text: caption, italics: true, size: bodyHp(format), font: 'Times New Roman', color: '000000' }),
+          ]
+        : []),
+    ],
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 120, after: 200 },
+  })
+}
+
+// =================================================================
 //  AMA KEY POINTS BOX
 // =================================================================
 

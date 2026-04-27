@@ -282,6 +282,70 @@ function renderOneAbstract(
 }
 
 // =================================================================
+//  LIST OF TABLES / FIGURES (PDF)
+// =================================================================
+
+import type { CaptionRecord } from './captions'
+import { listPageTitle } from './captions'
+
+export function renderListPage(
+  doc: Doc,
+  format: CitationFormat,
+  kind: 'table' | 'figure' | 'equation',
+  records: CaptionRecord[],
+  fonts: FontBundle,
+  bodyFontSize: number,
+  language: string | null,
+): void {
+  if (records.length === 0) return
+
+  const fmtDefaults = getFormatDefaults(format)
+  doc.font(fonts.bold).fontSize(fmtDefaults.chapterTitleSize)
+  doc.text(listPageTitle(kind, language), { align: 'center' })
+  doc.moveDown(1)
+
+  doc.fontSize(bodyFontSize)
+  for (const rec of records) {
+    const isTable = rec.kind === 'table'
+    const isEq = rec.kind === 'equation'
+    const trWord = isTable ? 'Tablo' : isEq ? 'Eşitlik' : 'Şekil'
+    const enWord = isTable ? 'Table' : isEq ? 'Equation' : 'Figure'
+    const word = language?.toLowerCase().startsWith('tr') ? trWord : enWord
+    doc.font(fonts.bold).text(`${word} ${rec.number}: `, { continued: true })
+    doc.font(fonts.regular).text(rec.caption, { lineGap: 2 })
+    doc.moveDown(0.3)
+  }
+  doc.addPage()
+}
+
+/**
+ * Inline caption renderer used right after a table / figure block.
+ * Bold label, italic caption text, centered.
+ */
+export function renderCaption(
+  doc: Doc,
+  kind: 'table' | 'figure' | 'equation',
+  number: number,
+  caption: string,
+  fonts: FontBundle,
+  bodyFontSize: number,
+  language: string | null,
+): void {
+  const isTable = kind === 'table'
+  const isEq = kind === 'equation'
+  const trWord = isTable ? 'Tablo' : isEq ? 'Eşitlik' : 'Şekil'
+  const enWord = isTable ? 'Table' : isEq ? 'Equation' : 'Figure'
+  const word = language?.toLowerCase().startsWith('tr') ? trWord : enWord
+  doc.moveDown(0.3)
+  doc.fontSize(bodyFontSize)
+  doc.font(fonts.bold).text(`${word} ${number}`, { continued: !!caption, align: 'center' })
+  if (caption) {
+    doc.font(fonts.italic).text(`. ${caption}`, { align: 'center' })
+  }
+  doc.moveDown(0.5)
+}
+
+// =================================================================
 //  AMA KEY POINTS + SUBMISSION INFO PAGES (PDF)
 // =================================================================
 
