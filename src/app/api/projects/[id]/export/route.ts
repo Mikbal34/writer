@@ -1109,12 +1109,42 @@ function buildPdf(
       doc.on('pageAdded', drawCropMarks)
     }
 
+    // ---- Page-bottom footnote tracking ----
+    const PAGE_HEIGHT = pageDimensions[1]
+    const PAGE_WIDTH = pageDimensions[0]
+    const MARGIN_BOTTOM = mBottom
+    const MARGIN_LEFT = mLeft
+    const CONTENT_BOTTOM = PAGE_HEIGHT - MARGIN_BOTTOM
+    const FOOTNOTE_FONT_SIZE = 8.5
+    const FOOTNOTE_LINE_GAP = 1.5
+    const FOOTNOTE_SEPARATOR_HEIGHT = 15 // space for the separator line + padding
+    const CONTENT_WIDTH = PAGE_WIDTH - mLeft - mRight
+
+    // Font sizes from design settings
+    // Per-format body styling (from format-defaults.ts) is the *base*;
+    // bookDesign overrides win when the user has explicitly set them on
+    // the design page. Falls back to ISNAD-ish defaults for non-academic
+    // exports that don't have a citation format assigned.
+    const fmtPdf: FormatDefaults = getFormatDefaults(format)
+    const BODY_SIZE = d.bodyFontSize ?? fmtPdf.bodyFontSize
+    const CHAPTER_SIZE = d.chapterTitleSize ?? fmtPdf.chapterTitleSize
+    const SECTION_SIZE = d.sectionTitleSize ?? fmtPdf.sectionTitleSize
+    const SUBSECTION_SIZE = d.subsectionTitleSize ?? fmtPdf.subsectionTitleSize
+    const effectiveLineHeight = d.lineHeight ?? fmtPdf.lineHeight
+    const LINE_GAP = Math.round(effectiveLineHeight * BODY_SIZE - BODY_SIZE)
+    const PARA_INDENT = d.firstLineIndent ?? fmtPdf.firstLineIndent
+    const PARA_SPACING_AFTER = d.paragraphSpacing ?? fmtPdf.paragraphSpacing
+    const BODY_ALIGN: 'justify' | 'left' = (d.textAlign === 'justify' || d.textAlign === 'left'
+      ? d.textAlign
+      : fmtPdf.textAlign === 'justify' ? 'justify' : 'left')
+
     // ---- Per-page running head + page number ---------------------------
     // Drawn from a `pageAdded` event so the geometry is correct on every
-    // freshly-created page; switchToPage post-passes turned out to be
-    // flaky in pdfkit's buffered mode (text() never reached the canvas).
-    // We track front-matter vs body via a closure flag so Roman pre-matter
-    // and Arabic body numbering work as the format spec prescribes.
+    // freshly-created page (post-pass switchToPage was flaky in pdfkit's
+    // buffered mode). Front-matter vs body tracked via a closure flag so
+    // Roman pre-matter and Arabic body numbering work as the spec
+    // prescribes. Must be declared AFTER BODY_SIZE because the closure
+    // reads it for the page-number font size.
     let pdfPageMode: 'front' | 'body' = 'front'
     let pdfFrontPageNum = 0
     let pdfBodyPageNum = 0
@@ -1152,8 +1182,6 @@ function buildPdf(
 
       if (!drawPageNumber && !(headEnabled && headText)) return
 
-      // Preserve doc.x / doc.y so the page's main content rendering
-      // continues from the top of the margin area as expected.
       const prevX = doc.x
       const prevY = doc.y
       doc.save()
@@ -1183,37 +1211,11 @@ function buildPdf(
       doc.y = prevY
     }
 
-    drawPageHeaderFooter() // first page (auto-created, never fires pageAdded)
+    // First page is auto-created by `new PDFDocument` and pageAdded
+    // doesn't fire for it; trigger the draw manually before any
+    // structural rendering starts.
+    drawPageHeaderFooter()
     doc.on('pageAdded', drawPageHeaderFooter)
-
-    // ---- Page-bottom footnote tracking ----
-    const PAGE_HEIGHT = pageDimensions[1]
-    const PAGE_WIDTH = pageDimensions[0]
-    const MARGIN_BOTTOM = mBottom
-    const MARGIN_LEFT = mLeft
-    const CONTENT_BOTTOM = PAGE_HEIGHT - MARGIN_BOTTOM
-    const FOOTNOTE_FONT_SIZE = 8.5
-    const FOOTNOTE_LINE_GAP = 1.5
-    const FOOTNOTE_SEPARATOR_HEIGHT = 15 // space for the separator line + padding
-    const CONTENT_WIDTH = PAGE_WIDTH - mLeft - mRight
-
-    // Font sizes from design settings
-    // Per-format body styling (from format-defaults.ts) is the *base*;
-    // bookDesign overrides win when the user has explicitly set them on
-    // the design page. Falls back to ISNAD-ish defaults for non-academic
-    // exports that don't have a citation format assigned.
-    const fmtPdf: FormatDefaults = getFormatDefaults(format)
-    const BODY_SIZE = d.bodyFontSize ?? fmtPdf.bodyFontSize
-    const CHAPTER_SIZE = d.chapterTitleSize ?? fmtPdf.chapterTitleSize
-    const SECTION_SIZE = d.sectionTitleSize ?? fmtPdf.sectionTitleSize
-    const SUBSECTION_SIZE = d.subsectionTitleSize ?? fmtPdf.subsectionTitleSize
-    const effectiveLineHeight = d.lineHeight ?? fmtPdf.lineHeight
-    const LINE_GAP = Math.round(effectiveLineHeight * BODY_SIZE - BODY_SIZE)
-    const PARA_INDENT = d.firstLineIndent ?? fmtPdf.firstLineIndent
-    const PARA_SPACING_AFTER = d.paragraphSpacing ?? fmtPdf.paragraphSpacing
-    const BODY_ALIGN: 'justify' | 'left' = (d.textAlign === 'justify' || d.textAlign === 'left'
-      ? d.textAlign
-      : fmtPdf.textAlign === 'justify' ? 'justify' : 'left')
 
     // Per-page footnote storage
     const pageFootnotes: Map<number, Array<{ num: number; text: string }>> = new Map()
