@@ -1109,6 +1109,83 @@ function buildPdf(
       doc.on('pageAdded', drawCropMarks)
     }
 
+    // ---- Per-page running head + page number ---------------------------
+    // Drawn from a `pageAdded` event so the geometry is correct on every
+    // freshly-created page; switchToPage post-passes turned out to be
+    // flaky in pdfkit's buffered mode (text() never reached the canvas).
+    // We track front-matter vs body via a closure flag so Roman pre-matter
+    // and Arabic body numbering work as the format spec prescribes.
+    let pdfPageMode: 'front' | 'body' = 'front'
+    let pdfFrontPageNum = 0
+    let pdfBodyPageNum = 0
+
+    const drawPageHeaderFooter = () => {
+      if (!academic) return
+      const spec = getStructuralSpec(format)
+      const pagSpec = spec.pagination
+      const headSpec = spec.runningHead
+
+      const inFront = pdfPageMode === 'front'
+      if (inFront) pdfFrontPageNum++
+      else pdfBodyPageNum++
+      const inSectionIdx = inFront ? pdfFrontPageNum : pdfBodyPageNum
+      const isTitlePage = inFront && pdfFrontPageNum === 1
+
+      const numStyle = inFront ? pagSpec.frontMatter : pagSpec.body
+      const showNumber = numStyle !== 'none'
+        && !(isTitlePage && !pagSpec.showOnTitlePage)
+      const pageNumStr = showNumber
+        ? formatPageNumber(format, inSectionIdx, inFront)
+        : ''
+
+      const headEnabled = headSpec.enabled && !isTitlePage
+      const surname = academic.author
+        ? academic.author.trim().split(/\s+/).pop() ?? null
+        : null
+      const shortTitle = academic.submission?.shortTitle
+        ?? (projectTitle.length <= 50 ? projectTitle : projectTitle.slice(0, 50))
+      const headText = headEnabled
+        ? renderRunningHeadText(headSpec.content, surname, shortTitle, pageNumStr)
+        : ''
+      const drawPageNumber = !!pageNumStr
+        && (!headEnabled || pagSpec.position !== headSpec.position)
+
+      if (!drawPageNumber && !(headEnabled && headText)) return
+
+      // Preserve doc.x / doc.y so the page's main content rendering
+      // continues from the top of the margin area as expected.
+      const prevX = doc.x
+      const prevY = doc.y
+      doc.save()
+      const fontSize = Math.max(9, Math.round(BODY_SIZE * 0.9))
+      doc.font(fonts.regular).fontSize(fontSize).fillColor('black')
+
+      const yTop = Math.max(20, mTop - 24)
+      const yBottom = pageDimensions[1] - mBottom + 14
+      const contentWidth = pageDimensions[0] - mLeft - mRight
+
+      if (headEnabled && headText) {
+        const y = headSpec.position === 'bottom-center' ? yBottom : yTop
+        doc.text(headText, mLeft, y, {
+          width: contentWidth,
+          align: headSpec.position === 'top-right' ? 'right' : 'center',
+        })
+      }
+      if (drawPageNumber) {
+        const y = pagSpec.position === 'bottom-center' ? yBottom : yTop
+        doc.text(pageNumStr, mLeft, y, {
+          width: contentWidth,
+          align: pagSpec.position === 'top-right' ? 'right' : 'center',
+        })
+      }
+      doc.restore()
+      doc.x = prevX
+      doc.y = prevY
+    }
+
+    drawPageHeaderFooter() // first page (auto-created, never fires pageAdded)
+    doc.on('pageAdded', drawPageHeaderFooter)
+
     // ---- Page-bottom footnote tracking ----
     const PAGE_HEIGHT = pageDimensions[1]
     const PAGE_WIDTH = pageDimensions[0]
@@ -1225,11 +1302,14 @@ function buildPdf(
       doc.addPage()
     }
 
-    // Capture the index of the first body page so the post-pass below
-    // knows where front-matter (lower-roman / no number) ends and the
-    // body (arabic) begins. Each format's pagination spec drives which
-    // numbering style + position to actually render.
-    const bodyStartPageIndex = doc.bufferedPageRange().count
+    // Flip the page-numbering mode to "body" so the per-page header /
+    // footer drawn by the pageAdded listener uses the body's numbering
+    // style (arabic) instead of the front-matter style (Roman for some
+    // formats). The page that's currently the "tail" was added by the
+    // last front-matter renderer with `front` mode — its number stays
+    // as the last front-matter number, which matches the convention
+    // (Roman pre-matter ends, Arabic body restarts on the next page).
+    pdfPageMode = 'body'
 
     let currentChapter = ''
     let currentSection = ''
@@ -1585,85 +1665,6 @@ function buildPdf(
         }) + 3
       }
     })
-
-    // ---- Running head + page numbers (third pass) -----------------------
-    // Walks every buffered page, computes the format-specific page-number
-    // string + running-head text for that page's section (front matter vs
-    // body), and draws them in the top/bottom margin. Front-matter pages
-    // count from i (1-based); body pages restart from 1 so the user sees
-    // arabic numerals on the body even after Roman pre-matter.
-    if (academic) {
-      const spec = getStructuralSpec(format)
-      const pagSpec = spec.pagination
-      const headSpec = spec.runningHead
-      const surname = academic.author
-        ? academic.author.trim().split(/\s+/).pop() ?? null
-        : null
-      const shortTitle = academic.submission?.shortTitle
-        ?? (projectTitle.length <= 50 ? projectTitle : projectTitle.slice(0, 50))
-
-      // Geometry — compute once and reuse. Pdfkit's per-page state can
-      // be flaky after switchToPage, so we rely on the doc's constructor
-      // values rather than reading doc.page.* every iteration.
-      const pageW = pageDimensions[0]
-      const pageH = pageDimensions[1]
-      const numFontSize = Math.max(9, Math.round(BODY_SIZE * 0.9))
-      const headFontSize = numFontSize
-      const headBaselineTop = Math.max(20, mTop - 24)
-      const headBaselineBottom = pageH - mBottom + 14
-      const contentWidth = pageW - mLeft - mRight
-
-      const totalRange = doc.bufferedPageRange()
-      for (let i = 0; i < totalRange.count; i++) {
-        const absIdx = totalRange.start + i
-        doc.switchToPage(absIdx)
-
-        const isFrontMatter = i < bodyStartPageIndex
-        const isTitlePage = i === 0
-        const inSectionIdx = isFrontMatter ? i + 1 : i - bodyStartPageIndex + 1
-        const numStyle = isFrontMatter ? pagSpec.frontMatter : pagSpec.body
-        const showNumber = numStyle !== 'none'
-          && !(isTitlePage && !pagSpec.showOnTitlePage)
-        const pageNumStr = showNumber
-          ? formatPageNumber(format, inSectionIdx, isFrontMatter)
-          : ''
-        const headEnabled = headSpec.enabled && !isTitlePage
-        const headText = headEnabled
-          ? renderRunningHeadText(headSpec.content, surname, shortTitle, pageNumStr)
-          : ''
-        const drawPageNumber = !!pageNumStr && (!headEnabled || pagSpec.position !== headSpec.position)
-        if (!drawPageNumber && !(headEnabled && headText)) continue
-
-        // Reset state on each page — switchToPage doesn't reset fonts,
-        // and earlier passes (footnotes, running) may have left funky
-        // state behind. save/restore guards against bleeding into other
-        // page-level draws.
-        doc.save()
-        doc.font(fonts.regular).fontSize(numFontSize).fillColor('black')
-
-        if (headEnabled && headText) {
-          const y = headSpec.position === 'bottom-center'
-            ? headBaselineBottom : headBaselineTop
-          doc.fontSize(headFontSize)
-          doc.text(headText, mLeft, y, {
-            width: contentWidth,
-            align: headSpec.position === 'top-right' ? 'right' : 'center',
-          })
-        }
-        if (drawPageNumber) {
-          const y = pagSpec.position === 'bottom-center'
-            ? headBaselineBottom : headBaselineTop
-          const align: 'left' | 'center' | 'right' =
-            pagSpec.position === 'top-right' ? 'right' : 'center'
-          doc.fontSize(numFontSize)
-          doc.text(pageNumStr, mLeft, y, {
-            width: contentWidth,
-            align,
-          })
-        }
-        doc.restore()
-      }
-    }
 
     doc.end()
   })
