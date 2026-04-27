@@ -168,11 +168,17 @@ export function renderAbstractPages(
 
   const englishBody = meta.abstractEn || (!spec.abstract.dualLanguage ? meta.abstractTr : null)
   if (englishBody) {
+    // For dual-language formats (ISNAD) the second page is the English
+    // abstract — its label is always "Abstract" / "ABSTRACT", regardless
+    // of the format's primary `abstract.label` (which is the TR label).
+    const englishLabel = spec.abstract.dualLanguage
+      ? (spec.abstract.labelUppercase ? 'ABSTRACT' : 'Abstract')
+      : (spec.abstract.labelUppercase ? spec.abstract.label.toUpperCase() : spec.abstract.label)
     renderOneAbstract(
       doc,
-      spec.abstract.labelUppercase ? spec.abstract.label.toUpperCase() : spec.abstract.label,
+      englishLabel,
       englishBody,
-      spec.abstract.keywordsLabel,
+      spec.abstract.dualLanguage ? 'Keywords' : spec.abstract.keywordsLabel,
       spec.abstract.dualLanguage ? meta.keywordsEn : (meta.keywordsEn.length > 0 ? meta.keywordsEn : meta.keywordsTr),
       fonts,
       bodyFontSize,
