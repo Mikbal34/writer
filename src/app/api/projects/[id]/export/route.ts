@@ -1194,9 +1194,14 @@ function buildPdf(
 
       if (headEnabled && headText) {
         const y = headSpec.position === 'bottom-center' ? yBottom : yTop
+        // lineBreak: false — drawing in the margin area near page edges
+        // would otherwise trip pdfkit's auto-pagination, recursively
+        // firing pageAdded → drawPageHeaderFooter → text() → infinite
+        // call stack and a 500.
         doc.text(headText, mLeft, y, {
           width: contentWidth,
           align: headSpec.position === 'top-right' ? 'right' : 'center',
+          lineBreak: false,
         })
       }
       if (drawPageNumber) {
@@ -1204,6 +1209,7 @@ function buildPdf(
         doc.text(pageNumStr, mLeft, y, {
           width: contentWidth,
           align: pagSpec.position === 'top-right' ? 'right' : 'center',
+          lineBreak: false,
         })
       }
       doc.restore()
