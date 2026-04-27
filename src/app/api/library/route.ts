@@ -77,6 +77,14 @@ export async function POST(req: NextRequest) {
         entryType: body.entryType ?? 'kitap',
         authorSurname: authorSurname.trim(),
         authorName: body.authorName?.trim() || null,
+        coAuthors: Array.isArray(body.coAuthors)
+          ? body.coAuthors
+              .map((a: { surname?: string; name?: string }) => ({
+                surname: a.surname?.trim() ?? '',
+                name: a.name?.trim() || null,
+              }))
+              .filter((a: { surname: string }) => a.surname.length > 0)
+          : undefined,
         title: title.trim(),
         shortTitle: body.shortTitle?.trim() || null,
         editor: body.editor?.trim() || null,

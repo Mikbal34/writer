@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
             entryType: entry.entryType,
             authorSurname: entry.authorSurname,
             authorName: entry.authorName,
+            coAuthors: entry.coAuthors.length > 0 ? entry.coAuthors : undefined,
             title: entry.title,
             shortTitle: entry.shortTitle,
             editor: entry.editor,

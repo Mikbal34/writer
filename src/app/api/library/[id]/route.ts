@@ -52,6 +52,16 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         ...(body.entryType !== undefined && { entryType: body.entryType }),
         ...(body.authorSurname !== undefined && { authorSurname: body.authorSurname.trim() }),
         ...(body.authorName !== undefined && { authorName: body.authorName?.trim() || null }),
+        ...(body.coAuthors !== undefined && {
+          coAuthors: Array.isArray(body.coAuthors)
+            ? body.coAuthors
+                .map((a: { surname?: string; name?: string }) => ({
+                  surname: a.surname?.trim() ?? '',
+                  name: a.name?.trim() || null,
+                }))
+                .filter((a: { surname: string }) => a.surname.length > 0)
+            : null
+        }),
         ...(body.title !== undefined && { title: body.title.trim() }),
         ...(body.shortTitle !== undefined && { shortTitle: body.shortTitle?.trim() || null }),
         ...(body.editor !== undefined && { editor: body.editor?.trim() || null }),

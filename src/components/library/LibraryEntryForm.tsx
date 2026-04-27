@@ -17,10 +17,17 @@ import { toast } from "sonner";
 
 type EntryType = "kitap" | "makale" | "nesir" | "ceviri" | "tez" | "ansiklopedi" | "web";
 
+export interface CoAuthor {
+  surname: string;
+  name: string;
+}
+
 export interface LibraryFormData {
   entryType: EntryType;
   authorSurname: string;
   authorName: string;
+  /** 2nd…Nth authors — drives the format-specific "et al." truncation. */
+  coAuthors: CoAuthor[];
   title: string;
   shortTitle: string;
   editor: string;
@@ -53,6 +60,7 @@ const EMPTY_FORM: LibraryFormData = {
   entryType: "kitap",
   authorSurname: "",
   authorName: "",
+  coAuthors: [],
   title: "",
   shortTitle: "",
   editor: "",
@@ -123,11 +131,19 @@ export default function LibraryEntryForm({
 
     const applyFull = (full: Record<string, unknown>) => {
       if (cancelled) return;
+      const rawCo = full.coAuthors;
+      const co: CoAuthor[] = Array.isArray(rawCo)
+        ? (rawCo as Array<Record<string, unknown>>).map((a) => ({
+            surname: typeof a.surname === "string" ? a.surname : "",
+            name: typeof a.name === "string" ? a.name : "",
+          }))
+        : [];
       setForm((prev) => ({
         ...prev,
         entryType: (full.entryType as EntryType) ?? prev.entryType,
         authorSurname: (full.authorSurname as string) ?? "",
         authorName: (full.authorName as string) ?? "",
+        coAuthors: co,
         title: (full.title as string) ?? "",
         shortTitle: (full.shortTitle as string) ?? "",
         editor: (full.editor as string) ?? "",
@@ -186,8 +202,31 @@ export default function LibraryEntryForm({
     };
   }, [entryId]);
 
-  function update(field: keyof LibraryFormData, value: string) {
+  function update<K extends keyof LibraryFormData>(field: K, value: LibraryFormData[K]) {
     setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function updateCoAuthor(idx: number, field: keyof CoAuthor, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      coAuthors: prev.coAuthors.map((a, i) =>
+        i === idx ? { ...a, [field]: value } : a
+      ),
+    }));
+  }
+
+  function addCoAuthor() {
+    setForm((prev) => ({
+      ...prev,
+      coAuthors: [...prev.coAuthors, { surname: "", name: "" }],
+    }));
+  }
+
+  function removeCoAuthor(idx: number) {
+    setForm((prev) => ({
+      ...prev,
+      coAuthors: prev.coAuthors.filter((_, i) => i !== idx),
+    }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -282,6 +321,58 @@ export default function LibraryEntryForm({
             onChange={(e) => update("authorName", e.target.value)}
           />
         </Field>
+      </div>
+
+      {/* Co-authors — used by per-format "et al." rules. The first
+          author lives on the two fields above; co-authors here are the
+          2nd…Nth in publication order. */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs uppercase tracking-wide text-[#5C4A32]">
+            Co-authors
+          </Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            onClick={addCoAuthor}
+          >
+            + Add co-author
+          </Button>
+        </div>
+        {form.coAuthors.length === 0 ? (
+          <p className="text-[10px] text-[#8a7a65] italic">
+            No co-authors. The first author above is sufficient for single-author
+            works; add co-authors for multi-author papers so the bibliography
+            output applies the format-specific “et al.” rule.
+          </p>
+        ) : (
+          form.coAuthors.map((co, idx) => (
+            <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+              <Input
+                placeholder="Surname"
+                value={co.surname}
+                onChange={(e) => updateCoAuthor(idx, "surname", e.target.value)}
+              />
+              <Input
+                placeholder="First name"
+                value={co.name}
+                onChange={(e) => updateCoAuthor(idx, "name", e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2 text-red-700 hover:bg-red-50"
+                onClick={() => removeCoAuthor(idx)}
+                aria-label="Remove co-author"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))
+        )}
       </div>
 
       <Field id="title" label="Title" required>

@@ -72,6 +72,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
           entryType: toEntryType(bib.entryType),
           authorSurname: bib.authorSurname,
           authorName: bib.authorName,
+          coAuthors: bib.coAuthors ?? undefined,
           title: bib.title,
           shortTitle: bib.shortTitle,
           editor: bib.editor,
