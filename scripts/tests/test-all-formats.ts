@@ -31,15 +31,15 @@ import {
   buildBibliographyHeader,
   buildChapterOpening,
   type AcademicMeta,
-} from '../src/lib/export/docx-structural'
+} from '../../src/lib/export/docx-structural'
 import {
   renderTitlePage,
   renderAbstractPages,
   renderKeyPointsPage,
   renderSubmissionInfoPage,
   renderChapterOpening,
-} from '../src/lib/export/pdf-structural'
-import { getFormatDefaults } from '../src/lib/citations/format-defaults'
+} from '../../src/lib/export/pdf-structural'
+import { getFormatDefaults } from '../../src/lib/citations/format-defaults'
 import type { CitationFormat } from '@prisma/client'
 
 const FORMATS: CitationFormat[] = [

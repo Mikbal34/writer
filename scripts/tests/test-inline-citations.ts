@@ -6,9 +6,9 @@
  *   npx tsx scripts/test-inline-citations.ts
  */
 
-import { getCitationFormatter } from '../src/lib/citations/formatter'
-import { resolveInlineCitations, createResolverState } from '../src/lib/citations/inline-resolver'
-import type { BibliographyEntry } from '../src/types/bibliography'
+import { getCitationFormatter } from '../../src/lib/citations/formatter'
+import { resolveInlineCitations, createResolverState } from '../../src/lib/citations/inline-resolver'
+import type { BibliographyEntry } from '../../src/types/bibliography'
 import type { CitationFormat } from '@prisma/client'
 
 const ENTRIES: BibliographyEntry[] = [

@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Quilpen
 
-## Getting Started
+AI-assisted academic writing — generates submission-ready manuscripts in nine
+citation formats (APA 7, MLA 9, Chicago 17, Turabian 9, Harvard, IEEE,
+Vancouver, AMA 11, ISNAD 2). Per-format typography, structured abstracts,
+multi-author support, BibTeX/Zotero library, in-text citations, footnotes,
+captions, cross-references, charts, diagrams, and equations.
 
-First, run the development server:
+## Stack
+
+- **Frontend** — Next.js 16 App Router · React 19 · Tailwind · shadcn/ui · TipTap
+- **Backend** — Next.js API routes · Prisma 7 (Postgres + pgvector adapter)
+- **AI** — Anthropic Claude (writing, abstract generation) · Google Imagen 4 (creative)
+- **Export** — DOCX (`docx`), PDF (`pdfkit`), EPUB · Kroki (charts/mermaid/equations)
+- **Auth** — NextAuth (credentials + Google) with Prisma adapter
+- **Hosting** — Railway (web + Postgres)
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env   # fill in DATABASE_URL, ANTHROPIC_API_KEY, etc.
+npx prisma generate
+npx prisma db push     # syncs schema to DB
+npm run dev            # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Repo layout
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+src/
+  app/                  Next.js routes (API + pages)
+  components/           shadcn-style React components
+  lib/
+    academic-meta/      Per-format Zod schemas + builders
+    citations/          9 citation formatters + author-list helper
+    export/             DOCX/PDF/EPUB builders
+    prompts/            Claude prompt templates
+prisma/
+  schema.prisma         DB schema (Project, Bibliography, LibraryEntry, …)
+scripts/
+  backfills/            One-shot DB migrations (already applied)
+  tests/                Format regression tests (run via tsx)
+  admin/                Admin tools (create-admin)
+  _archived/            One-off scripts kept for forensic value
+python-service/         FastAPI service for PDF extraction + embeddings
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Tests
 
-## Learn More
+```bash
+npx tsx scripts/tests/test-all-formats.ts      # generates DOCX+PDF for every format
+npx tsx scripts/tests/test-inline-citations.ts # in-text citation pipeline
+npx tsx scripts/tests/test-et-al.ts            # author-list truncation rules
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Production runs on Railway. Pushing to `main` triggers an auto-build. The
+Python service needs the same `DATABASE_URL` and a separate Railway service.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+For Kroki (chart/diagram/equation rendering) we hit the public
+`https://kroki.io` by default; set `KROKI_BASE_URL` to a self-hosted
+instance for higher throughput.

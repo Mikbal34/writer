@@ -21,7 +21,7 @@
 import { Pool } from 'pg'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient, type CitationFormat } from '@prisma/client'
-import { emptyMetaFor, type AcademicMeta } from '../src/lib/academic-meta'
+import { emptyMetaFor, type AcademicMeta } from '../../src/lib/academic-meta'
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 const adapter = new PrismaPg(pool)

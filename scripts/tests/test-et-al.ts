@@ -6,8 +6,8 @@
  *   npx tsx scripts/test-et-al.ts
  */
 
-import { getCitationFormatter } from '../src/lib/citations/formatter'
-import type { BibliographyEntry } from '../src/types/bibliography'
+import { getCitationFormatter } from '../../src/lib/citations/formatter'
+import type { BibliographyEntry } from '../../src/types/bibliography'
 import type { CitationFormat } from '@prisma/client'
 
 function makeEntry(authorCount: number): BibliographyEntry {
