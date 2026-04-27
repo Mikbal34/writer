@@ -24,6 +24,7 @@ import {
   type BibliographyPrefix,
   type InlineCitationStyle,
 } from './base'
+import { renderAuthorList, POLICIES, vancouverLastInitial } from './author-list'
 
 export class VancouverFormatter extends CitationFormatter {
   override get bibliographyOrder(): BibliographyOrder {
@@ -69,16 +70,13 @@ export class VancouverFormatter extends CitationFormatter {
   // ==================== PRIVATE ====================
 
   private author(entry: BibliographyEntry): string {
-    // Vancouver: "Smith AB" — no periods, no comma
-    if (entry.authorName) {
-      const initials = entry.authorName
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((n) => n.charAt(0).toUpperCase())
-        .join('')
-      return `${entry.authorSurname} ${initials}`
-    }
-    return entry.authorSurname
+    // Vancouver: "Smith AB, Jones CD, Brown EF, et al." (6 max + et al.)
+    return renderAuthorList(entry, POLICIES.VANCOUVER, {
+      renderOne: vancouverLastInitial,
+      separator: ', ',
+      finalSeparator: ', ',
+      etAl: 'et al.',
+    })
   }
 
   private edition(entry: BibliographyEntry): string {

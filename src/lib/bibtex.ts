@@ -7,6 +7,8 @@ export interface ParsedBibtexEntry {
   entryType: EntryType
   authorSurname: string
   authorName: string | null
+  /** 2nd…Nth authors when the BibTeX entry has multiple `author=` entries. */
+  coAuthors: Array<{ surname: string; name: string | null }>
   title: string
   shortTitle: string | null
   editor: string | null
@@ -55,42 +57,32 @@ function extractTextField(fields: Record<string, unknown>, key: string): string 
   return String(val).trim() || null
 }
 
-function parseAuthor(authorField: unknown): { surname: string; name: string | null } {
-  if (!authorField) return { surname: 'Unknown', name: null }
+function parseOneAuthor(raw: unknown): { surname: string; name: string | null } {
+  if (!raw) return { surname: 'Unknown', name: null }
 
-  let authorStr: string
-  if (typeof authorField === 'string') {
-    authorStr = authorField
-  } else if (Array.isArray(authorField)) {
-    // bibtex-parser returns author as array of creators
-    const first = authorField[0]
-    if (typeof first === 'object' && first !== null) {
-      const creator = first as Record<string, unknown>
-      if (creator.lastName || creator.family) {
-        return {
-          surname: String(creator.lastName ?? creator.family ?? 'Unknown').trim(),
-          name: String(creator.firstName ?? creator.given ?? '').trim() || null,
-        }
+  if (typeof raw === 'object' && raw !== null) {
+    const creator = raw as Record<string, unknown>
+    if (creator.lastName || creator.family) {
+      return {
+        surname: String(creator.lastName ?? creator.family ?? 'Unknown').trim(),
+        name: String(creator.firstName ?? creator.given ?? '').trim() || null,
       }
-      if (creator.literal) {
-        authorStr = String(creator.literal)
-      } else {
-        authorStr = String(first)
-      }
-    } else {
-      authorStr = String(first)
     }
-  } else {
-    authorStr = String(authorField)
+    if (creator.literal) {
+      return splitAuthorString(String(creator.literal))
+    }
+    return splitAuthorString(String(raw))
   }
+  return splitAuthorString(String(raw))
+}
 
-  // Try "Surname, Name" format
+function splitAuthorString(authorStr: string): { surname: string; name: string | null } {
+  // "Surname, Name" form
   if (authorStr.includes(',')) {
     const parts = authorStr.split(',').map((s) => s.trim())
     return { surname: parts[0], name: parts[1] || null }
   }
-
-  // Try "Name Surname" format (take last word as surname)
+  // "Name Surname" form — take the last word as surname.
   const words = authorStr.trim().split(/\s+/)
   if (words.length > 1) {
     return {
@@ -98,8 +90,29 @@ function parseAuthor(authorField: unknown): { surname: string; name: string | nu
       name: words.slice(0, -1).join(' '),
     }
   }
-
   return { surname: authorStr.trim(), name: null }
+}
+
+/**
+ * Parse the BibTeX `author = {...}` field into [first, ...coAuthors].
+ * Handles three input shapes:
+ *   - string with " and " separators (BibTeX raw form)
+ *   - array of {firstName,lastName} or {given,family} objects
+ *   - single string ("Smith, J.")
+ */
+function parseAuthors(authorField: unknown): Array<{ surname: string; name: string | null }> {
+  if (!authorField) return [{ surname: 'Unknown', name: null }]
+
+  if (Array.isArray(authorField)) {
+    return authorField.map((a) => parseOneAuthor(a))
+  }
+
+  if (typeof authorField === 'string') {
+    // BibTeX raw author lists are separated by " and ".
+    return authorField.split(/\s+and\s+/i).map(splitAuthorString)
+  }
+
+  return [parseOneAuthor(authorField)]
 }
 
 export function parseBibtexContent(content: string): {
@@ -127,7 +140,8 @@ export function parseBibtexContent(content: string): {
         entryType = 'web'
       }
 
-      const author = parseAuthor(fields.author ?? fields.creator)
+      const allAuthors = parseAuthors(fields.author ?? fields.creator)
+      const [first, ...rest] = allAuthors
       const title = extractTextField(fields, 'title')
 
       if (!title) {
@@ -138,8 +152,9 @@ export function parseBibtexContent(content: string): {
       entries.push({
         bibtexKey: item.key ?? '',
         entryType,
-        authorSurname: author.surname,
-        authorName: author.name,
+        authorSurname: first.surname,
+        authorName: first.name,
+        coAuthors: rest,
         title,
         shortTitle: extractTextField(fields, 'shorttitle'),
         editor: extractTextField(fields, 'editor'),

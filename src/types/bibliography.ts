@@ -7,10 +7,25 @@ export interface BibliographyEntry {
   projectId: string
   sourceId: string | null
   entryType: EntryType
-  /** Author's surname / family name */
+  /** First author's surname / family name */
   authorSurname: string
-  /** Author's given name(s) */
+  /** First author's given name(s) */
   authorName: string | null
+  /**
+   * Co-authors of the work, in order. The first author lives on
+   * `authorSurname` + `authorName`; this array holds the 2nd…Nth so
+   * each format can apply its own "et al." truncation rule:
+   *   APA 7        → list up to 20 authors, then "...", then last
+   *   MLA 9        → 1-2 authors, 3+ becomes first + "et al."
+   *   Chicago notes→ 1-3 listed, 4+ becomes first + "et al."
+   *   Chicago bib  → 1-10 listed, 11+ truncated to 7 + "et al."
+   *   Harvard      → 1-2 listed, 3+ becomes first + "et al."
+   *   IEEE         → up to 6 authors, then "et al."
+   *   Vancouver    → up to 6 authors, then "et al."
+   *   AMA          → up to 6 authors, then "et al"
+   *   ISNAD        → ilk yazar + "vd." (3+)
+   */
+  coAuthors?: Array<{ surname: string; name: string | null }> | null
   /** Full title of the work (italicised in output) */
   title: string
   /** Short title used in subsequent footnote references */

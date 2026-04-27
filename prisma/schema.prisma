@@ -319,6 +319,14 @@ model Bibliography {
   entryType     EntryType @default(kitap)
   authorSurname String
   authorName    String?
+  /**
+   * Co-authors of the work, in order. Each entry: { surname, name? }.
+   * `authorSurname` + `authorName` is always the first author; this
+   * array holds the 2nd … Nth authors so format-specific "et al."
+   * truncation rules (APA 7 → 21+, Vancouver/AMA/IEEE → 6+, MLA → 3+,
+   * Chicago notes → 4+, Harvard → 3+) can render the whole list.
+   */
+  coAuthors     Json?
   title         String
   shortTitle    String?
   editor        String?
@@ -430,6 +438,10 @@ model LibraryEntry {
   entryType     EntryType @default(kitap)
   authorSurname String
   authorName    String?
+  /**
+   * Co-authors of the work; mirror of `Bibliography.coAuthors`.
+   */
+  coAuthors     Json?
   title         String
   shortTitle    String?
   editor        String?

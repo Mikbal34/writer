@@ -25,6 +25,7 @@ import {
   type BibliographyPrefix,
   type InlineCitationStyle,
 } from './base'
+import { renderAuthorList, POLICIES } from './author-list'
 
 export class IEEEFormatter extends CitationFormatter {
   override get bibliographyOrder(): BibliographyOrder {
@@ -70,16 +71,21 @@ export class IEEEFormatter extends CitationFormatter {
   // ==================== PRIVATE ====================
 
   private author(entry: BibliographyEntry): string {
-    // IEEE: "A. B. Smith"
-    if (entry.authorName) {
-      const initials = entry.authorName
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((n) => `${n.charAt(0).toUpperCase()}.`)
-        .join(' ')
-      return `${initials} ${entry.authorSurname}`
-    }
-    return entry.authorSurname
+    // IEEE: "A. B. Smith, C. D. Jones, E. F. Brown, et al." (6 max)
+    return renderAuthorList(entry, POLICIES.IEEE, {
+      renderOne: (a) => {
+        if (!a.name) return a.surname
+        const initials = a.name
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((n) => `${n.charAt(0).toUpperCase()}.`)
+          .join(' ')
+        return `${initials} ${a.surname}`
+      },
+      separator: ', ',
+      finalSeparator: ', and ',
+      etAl: 'et al.',
+    })
   }
 
   private edition(entry: BibliographyEntry): string {

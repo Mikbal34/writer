@@ -23,6 +23,7 @@ import {
   type BibliographyPrefix,
   type InlineCitationStyle,
 } from './base'
+import { renderAuthorList, POLICIES, vancouverLastInitial } from './author-list'
 
 export class AMAFormatter extends CitationFormatter {
   override get bibliographyOrder(): BibliographyOrder {
@@ -68,15 +69,13 @@ export class AMAFormatter extends CitationFormatter {
   // ==================== PRIVATE ====================
 
   private author(entry: BibliographyEntry): string {
-    if (entry.authorName) {
-      const initials = entry.authorName
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((n) => n.charAt(0).toUpperCase())
-        .join('')
-      return `${entry.authorSurname} ${initials}`
-    }
-    return entry.authorSurname
+    // AMA: 6 max + "et al" (no trailing period — that's AMA's quirk)
+    return renderAuthorList(entry, POLICIES.AMA, {
+      renderOne: vancouverLastInitial,
+      separator: ', ',
+      finalSeparator: ', ',
+      etAl: 'et al',
+    })
   }
 
   private edition(entry: BibliographyEntry): string {

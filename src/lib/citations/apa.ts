@@ -19,6 +19,7 @@
 
 import type { BibliographyEntry } from '@/types/bibliography'
 import { CitationFormatter, type InlineCitationStyle } from './base'
+import { renderAuthorList, POLICIES, apaLastInitialFirst } from './author-list'
 
 export class APAFormatter extends CitationFormatter {
   get inlineStyle(): InlineCitationStyle {
@@ -73,16 +74,14 @@ export class APAFormatter extends CitationFormatter {
   // ==================== PRIVATE ====================
 
   private authorRef(entry: BibliographyEntry): string {
-    // Surname, I. I.
-    if (entry.authorName) {
-      const initials = entry.authorName
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((n) => `${n.charAt(0).toUpperCase()}.`)
-        .join(' ')
-      return `${entry.authorSurname}, ${initials}`
-    }
-    return entry.authorSurname
+    // Surname, I. I., Surname, I. I., & Surname, I. I.  (APA 7 §9.8)
+    // 21+ authors: list 19, "...", final author.
+    return renderAuthorList(entry, POLICIES.APA, {
+      renderOne: apaLastInitialFirst,
+      separator: ', ',
+      finalSeparator: ', & ',
+      etAl: 'et al.',
+    })
   }
 
   private year(entry: BibliographyEntry): string {

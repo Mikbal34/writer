@@ -18,6 +18,7 @@
 
 import type { BibliographyEntry } from '@/types/bibliography'
 import { CitationFormatter, type InlineCitationStyle } from './base'
+import { renderAuthorList, POLICIES, firstNameLast } from './author-list'
 
 export class ISNADFormatter extends CitationFormatter {
   get inlineStyle(): InlineCitationStyle {
@@ -255,13 +256,30 @@ export class ISNADFormatter extends CitationFormatter {
 // ==================== MODULE-LEVEL HELPERS ====================
 
 function authorNormal(entry: BibliographyEntry): string {
-  if (entry.authorName) return `${entry.authorName} ${entry.authorSurname}`
-  return entry.authorSurname
+  // ISNAD 2: 1-2 yazar listelenir, 3+ olunca "İlk Yazar vd."
+  return renderAuthorList(entry, POLICIES.ISNAD, {
+    renderOne: firstNameLast,
+    separator: ', ',
+    finalSeparator: ' ve ',
+    etAl: 'vd.',
+  })
 }
 
 function authorInverted(entry: BibliographyEntry): string {
-  if (entry.authorName) return `${entry.authorSurname}, ${entry.authorName}`
-  return entry.authorSurname
+  // Bibliography: ilk yazar "Soyad, Ad", sonrakiler "Ad Soyad"; 3+ → vd.
+  let isFirst = true
+  return renderAuthorList(entry, POLICIES.ISNAD, {
+    renderOne: (a) => {
+      if (isFirst) {
+        isFirst = false
+        return a.name ? `${a.surname}, ${a.name}` : a.surname
+      }
+      return firstNameLast(a)
+    },
+    separator: ', ',
+    finalSeparator: ' ve ',
+    etAl: 'vd.',
+  })
 }
 
 function buildPublisher(entry: BibliographyEntry): string {

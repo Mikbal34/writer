@@ -18,6 +18,17 @@
 
 import type { BibliographyEntry } from '@/types/bibliography'
 import { CitationFormatter, type InlineCitationStyle } from './base'
+import { renderAuthorList, POLICIES } from './author-list'
+
+function harvardLastInitial(a: { surname: string; name: string | null }): string {
+  if (!a.name) return a.surname
+  const initials = a.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((n) => `${n.charAt(0).toUpperCase()}.`)
+    .join('')
+  return `${a.surname}, ${initials}`
+}
 
 export class HarvardFormatter extends CitationFormatter {
   get inlineStyle(): InlineCitationStyle {
@@ -56,16 +67,14 @@ export class HarvardFormatter extends CitationFormatter {
   // ==================== PRIVATE ====================
 
   private authorRef(entry: BibliographyEntry): string {
-    // Harvard CTR: "Smith, J.B." — initials with period, no intermediate space
-    if (entry.authorName) {
-      const initials = entry.authorName
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((n) => `${n.charAt(0).toUpperCase()}.`)
-        .join('')
-      return `${entry.authorSurname}, ${initials}`
-    }
-    return entry.authorSurname
+    // Harvard CTR: "Smith, J.B., Jones, C.D. and Brown, E.F."
+    // 4+ authors → "Smith, J.B. et al."
+    return renderAuthorList(entry, POLICIES.HARVARD, {
+      renderOne: harvardLastInitial,
+      separator: ', ',
+      finalSeparator: ' and ',
+      etAl: 'et al.',
+    })
   }
 
   private year(entry: BibliographyEntry): string {

@@ -18,6 +18,7 @@
 
 import type { BibliographyEntry } from '@/types/bibliography'
 import { CitationFormatter, type InlineCitationStyle } from './base'
+import { renderAuthorList, POLICIES, firstNameLast } from './author-list'
 
 export class TurabianFormatter extends CitationFormatter {
   get inlineStyle(): InlineCitationStyle {
@@ -194,13 +195,28 @@ export class TurabianFormatter extends CitationFormatter {
 // ==================== MODULE-LEVEL HELPERS ====================
 
 function authorNormal(entry: BibliographyEntry): string {
-  if (entry.authorName) return `${entry.authorName} ${entry.authorSurname}`
-  return entry.authorSurname
+  return renderAuthorList(entry, POLICIES.CHICAGO_N, {
+    renderOne: firstNameLast,
+    separator: ', ',
+    finalSeparator: ', and ',
+    etAl: 'et al.',
+  })
 }
 
 function authorInverted(entry: BibliographyEntry): string {
-  if (entry.authorName) return `${entry.authorSurname}, ${entry.authorName}`
-  return entry.authorSurname
+  let isFirst = true
+  return renderAuthorList(entry, POLICIES.CHICAGO_B, {
+    renderOne: (a) => {
+      if (isFirst) {
+        isFirst = false
+        return a.name ? `${a.surname}, ${a.name}` : a.surname
+      }
+      return firstNameLast(a)
+    },
+    separator: ', ',
+    finalSeparator: ', and ',
+    etAl: 'et al.',
+  })
 }
 
 function buildPublisher(entry: BibliographyEntry): string {

@@ -21,6 +21,7 @@
 
 import type { BibliographyEntry } from '@/types/bibliography'
 import { CitationFormatter, type InlineCitationStyle } from './base'
+import { renderAuthorList, POLICIES, firstNameLast } from './author-list'
 
 export class MLAFormatter extends CitationFormatter {
   get inlineStyle(): InlineCitationStyle {
@@ -59,10 +60,21 @@ export class MLAFormatter extends CitationFormatter {
   // ==================== PRIVATE ====================
 
   private authorInverted(entry: BibliographyEntry): string {
-    if (entry.authorName) {
-      return `${entry.authorSurname}, ${entry.authorName}`
-    }
-    return entry.authorSurname
+    // MLA 9: 1-2 authors listed; 3+ becomes "First Last, et al."
+    // First author is "Last, First" (sortable); subsequent are "First Last".
+    let isFirst = true
+    return renderAuthorList(entry, POLICIES.MLA, {
+      renderOne: (a) => {
+        if (isFirst) {
+          isFirst = false
+          return a.name ? `${a.surname}, ${a.name}` : a.surname
+        }
+        return firstNameLast(a)
+      },
+      separator: ', ',
+      finalSeparator: ', and ',
+      etAl: 'et al.',
+    })
   }
 
   private edition(entry: BibliographyEntry): string {
