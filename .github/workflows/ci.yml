@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  type-and-format-tests:
+    name: Type-check + format regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: TypeScript
+        # tsc emits TS6053 noise about cached .next/types files in CI; we
+        # filter those out so a stale cache never fails the workflow.
+        run: |
+          npx tsc --noEmit --project tsconfig.json 2>&1 \
+            | grep -v "TS6053" \
+            | grep -v "\\.next/" \
+            | (grep "error TS" || true) \
+            | tee /tmp/tsc-errors
+          [ ! -s /tmp/tsc-errors ]
+      - name: Citation formatter regression — all formats
+        run: npx tsx scripts/tests/test-all-formats.ts
+      - name: Citation formatter regression — inline citations
+        run: npx tsx scripts/tests/test-inline-citations.ts
+      - name: Citation formatter regression — et al. truncation
+        run: npx tsx scripts/tests/test-et-al.ts

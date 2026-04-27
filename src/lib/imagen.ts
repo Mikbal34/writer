@@ -34,10 +34,7 @@ async function sanitizePromptForImagen(prompt: string): Promise<string> {
   })
 
   const text = response.content[0]
-  if (text.type === 'text') {
-    console.log('[imagen] Sanitized prompt:', text.text.slice(0, 200))
-    return text.text.trim()
-  }
+  if (text.type === 'text') return text.text.trim()
   return prompt
 }
 
@@ -60,10 +57,7 @@ export interface GeneratedImage {
 export async function generateImage(options: GenerateImageOptions): Promise<GeneratedImage[]> {
   const { prompt, aspectRatio = '4:3', numberOfImages = 1 } = options
 
-  console.log('[imagen] Original prompt:', prompt.slice(0, 200))
   const safePrompt = await sanitizePromptForImagen(prompt)
-  console.log('[imagen] Safe prompt:', safePrompt.slice(0, 200))
-  console.log('[imagen] Config:', JSON.stringify({ numberOfImages, aspectRatio }))
 
   let response
   try {
@@ -84,10 +78,15 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     throw apiErr
   }
 
-  console.log('[imagen] Response generatedImages count:', response.generatedImages?.length ?? 0)
-  console.log('[imagen] Full response keys:', Object.keys(response))
-  if ((response as any).filters) console.log('[imagen] Filters:', JSON.stringify((response as any).filters))
-  if ((response as any).safetyAttributes) console.log('[imagen] Safety:', JSON.stringify((response as any).safetyAttributes))
+  if (!response.generatedImages || response.generatedImages.length === 0) {
+    // Surface filter / safety reasons only when the request was blocked.
+    if ((response as { filters?: unknown }).filters) {
+      console.error('[imagen] Filters:', JSON.stringify((response as { filters: unknown }).filters))
+    }
+    if ((response as { safetyAttributes?: unknown }).safetyAttributes) {
+      console.error('[imagen] Safety:', JSON.stringify((response as { safetyAttributes: unknown }).safetyAttributes))
+    }
+  }
 
   if (!response.generatedImages || response.generatedImages.length === 0) {
     console.error('[imagen] BLOCKED — no images returned for prompt:', prompt.slice(0, 200))

@@ -58,3 +58,18 @@ next-env.d.ts
 # environment
 .env
 .env.local
+
+# personal / WIP files (notes, pitch decks, secrets) — never in repo
+adminlogin
+notlar.txt
+pitch-deck.md
+pitch-deck-v2.md
+TODO.md
+NOTES.md
+
+# legacy brand assets
+marka_kimligi/
+
+# runtime export artefacts
+/exports/*
+!/exports/.gitkeep
