@@ -1184,6 +1184,13 @@ function buildPdf(
 
       const prevX = doc.x
       const prevY = doc.y
+      // Temporarily zero the page's margins so pdfkit's text() does NOT
+      // see "y past maxY" and recursively call addPage(). Restored after
+      // the draw so subsequent body text still respects the real margins.
+      const savedTop = doc.page.margins.top
+      const savedBottom = doc.page.margins.bottom
+      doc.page.margins.top = 0
+      doc.page.margins.bottom = 0
       doc.save()
       const fontSize = Math.max(9, Math.round(BODY_SIZE * 0.9))
       doc.font(fonts.regular).fontSize(fontSize).fillColor('black')
@@ -1194,10 +1201,6 @@ function buildPdf(
 
       if (headEnabled && headText) {
         const y = headSpec.position === 'bottom-center' ? yBottom : yTop
-        // lineBreak: false — drawing in the margin area near page edges
-        // would otherwise trip pdfkit's auto-pagination, recursively
-        // firing pageAdded → drawPageHeaderFooter → text() → infinite
-        // call stack and a 500.
         doc.text(headText, mLeft, y, {
           width: contentWidth,
           align: headSpec.position === 'top-right' ? 'right' : 'center',
@@ -1213,6 +1216,8 @@ function buildPdf(
         })
       }
       doc.restore()
+      doc.page.margins.top = savedTop
+      doc.page.margins.bottom = savedBottom
       doc.x = prevX
       doc.y = prevY
     }
