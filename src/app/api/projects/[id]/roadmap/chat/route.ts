@@ -602,16 +602,29 @@ async function applyCommands(
         const sectionDbId = resolveId(cmd.sectionDbId as string)
         const sub = cmd.subsection as Record<string, unknown>
         if (!sectionDbId || !sub) break
-        const existing = await tx.subsection.findMany({
-          where: { sectionId: sectionDbId },
-          orderBy: { sortOrder: 'desc' },
-          take: 1,
+        // Auto-generate subsectionId from parent section's display id +
+        // next available trailing suffix. Ignoring LLM-supplied subsectionId
+        // prevents (sectionId, subsectionId) P2002 collisions.
+        const parentSection = await tx.section.findUnique({
+          where: { id: sectionDbId },
+          select: { sectionId: true },
         })
-        const nextOrder = existing.length > 0 ? existing[0].sortOrder + 1 : 0
+        const siblings = await tx.subsection.findMany({
+          where: { sectionId: sectionDbId },
+          select: { subsectionId: true, sortOrder: true },
+        })
+        const maxSuffix = siblings.reduce((m, s) => {
+          const match = s.subsectionId.match(/\.(\d+)$/)
+          return match ? Math.max(m, parseInt(match[1], 10)) : m
+        }, 0)
+        const nextOrder = siblings.reduce((m, s) => Math.max(m, s.sortOrder), -1) + 1
+        const newSubId = parentSection
+          ? `${parentSection.sectionId}.${maxSuffix + 1}`
+          : `${maxSuffix + 1}`
         const subsection = await tx.subsection.create({
           data: {
             sectionId: sectionDbId,
-            subsectionId: (sub.subsectionId as string) ?? '',
+            subsectionId: newSubId,
             title: (sub.title as string) ?? '',
             description: (sub.description as string) ?? null,
             whatToWrite: (sub.whatToWrite as string) ?? null,
@@ -650,16 +663,29 @@ async function applyCommands(
         const chapterDbId = resolveId(cmd.chapterDbId as string)
         const sec = cmd.section as Record<string, unknown>
         if (!chapterDbId || !sec) break
-        const existing = await tx.section.findMany({
-          where: { chapterId: chapterDbId },
-          orderBy: { sortOrder: 'desc' },
-          take: 1,
+        // Auto-generate sectionId from parent chapter's number + next free
+        // suffix. Ignoring LLM-supplied sectionId prevents
+        // (chapterId, sectionId) P2002 collisions.
+        const parentChapter = await tx.chapter.findUnique({
+          where: { id: chapterDbId },
+          select: { number: true },
         })
-        const nextOrder = existing.length > 0 ? existing[0].sortOrder + 1 : 0
+        const siblings = await tx.section.findMany({
+          where: { chapterId: chapterDbId },
+          select: { sectionId: true, sortOrder: true },
+        })
+        const maxSecSuffix = siblings.reduce((m, s) => {
+          const match = s.sectionId.match(/\.(\d+)$/)
+          return match ? Math.max(m, parseInt(match[1], 10)) : m
+        }, 0)
+        const nextOrder = siblings.reduce((m, s) => Math.max(m, s.sortOrder), -1) + 1
+        const newSectionId = parentChapter
+          ? `${parentChapter.number}.${maxSecSuffix + 1}`
+          : `${maxSecSuffix + 1}`
         const section = await tx.section.create({
           data: {
             chapterId: chapterDbId,
-            sectionId: (sec.sectionId as string) ?? '',
+            sectionId: newSectionId,
             title: (sec.title as string) ?? '',
             keyConcepts: (sec.keyConcepts as string[]) ?? [],
             sortOrder: nextOrder,
@@ -668,14 +694,15 @@ async function applyCommands(
         if (cmd.tempId) tempIdMap.set(cmd.tempId as string, section.id)
         if (sec.tempId) tempIdMap.set(sec.tempId as string, section.id)
 
-        // Auto-create subsections if provided inline
+        // Auto-create subsections if provided inline. New section has no
+        // existing children, so subsection ids start at .1 and increment.
         const subsections = (cmd.subsections ?? sec.subsections) as Array<Record<string, unknown>> | undefined
         if (subsections && Array.isArray(subsections)) {
           for (const [subIdx, sub] of subsections.entries()) {
             const subsec = await tx.subsection.create({
               data: {
                 sectionId: section.id,
-                subsectionId: (sub.subsectionId as string) ?? '',
+                subsectionId: `${newSectionId}.${subIdx + 1}`,
                 title: (sub.title as string) ?? '',
                 description: (sub.description as string) ?? null,
                 whatToWrite: (sub.whatToWrite as string) ?? null,
@@ -716,17 +743,24 @@ async function applyCommands(
       case 'add_chapter': {
         const ch = cmd.chapter as Record<string, unknown>
         if (!ch) break
+        // Compute number from current max — ignore LLM-supplied number,
+        // since it routinely collides with an existing chapter and trips the
+        // (projectId, number) unique constraint (P2002).
         const existing = await tx.chapter.findMany({
           where: { projectId },
-          orderBy: { sortOrder: 'desc' },
+          orderBy: { number: 'desc' },
           take: 1,
         })
-        const nextOrder = existing.length > 0 ? existing[0].sortOrder + 1 : 0
         const nextNumber = existing.length > 0 ? existing[0].number + 1 : 1
+        const sortAgg = await tx.chapter.aggregate({
+          where: { projectId },
+          _max: { sortOrder: true },
+        })
+        const nextOrder = (sortAgg._max.sortOrder ?? -1) + 1
         const chapter = await tx.chapter.create({
           data: {
             projectId,
-            number: (ch.number as number) ?? nextNumber,
+            number: nextNumber,
             title: (ch.title as string) ?? '',
             purpose: (ch.purpose as string) ?? null,
             estimatedPages: (ch.estimatedPages as number) ?? null,
@@ -735,14 +769,17 @@ async function applyCommands(
         })
         if (cmd.tempId) tempIdMap.set(cmd.tempId as string, chapter.id)
 
-        // Auto-create sections + subsections if provided inline
+        // Auto-create sections + subsections if provided inline. Chapter
+        // is brand new, so we generate display ids deterministically from
+        // chapter.number to keep the format consistent (1.1, 1.1.1, …).
         const sections = (cmd.sections ?? ch.sections) as Array<Record<string, unknown>> | undefined
         if (sections && Array.isArray(sections)) {
           for (const [secIdx, sec] of sections.entries()) {
+            const generatedSectionId = `${chapter.number}.${secIdx + 1}`
             const section = await tx.section.create({
               data: {
                 chapterId: chapter.id,
-                sectionId: (sec.sectionId as string) ?? '',
+                sectionId: generatedSectionId,
                 title: (sec.title as string) ?? '',
                 keyConcepts: (sec.keyConcepts as string[]) ?? [],
                 sortOrder: secIdx,
@@ -756,7 +793,7 @@ async function applyCommands(
                 const subsec = await tx.subsection.create({
                   data: {
                     sectionId: section.id,
-                    subsectionId: (sub.subsectionId as string) ?? '',
+                    subsectionId: `${generatedSectionId}.${subIdx + 1}`,
                     title: (sub.title as string) ?? '',
                     description: (sub.description as string) ?? null,
                     whatToWrite: (sub.whatToWrite as string) ?? null,
