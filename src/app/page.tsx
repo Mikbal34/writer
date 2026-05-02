@@ -600,6 +600,12 @@ function LandingPage() {
           </Link>
           <div className="flex items-center gap-6">
             <Link
+              href="/pricing"
+              className="font-ui text-sm text-[#e8dfd0]/70 hover:text-[#FAF7F0] transition-colors"
+            >
+              Pricing
+            </Link>
+            <Link
               href="/api/auth/signin"
               className="font-ui text-sm text-[#e8dfd0]/70 hover:text-[#FAF7F0] transition-colors"
             >
@@ -944,11 +950,18 @@ function LandingPage() {
             © {new Date().getFullYear()} Quilpen. All rights reserved.
           </p>
           <div className="flex gap-4">
-            {["Privacy", "Terms of Use", "Contact"].map((item) => (
-              <span key={item} className="font-ui text-xs text-muted-foreground hover:text-ink cursor-pointer transition-colors">
-                {item}
-              </span>
-            ))}
+            <Link href="/pricing" className="font-ui text-xs text-muted-foreground hover:text-ink transition-colors">
+              Pricing
+            </Link>
+            <Link href="/privacy" className="font-ui text-xs text-muted-foreground hover:text-ink transition-colors">
+              Privacy
+            </Link>
+            <Link href="/terms" className="font-ui text-xs text-muted-foreground hover:text-ink transition-colors">
+              Terms
+            </Link>
+            <Link href="/refund" className="font-ui text-xs text-muted-foreground hover:text-ink transition-colors">
+              Refund
+            </Link>
           </div>
         </div>
       </footer>
