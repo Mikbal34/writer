@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { findOrCreateBibliography } from '@/lib/bibliography'
@@ -228,6 +229,10 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
         },
       },
     })
+
+    // Bust the App Router cache for the project's pages so /write,
+    // /preview, /design etc. re-fetch the rebuilt structure on next nav.
+    revalidatePath(`/projects/${id}`, 'layout')
 
     return NextResponse.json(updated)
   } catch (err) {

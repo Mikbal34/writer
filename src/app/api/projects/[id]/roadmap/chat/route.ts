@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { streamChatWithTools, type ChatMessage, type SystemPromptPart, type ToolDefinition } from '@/lib/claude'
@@ -1131,6 +1132,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
               await applyCommands(tx, projectId, commands, session.user.id)
             })
             commandsApplied = true
+            // Bust the App Router cache for every page under /projects/[id]
+            // (write, preview, design, sources, …) so they re-fetch the
+            // freshly mutated chapter/section/subsection rows on next nav.
+            revalidatePath(`/projects/${projectId}`, 'layout')
           } catch (cmdErr) {
             console.error('[roadmap/chat] Failed to apply commands:', cmdErr)
             enqueueEvent({

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   Panel,
   Group as PanelGroup,
@@ -40,6 +40,8 @@ export default function RoadmapPage() {
     return () => mq.removeEventListener("change", handler);
   }, []);
 
+  const router = useRouter();
+
   const fetchRoadmap = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -49,12 +51,15 @@ export default function RoadmapPage() {
       const data = await res.json();
       setChapters(data.chapters ?? []);
       if (data.projectType) setProjectType(data.projectType);
+      // Drop the App Router cache for sibling pages (write, preview, …)
+      // so the next navigation re-renders against the new structure.
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load roadmap");
     } finally {
       setIsLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, router]);
 
   useEffect(() => {
     fetchRoadmap();
