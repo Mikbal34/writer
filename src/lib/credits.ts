@@ -1,4 +1,66 @@
 import { prisma } from '@/lib/db'
+import { TIERS, tierByName } from '@/lib/billing/tiers'
+
+/**
+ * Free-tier users get a fresh credit bucket each calendar month. Paid
+ * tiers are refilled by Paddle's transaction.completed webhook, so we
+ * never touch their balance from this code path. A canceled paid plan
+ * whose period has ended is auto-downgraded to free here so the user
+ * stops getting Pro-sized refills (and starts getting free ones).
+ */
+function startOfNextUtcMonth(from: Date = new Date()): Date {
+  const d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1))
+  return d
+}
+
+export async function ensureMonthlyAllowance(userId: string): Promise<number> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      creditBalance: true,
+      subscriptionTier: true,
+      subscriptionStatus: true,
+      currentPeriodEnd: true,
+      creditsResetAt: true,
+    },
+  })
+  if (!user) return 0
+
+  const now = new Date()
+
+  // Step 1 — auto-downgrade an ended cancellation to free so the lazy
+  // reset below kicks in next time.
+  let tierName = user.subscriptionTier
+  let creditsResetAt = user.creditsResetAt
+  if (
+    tierName !== 'free' &&
+    user.subscriptionStatus === 'canceled' &&
+    user.currentPeriodEnd &&
+    user.currentPeriodEnd <= now
+  ) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { subscriptionTier: 'free', creditsResetAt: null },
+    })
+    tierName = 'free'
+    creditsResetAt = null
+  }
+
+  // Step 2 — only free tier is lazily reset here. Paid tiers are
+  // governed by webhook (transaction.completed).
+  if (tierName !== 'free') return user.creditBalance
+
+  const resetDue = !creditsResetAt || creditsResetAt <= now
+  if (!resetDue) return user.creditBalance
+
+  const nextReset = startOfNextUtcMonth(now)
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { creditBalance: TIERS.free.monthlyCredits, creditsResetAt: nextReset },
+    select: { creditBalance: true },
+  })
+  return updated.creditBalance
+}
 
 // Model cost multipliers relative to Haiku input ($0.25/M = 1x base)
 export const MODEL_MULTIPLIERS = {
@@ -46,11 +108,7 @@ export const IMAGE_CREDIT_COST = 150
 export async function checkImageCredits(
   userId: string
 ): Promise<{ allowed: boolean; balance: number }> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { creditBalance: true },
-  })
-  const balance = user?.creditBalance ?? 0
+  const balance = await ensureMonthlyAllowance(userId)
   return { allowed: balance >= IMAGE_CREDIT_COST, balance }
 }
 
@@ -116,12 +174,7 @@ export async function checkCredits(
   userId: string,
   operation: string
 ): Promise<{ allowed: boolean; balance: number; estimatedCost: number }> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { creditBalance: true },
-  })
-
-  const balance = user?.creditBalance ?? 0
+  const balance = await ensureMonthlyAllowance(userId)
   const estimatedCost = ESTIMATED_COSTS[operation] ?? 50
 
   return {
@@ -223,9 +276,14 @@ export async function grantCredits(
 }
 
 export async function getBalance(userId: string): Promise<number> {
-  const user = await prisma.user.findUnique({
+  return ensureMonthlyAllowance(userId)
+}
+
+/** Tier helper for callers that need to gate a feature by plan. */
+export async function getTierForUser(userId: string) {
+  const u = await prisma.user.findUnique({
     where: { id: userId },
-    select: { creditBalance: true },
+    select: { subscriptionTier: true },
   })
-  return user?.creditBalance ?? 0
+  return tierByName(u?.subscriptionTier ?? 'free')
 }

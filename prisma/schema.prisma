@@ -54,6 +54,19 @@ model User {
   creditTransactions CreditTransaction[]
   styleProfiles      UserStyleProfile[]
   backgroundJobs     BackgroundJob[]
+
+  // Subscription / billing (Paddle). Tier maps to monthly credit allowance
+  // in lib/billing/tiers.ts. creditsResetAt is the wall-clock moment we
+  // last refilled the monthly bucket — Free is lazy-reset on month flip,
+  // paid tiers are reset by the Paddle transaction.completed webhook.
+  paddleCustomerId     String?
+  paddleSubscriptionId String?   @unique
+  subscriptionTier     String    @default("free")
+  subscriptionStatus   String    @default("active")
+  subscriptionPriceId  String?
+  currentPeriodEnd     DateTime?
+  creditsResetAt       DateTime?
+
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 }
@@ -560,6 +573,7 @@ enum CreditTransactionType {
   purchase
   ai_operation
   refund
+  subscription_renewal
 }
 
 model CreditTransaction {

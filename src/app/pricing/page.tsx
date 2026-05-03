@@ -1,12 +1,16 @@
 import Link from 'next/link'
-import { Check, Crown, X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { MarketingFrame } from '@/components/marketing/MarketingFrame'
+import { PricingCards } from '@/components/billing/PricingCards'
+import { getServerSession } from '@/lib/auth'
+import { prisma } from '@/lib/db'
 
 export const metadata = {
   title: 'Pricing — Quilpen',
   description:
     'Simple monthly pricing for AI-assisted academic writing. Free, Starter at $9/month, or Pro at $19/month.',
 }
+export const dynamic = 'force-dynamic'
 
 const FEATURES = [
   { label: 'AI-assisted writing', free: true, starter: true, pro: true },
@@ -33,7 +37,21 @@ function FeatureCell({ value }: { value: boolean | string }) {
   return <span className="font-ui text-xs text-ink">{value}</span>
 }
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const session = await getServerSession()
+  let userTier: 'free' | 'starter' | 'pro' = 'free'
+  let userEmail: string | null = null
+  let userId: string | null = null
+  if (session?.user?.id) {
+    userId = session.user.id as string
+    const u = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, subscriptionTier: true },
+    })
+    userEmail = u?.email ?? null
+    userTier = (u?.subscriptionTier as 'free' | 'starter' | 'pro') ?? 'free'
+  }
+
   return (
     <MarketingFrame>
       <section className="py-20 px-6">
@@ -51,123 +69,7 @@ export default function PricingPage() {
             </p>
           </header>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14">
-            {/* Free */}
-            <article className="rounded-sm bg-[#FAF7F0]/80 border border-[#d4c9b5]/60 p-7 flex flex-col">
-              <div className="mb-5">
-                <h2 className="font-display text-2xl font-bold text-ink mb-1">Free</h2>
-                <p className="font-body text-sm text-ink-light">
-                  Try Quilpen end-to-end at no cost
-                </p>
-              </div>
-              <div className="mb-5">
-                <span className="font-display text-4xl font-bold text-ink">$0</span>
-                <span className="font-ui text-sm text-ink-light ml-2">/ month</span>
-              </div>
-              <ul className="space-y-2 mb-7 flex-1">
-                {[
-                  '1,500 credits per month',
-                  '1 active project',
-                  'DOCX export',
-                  'All 9 citation formats',
-                  'BibTeX / Zotero import',
-                ].map((f) => (
-                  <li key={f} className="flex items-start gap-2">
-                    <Check className="w-4 h-4 mt-0.5 shrink-0 text-forest" />
-                    <span className="font-ui text-sm text-ink">{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link
-                href="/api/auth/signin"
-                className="flex items-center justify-center font-ui text-sm font-semibold px-4 py-2.5 rounded-sm border border-[#d4c9b5]/80 text-ink hover:border-[#C9A84C]/60 hover:bg-[#C9A84C]/5 transition-all"
-              >
-                Start Free
-              </Link>
-            </article>
-
-            {/* Starter */}
-            <article className="rounded-sm bg-[#FAF7F0]/95 border-2 border-[#C9A84C]/40 p-7 flex flex-col shadow-sm">
-              <div className="mb-5">
-                <h2 className="font-display text-2xl font-bold text-ink mb-1">Starter</h2>
-                <p className="font-body text-sm text-ink-light">
-                  For students and a single book
-                </p>
-              </div>
-              <div className="mb-5">
-                <span className="font-display text-4xl font-bold text-ink">$9</span>
-                <span className="font-ui text-sm text-ink-light ml-2">/ month</span>
-                <p className="font-ui text-xs text-ink-light/70 mt-1">
-                  Or $7/month billed annually
-                </p>
-              </div>
-              <ul className="space-y-2 mb-7 flex-1">
-                {[
-                  '7,000 credits per month',
-                  'Up to 3 active projects',
-                  'DOCX & PDF export',
-                  'Everything in Free',
-                  'Email support',
-                ].map((f) => (
-                  <li key={f} className="flex items-start gap-2">
-                    <Check className="w-4 h-4 mt-0.5 shrink-0 text-forest" />
-                    <span className="font-ui text-sm text-ink">{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link
-                href="/api/auth/signin"
-                className="flex items-center justify-center font-ui text-sm font-semibold px-4 py-2.5 rounded-sm bg-[#2D1F0E] text-[#FAF7F0] hover:bg-[#3d2914] transition-all"
-              >
-                Get Starter
-              </Link>
-            </article>
-
-            {/* Pro */}
-            <article className="relative rounded-sm bg-[#2D1F0E] border-2 border-[#C9A84C]/60 shadow-lg p-7 flex flex-col">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1 bg-[#C9A84C] rounded-sm">
-                <Crown className="w-3 h-3 text-[#1a0f05]" />
-                <span className="font-ui text-[10px] font-bold text-[#1a0f05] uppercase tracking-wider">
-                  Most popular
-                </span>
-              </div>
-              <div className="mb-5">
-                <h2 className="font-display text-2xl font-bold text-[#FAF7F0] mb-1">Pro</h2>
-                <p className="font-body text-sm text-[#e8dfd0]/60">
-                  Everything you need to finish a manuscript
-                </p>
-              </div>
-              <div className="mb-5">
-                <span className="font-display text-4xl font-bold text-[#C9A84C]">$19</span>
-                <span className="font-ui text-sm text-[#e8dfd0]/60 ml-2">/ month</span>
-                <p className="font-ui text-xs text-[#e8dfd0]/50 mt-1">
-                  Or $15/month billed annually
-                </p>
-              </div>
-              <ul className="space-y-2 mb-7 flex-1">
-                {[
-                  '17,000 credits per month',
-                  'Unlimited active projects',
-                  'PDF print-ready (bleed + crop marks)',
-                  'EPUB export',
-                  'Charts, tables, equations',
-                  'Writing-twin style profile',
-                  'Priority email support',
-                ].map((f) => (
-                  <li key={f} className="flex items-start gap-2">
-                    <Check className="w-4 h-4 mt-0.5 shrink-0 text-[#C9A84C]" />
-                    <span className="font-ui text-sm text-[#e8dfd0]/85">{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link
-                href="/api/auth/signin"
-                className="flex items-center justify-center font-ui text-sm font-semibold px-4 py-2.5 rounded-sm bg-[#C9A84C] text-[#1a0f05] hover:bg-[#d4b85a] transition-all"
-              >
-                Get Pro
-              </Link>
-            </article>
-          </div>
+          <PricingCards userId={userId} userEmail={userEmail} currentTier={userTier} />
 
           <div className="rounded-sm bg-[#FAF7F0]/70 border border-[#d4c9b5]/60 overflow-hidden">
             <header className="px-6 py-4 border-b border-[#d4c9b5]/60">
