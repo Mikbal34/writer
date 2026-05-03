@@ -53,10 +53,17 @@ export async function ensureMonthlyAllowance(userId: string): Promise<number> {
   const resetDue = !creditsResetAt || creditsResetAt <= now
   if (!resetDue) return user.creditBalance
 
+  // CRITICAL: only ever *raise* the balance. Existing users may carry
+  // top-up credits (admin grants, purchases) that exceed the monthly
+  // allowance — wiping them on a month-flip would silently destroy
+  // paid-for credits. So the reset is "ensure at least allowance",
+  // never "force exactly allowance".
+  const allowance = TIERS.free.monthlyCredits
+  const targetBalance = Math.max(user.creditBalance, allowance)
   const nextReset = startOfNextUtcMonth(now)
   const updated = await prisma.user.update({
     where: { id: userId },
-    data: { creditBalance: TIERS.free.monthlyCredits, creditsResetAt: nextReset },
+    data: { creditBalance: targetBalance, creditsResetAt: nextReset },
     select: { creditBalance: true },
   })
   return updated.creditBalance
