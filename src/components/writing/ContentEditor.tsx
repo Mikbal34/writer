@@ -334,6 +334,8 @@ export default function ContentEditor({
 }: ContentEditorProps) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string>("");
+  const [previewLoading, setPreviewLoading] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusInfo = STATUS_STYLES[status] ?? STATUS_STYLES.pending;
   const lastStreamRef = useRef<string>("");
@@ -458,6 +460,39 @@ export default function ContentEditor({
     if (editor) return countWords(editor.getText());
     return 0;
   }, [editor, isStreaming, streamingContent, editor?.state.doc.content.size]);
+
+  // Preview toggle — fetch the resolved-citations version from the
+  // server so the user sees what the export will look like
+  // (e.g. "[cite:bibId,p=872]" → "(Smith, 2020, p. 872)") instead of
+  // raw markers cluttering the page.
+  async function togglePreview() {
+    if (showPreview) {
+      setShowPreview(false);
+      return;
+    }
+    if (!editor) return;
+    // Save the latest edit before previewing so the server's preview
+    // reflects what's actually in the buffer, not the last saved version.
+    const md = htmlToMarkdown(editor.getHTML());
+    setPreviewLoading(true);
+    setShowPreview(true);
+    try {
+      await autoSave(md);
+      const res = await fetch(
+        `/api/projects/${projectId}/subsections/${subsectionId}/preview`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error("preview failed");
+      const data = (await res.json()) as { content: string };
+      setPreviewHtml(markdownToHtml(data.content));
+    } catch {
+      // Fallback — render the local content without resolution so the
+      // user still gets some preview rather than a blank.
+      setPreviewHtml(markdownToHtml(md));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
 
   if (!editor) return null;
 
@@ -585,6 +620,19 @@ export default function ContentEditor({
         </div>
 
         <div className="flex items-center gap-2">
+          <ToolbarButton
+            onClick={togglePreview}
+            active={showPreview}
+            disabled={isStreaming || previewLoading}
+            title={showPreview ? "Edit mode" : "Preview (citations resolved)"}
+          >
+            {showPreview ? (
+              <EyeOff className="h-3.5 w-3.5" />
+            ) : (
+              <Eye className="h-3.5 w-3.5" />
+            )}
+          </ToolbarButton>
+
           <span className="text-xs text-muted-foreground tabular-nums">
             {wordCount.toLocaleString()} word{wordCount !== 1 ? "s" : ""}
           </span>
@@ -620,9 +668,20 @@ export default function ContentEditor({
         </div>
       </div>
 
-      {/* Editor */}
+      {/* Editor / preview */}
       <div className="flex-1 overflow-y-auto relative">
-        <EditorContent editor={editor} className="h-full" />
+        {showPreview ? (
+          <div
+            className="prose prose-sm dark:prose-invert max-w-none p-6 font-serif text-sm leading-7"
+            dangerouslySetInnerHTML={{
+              __html: previewLoading
+                ? '<p class="text-muted-foreground italic">Loading preview…</p>'
+                : previewHtml,
+            }}
+          />
+        ) : (
+          <EditorContent editor={editor} className="h-full" />
+        )}
         {isStreaming && (
           <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs text-primary-foreground shadow-lg">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
