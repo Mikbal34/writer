@@ -85,6 +85,16 @@ export async function POST(req: NextRequest) {
     }
 
     const validTypes: ProjectType[] = ['ACADEMIC', 'CREATIVE']
+    // CREATIVE ("Serbest Yazım") is hidden behind a "Soon" badge in the
+    // UI for the launch — we only ship the academic flow first. Server-
+    // side gate so a client that bypasses the disabled button still
+    // can't open creative projects.
+    if (projectType === 'CREATIVE') {
+      return NextResponse.json(
+        { error: 'Serbest Yazım yakında — şimdilik sadece akademik projeler oluşturulabilir.' },
+        { status: 403 },
+      )
+    }
     const resolvedType = projectType && validTypes.includes(projectType) ? projectType : 'ACADEMIC'
 
     const project = await prisma.project.create({

@@ -26,9 +26,17 @@ import { toast } from "sonner";
 type ProjectType = "ACADEMIC" | "CREATIVE";
 type CitationFormat = "ISNAD" | "APA" | "CHICAGO" | "MLA" | "HARVARD" | "VANCOUVER" | "IEEE" | "AMA" | "TURABIAN";
 
-const PROJECT_TYPES: { value: ProjectType; label: string; desc: string; icon: typeof GraduationCap }[] = [
+type ProjectTypeOption = {
+  value: ProjectType;
+  label: string;
+  desc: string;
+  icon: typeof GraduationCap;
+  comingSoon?: boolean;
+};
+
+const PROJECT_TYPES: ProjectTypeOption[] = [
   { value: "ACADEMIC", label: "Akademik", desc: "Araştırma, tez, kaynaklı makaleler", icon: GraduationCap },
-  { value: "CREATIVE", label: "Serbest Yazım", desc: "Kurgu, kurgu-dışı, anı, deneme — kaynaksız", icon: Feather },
+  { value: "CREATIVE", label: "Serbest Yazım", desc: "Kurgu, anı, deneme — yakında", icon: Feather, comingSoon: true },
 ];
 
 const LANGUAGES = [
@@ -236,17 +244,30 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
               <div className="grid grid-cols-2 gap-2">
                 {PROJECT_TYPES.map((pt) => {
                   const Icon = pt.icon;
+                  const disabled = pt.comingSoon;
                   return (
                     <button
                       key={pt.value}
                       type="button"
-                      onClick={() => setProjectType(pt.value)}
-                      className={`rounded-md border px-3 py-2.5 text-left transition-colors ${
-                        projectType === pt.value
-                          ? "border-foreground/30 bg-muted shadow-sm"
-                          : "border-border hover:bg-muted/50"
+                      onClick={() => {
+                        if (disabled) return;
+                        setProjectType(pt.value);
+                      }}
+                      disabled={disabled}
+                      aria-disabled={disabled}
+                      className={`relative rounded-md border px-3 py-2.5 text-left transition-colors ${
+                        disabled
+                          ? "border-border/60 bg-muted/30 opacity-60 cursor-not-allowed"
+                          : projectType === pt.value
+                            ? "border-foreground/30 bg-muted shadow-sm"
+                            : "border-border hover:bg-muted/50"
                       }`}
                     >
+                      {disabled && (
+                        <span className="absolute top-1.5 right-1.5 font-ui text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-amber-100 text-amber-900 font-semibold">
+                          Soon
+                        </span>
+                      )}
                       <Icon className="h-4 w-4 mb-1 text-muted-foreground" />
                       <span className="font-ui text-xs font-medium block">{pt.label}</span>
                       <span className="font-body text-[10px] text-muted-foreground block">{pt.desc}</span>
