@@ -7,7 +7,6 @@ import {
   Loader2,
   Eye,
   Pencil,
-  BookOpen,
   Bold,
   Italic,
   List,
@@ -350,6 +349,10 @@ export default function ContentEditor({
     "edit",
   );
   const [pageLayout, setPageLayout] = useState<"single" | "spread">("single");
+  // Remembers which preview flavour the user was last on (Read vs Page)
+  // so clicking the top-level Preview button after a stint in Edit
+  // returns to the same view without making them re-pick.
+  const [lastPreviewKind, setLastPreviewKind] = useState<"read" | "page">("read");
   const [previewHtml, setPreviewHtml] = useState<string>("");
   const [previewLoading, setPreviewLoading] = useState(false);
   // Seeded with sensible defaults so Page mode renders instantly even
@@ -495,6 +498,7 @@ export default function ContentEditor({
     // actually on screen, not the last persisted version.
     const md = htmlToMarkdown(editor.getHTML());
     setPreviewMode(mode);
+    setLastPreviewKind(mode);
     onPreviewModeChange?.(mode);
     setPreviewLoading(true);
     try {
@@ -551,7 +555,10 @@ export default function ContentEditor({
             {statusInfo.label}
           </span>
 
-          {/* Formatting buttons */}
+          {/* Formatting buttons — hidden in Read/Page preview modes
+              because the read-only render can't show their effect. */}
+          {previewMode === "edit" && (
+          <>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleBold().run()}
             active={editor.isActive("bold")}
@@ -658,10 +665,15 @@ export default function ContentEditor({
           >
             <Redo2 className="h-3.5 w-3.5" />
           </ToolbarButton>
+          </>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
           {/* Edit / Read / Page tri-toggle */}
+          {/* Main two-state toggle: Edit (live editor) vs Preview
+              (read-only). Preview restores the user's last sub-mode
+              (Read / Page) so they don't have to re-pick every time. */}
           <div className="flex items-center rounded-md border border-border bg-background overflow-hidden">
             <ToolbarButton
               onClick={() => enterPreviewMode("edit")}
@@ -672,22 +684,48 @@ export default function ContentEditor({
               <Pencil className="h-3.5 w-3.5" />
             </ToolbarButton>
             <ToolbarButton
-              onClick={() => enterPreviewMode("read")}
-              active={previewMode === "read"}
+              onClick={() => enterPreviewMode(lastPreviewKind)}
+              active={previewMode !== "edit"}
               disabled={isStreaming || previewLoading}
-              title="Read view (citations resolved)"
+              title="Preview"
             >
               <Eye className="h-3.5 w-3.5" />
             </ToolbarButton>
-            <ToolbarButton
-              onClick={() => enterPreviewMode("page")}
-              active={previewMode === "page"}
-              disabled={isStreaming || previewLoading}
-              title="Page view (book layout)"
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-            </ToolbarButton>
           </div>
+
+          {/* Read / Page sub-toggle — only visible while previewing. */}
+          {previewMode !== "edit" && (
+            <div className="flex items-center rounded-md border border-border bg-background overflow-hidden">
+              <button
+                type="button"
+                onClick={() => enterPreviewMode("read")}
+                disabled={isStreaming || previewLoading}
+                className={cn(
+                  "px-2.5 py-1 text-[11px] font-ui font-medium transition-colors",
+                  previewMode === "read"
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-muted/50",
+                )}
+                title="Read view (citations resolved)"
+              >
+                Read
+              </button>
+              <button
+                type="button"
+                onClick={() => enterPreviewMode("page")}
+                disabled={isStreaming || previewLoading}
+                className={cn(
+                  "px-2.5 py-1 text-[11px] font-ui font-medium transition-colors",
+                  previewMode === "page"
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-muted/50",
+                )}
+                title="Page view (book layout)"
+              >
+                Page
+              </button>
+            </div>
+          )}
 
           {/* Single / spread sub-toggle, only visible inside page view */}
           {previewMode === "page" && (
