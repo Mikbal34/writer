@@ -779,6 +779,14 @@ export default function WritingWorkspace({
        onContentChange={setCurrentContent}
        streamingContent={streamingContent || currentContent}
        isStreaming={isStreaming}
+       onPreviewModeChange={(mode) => {
+        // Page view needs as much horizontal space as the A4 sheet
+        // demands; auto-collapse the right context panel so the
+        // user can read the preview without horizontal scroll. Other
+        // modes leave the panel alone — keeping whatever the user
+        // last toggled manually.
+        if (mode === "page") setShowRightPanel(false);
+       }}
       />
      )}
     </div>

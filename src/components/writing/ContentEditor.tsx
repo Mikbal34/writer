@@ -40,6 +40,12 @@ interface ContentEditorProps {
   onContentChange?: (content: string) => void;
   streamingContent?: string;
   isStreaming?: boolean;
+  /**
+   * Fires whenever the user switches between Edit / Read / Page so the
+   * surrounding workspace can react — e.g. auto-collapse side panels
+   * to give the A4 preview more horizontal room.
+   */
+  onPreviewModeChange?: (mode: "edit" | "read" | "page") => void;
 }
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
@@ -334,6 +340,7 @@ export default function ContentEditor({
   onContentChange,
   streamingContent,
   isStreaming,
+  onPreviewModeChange,
 }: ContentEditorProps) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   // 'edit' = the live Tiptap editor (default).
@@ -480,6 +487,7 @@ export default function ContentEditor({
   async function enterPreviewMode(mode: "edit" | "read" | "page") {
     if (mode === "edit") {
       setPreviewMode("edit");
+      onPreviewModeChange?.("edit");
       return;
     }
     if (!editor) return;
@@ -487,6 +495,7 @@ export default function ContentEditor({
     // actually on screen, not the last persisted version.
     const md = htmlToMarkdown(editor.getHTML());
     setPreviewMode(mode);
+    onPreviewModeChange?.(mode);
     setPreviewLoading(true);
     try {
       await autoSave(md);
