@@ -237,7 +237,7 @@ You may use standard markdown formatting when it improves clarity:
 - *Italic* (\`*text*\`) for titles of works, foreign words, technical terms on first use, or light emphasis.
 - Bullet lists (\`- item\`) when presenting genuinely parallel, comparable items.
 - Numbered lists (\`1. item\`) when ordering matters (sequence, priority, rank).
-- Tables (markdown table syntax) when comparing data across clear dimensions; avoid tables for narrative content.
+- Tables (markdown table syntax) ONLY when you have a fully populated comparison across at least two dimensions where every cell has real, specific content. Do NOT emit a table as scaffolding to be filled in later — if you cannot fill every cell with substantive prose, write the comparison as flowing text instead. Never produce a table whose cells contain placeholders, ellipses, dashes, "TBD", "—", whitespace, or copies of the column header.
 - Blockquotes (\`> text\`) for direct quotations of significant length (40+ words) or highlighted passages from primary sources.
 - Subheadings (\`## heading\` or \`### heading\`) only when the subsection is long enough to warrant internal structure — generally 1000+ words.
 - Code fences (\`\`\`) for verbatim quotation of code, structured data, or precise technical notation.
