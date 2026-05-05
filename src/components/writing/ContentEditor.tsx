@@ -57,6 +57,11 @@ const STATUS_STYLES: Record<string, { label: string; className: string }> = {
     label: "In Progress",
     className: "bg-accent text-primary",
   },
+  paused: {
+    label: "Paused",
+    className:
+      "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  },
   draft: {
     label: "Draft",
     className:

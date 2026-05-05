@@ -211,10 +211,22 @@ async function fetchRagChunks(
 // POST /api/projects/[id]/write/[subsectionId]/generate
 // Streams AI-generated content via SSE.
 // ---------------------------------------------------------------------------
-export async function POST(_req: NextRequest, ctx: RouteContext) {
+export async function POST(req: NextRequest, ctx: RouteContext) {
   try {
     const session = await requireAuth()
     const { id: projectId, subsectionId } = await ctx.params
+
+    // Optional body: { mode: 'fresh' | 'continue' }. 'continue' tells the
+    // LLM to resume from the existing subsection.content rather than
+    // start over. Body parsing is best-effort — empty body or invalid
+    // JSON → fresh.
+    let mode: 'fresh' | 'continue' = 'fresh'
+    try {
+      const body = (await req.clone().json()) as { mode?: string } | undefined
+      if (body?.mode === 'continue') mode = 'continue'
+    } catch {
+      // ignore — empty body or non-JSON, stay in 'fresh' mode
+    }
 
     // Verify project ownership
     const project = await prisma.project.findFirst({
@@ -253,7 +265,14 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
             .join('\n\n')}`
         : ''
 
-    const fullUserPrompt = userPrompt + ragBlock
+    // In continue mode prepend the existing draft so the LLM picks up
+    // exactly where it left off without paraphrasing or repeating.
+    const existingContent = mode === 'continue' ? subsection.content?.trim() ?? '' : ''
+    const continuationBlock =
+      mode === 'continue' && existingContent
+        ? `\n\nÖNCEDEN YAZILMIŞ KISIM (bu metnin tam devamını yaz; tekrar etme, özetleme — bittiği yerden doğal cümleyle bağla):\n\n${existingContent}`
+        : ''
+    const fullUserPrompt = userPrompt + ragBlock + continuationBlock
 
     // Create writing session record
     const writingSession = await prisma.writingSession.create({
@@ -293,9 +312,10 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
       message: 'Yazılıyor…',
     })
 
-    // Detached LLM worker — keeps running even if the client disconnects.
-    // We buffer chunks so the SSE stream (if still connected) can emit them,
-    // but the work itself is not tied to the request lifecycle.
+    // LLM worker. Pressing the Stop button on the client aborts the
+    // request — we listen for that signal to (a) cancel the LLM stream
+    // immediately and (b) flush whatever we generated so far to the DB
+    // with status='paused' so a Continue click can resume from there.
     let bufferedText = ''
     let finalResult:
       | { fullText: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }
@@ -303,6 +323,37 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
     let workError: string | null = null
     let workDone = false
     let creditInfo: { newBalance: number; creditsUsed: number } | null = null
+    let aborted = false
+
+    // Internal abort controller forwarded to streamChatWithUsage so we
+    // can cancel the upstream Anthropic stream the moment the client
+    // disconnects.
+    const llmAbort = new AbortController()
+    const onClientAbort = async () => {
+      if (aborted) return
+      aborted = true
+      llmAbort.abort()
+      try {
+        const partial = (existingContent ? existingContent + bufferedText : bufferedText) || subsection.content || ''
+        const wordCount = partial.trim().split(/\s+/).filter(Boolean).length
+        await prisma.subsection.update({
+          where: { id: subsectionId },
+          data: {
+            content: partial,
+            wordCount,
+            status: 'paused',
+          },
+        })
+      } catch (err) {
+        console.error('[generate] failed to persist partial on abort:', err)
+      }
+    }
+    if (req.signal.aborted) {
+      // Client never sustained the connection — bail before kicking
+      // off the LLM.
+      return new Response(null, { status: 499 })
+    }
+    req.signal.addEventListener('abort', onClientAbort, { once: true })
 
     // Signal-based coordination: onChunk wakes the SSE loop immediately
     // so users see the same character-by-character typing as before.
@@ -339,16 +390,27 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
           (chunk) => {
             bufferedText += chunk
             wake()
-          }
+          },
+          { signal: llmAbort.signal }
         )
         finalResult = result
 
-        const wordCount = result.fullText.trim().split(/\s+/).filter(Boolean).length
+        // If the client aborted *during* the stream the listener above
+        // already saved the partial as 'paused'. Don't overwrite with a
+        // 'completed' record in that case — the abort wins.
+        if (aborted) return
+
+        // In continue mode the new text is appended to whatever was
+        // already in the subsection; in fresh mode it replaces.
+        const finalContent = existingContent
+          ? existingContent + (existingContent.endsWith('\n') ? '' : '\n\n') + result.fullText
+          : result.fullText
+        const wordCount = finalContent.trim().split(/\s+/).filter(Boolean).length
 
         await prisma.subsection.update({
           where: { id: subsectionId },
           data: {
-            content: result.fullText,
+            content: finalContent,
             wordCount,
             status: 'completed',
           },
@@ -375,6 +437,18 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
 
         await completeJob(jobId, { message: `${wordCount} kelime yazıldı` })
       } catch (err) {
+        // AbortError is the expected path when the user pressed Stop —
+        // the listener has already persisted the partial; no need to
+        // mark anything as failed.
+        const isAbortErr =
+          (err as { name?: string } | null)?.name === 'AbortError' || aborted
+        if (isAbortErr) {
+          await prisma.writingSession
+            .update({ where: { id: writingSession.id }, data: { status: 'paused' } })
+            .catch(() => {})
+          await failJob(jobId, 'paused').catch(() => {})
+          return
+        }
         workError = err instanceof Error ? err.message : String(err)
         await prisma.writingSession
           .update({ where: { id: writingSession.id }, data: { status: 'failed' } })

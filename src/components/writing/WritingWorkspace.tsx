@@ -13,6 +13,7 @@ import {
  ChevronDown,
  PlayCircle,
  Square,
+ Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -232,7 +233,7 @@ export default function WritingWorkspace({
   });
  }
 
- async function handleWriteWithAI() {
+ async function handleWriteWithAI(mode: "fresh" | "continue" = "fresh") {
   if (!selectedSubsectionId) return;
 
   // Preflight: check source readiness. If any mapped source lacks a
@@ -277,12 +278,23 @@ export default function WritingWorkspace({
   streamAbortRef.current = abortController;
 
   setIsStreaming(true);
-  setStreamingContent("");
+  // In continue mode the existing content is the prefix the LLM is
+  // told to extend; we prepend it locally so the editor shows the
+  // running total (existing + streamed delta) instead of only the
+  // newly-generated tail.
+  const continuationPrefix =
+   mode === "continue" ? context?.subsection.content?.trim() ?? "" : "";
+  setStreamingContent(continuationPrefix);
 
   try {
    const res = await fetch(
     `/api/projects/${projectId}/write/${selectedSubsectionId}/generate`,
-    { method: "POST", signal: abortController.signal }
+    {
+     method: "POST",
+     headers: { "Content-Type": "application/json" },
+     body: JSON.stringify({ mode }),
+     signal: abortController.signal,
+    }
    );
 
    if (res.status === 402) {
@@ -318,11 +330,11 @@ export default function WritingWorkspace({
         const parsed = JSON.parse(data);
         if (parsed.delta) {
          accumulated += parsed.delta;
-         setStreamingContent(accumulated);
+         setStreamingContent(continuationPrefix + accumulated);
         }
        } catch {
         accumulated += data;
-        setStreamingContent(accumulated);
+        setStreamingContent(continuationPrefix + accumulated);
        }
       }
      }
@@ -331,8 +343,11 @@ export default function WritingWorkspace({
     // reader cancelled via abort
    }
 
-   if (accumulated) {
-    setCurrentContent(accumulated);
+   const finalContent = continuationPrefix
+    ? continuationPrefix + (continuationPrefix.endsWith("\n") ? "" : "\n\n") + accumulated
+    : accumulated;
+   if (finalContent) {
+    setCurrentContent(finalContent);
    }
    if (!abortController.signal.aborted) {
     toast.success("AI writing completed!");
@@ -348,6 +363,12 @@ export default function WritingWorkspace({
   } finally {
    setIsStreaming(false);
    streamAbortRef.current = null;
+   // Refresh from DB so the editor reflects whatever the server
+   // persisted — for stop this picks up the paused partial; for
+   // completed runs it confirms the saved record.
+   if (selectedSubsectionId) {
+    fetchContext(selectedSubsectionId);
+   }
   }
  }
 
@@ -744,6 +765,36 @@ export default function WritingWorkspace({
        Stop
       </button>
      )}
+
+     {/* Generate / Continue — single-subsection AI writing */}
+     {!isStreaming && !isBatchWriting && context && (() => {
+      const hasContent = (context.subsection.content ?? "").trim().length > 0;
+      const completed = context.subsection.status === "completed";
+      return (
+       <>
+        {hasContent && !completed && (
+         <button
+          onClick={() => handleWriteWithAI("continue")}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-forest text-white font-ui text-xs font-medium hover:bg-forest/90 transition-colors shrink-0"
+          title="Kaldığı yerden devam et"
+         >
+          <PlayCircle className="h-3.5 w-3.5" />
+          Continue
+         </button>
+        )}
+        {!hasContent && (
+         <button
+          onClick={() => handleWriteWithAI("fresh")}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-[#C9A84C] text-[#1A0F05] font-ui text-xs font-medium hover:bg-[#b5943d] transition-colors shrink-0"
+          title="AI ile yaz"
+         >
+          <Sparkles className="h-3.5 w-3.5" />
+          Generate
+         </button>
+        )}
+       </>
+      );
+     })()}
 
      {!showRightPanel && (
       <button

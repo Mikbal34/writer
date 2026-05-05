@@ -74,20 +74,23 @@ export async function streamChatWithUsage(
   messages: ChatMessage[],
   systemPrompt?: string | SystemPromptPart[],
   onChunk?: (text: string) => void,
-  options?: { model?: string }
+  options?: { model?: string; signal?: AbortSignal }
 ): Promise<StreamResult> {
   const client = createClaudeClient()
 
-  const response = await client.messages.create({
-    model: options?.model ?? SONNET,
-    max_tokens: 32768,
-    system: buildSystemParam(systemPrompt),
-    messages: messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
-    stream: true,
-  })
+  const response = await client.messages.create(
+    {
+      model: options?.model ?? SONNET,
+      max_tokens: 32768,
+      system: buildSystemParam(systemPrompt),
+      messages: messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+      stream: true,
+    },
+    { signal: options?.signal },
+  )
 
   let fullText = ''
   let inputTokens = 0
