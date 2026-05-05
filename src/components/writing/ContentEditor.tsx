@@ -701,11 +701,11 @@ export default function ContentEditor({
   // BubbleMenu surfaces these when the user has a non-empty selection.
   // Each calls the rewrite endpoint, replaces the selection range with
   // the AI's response, and falls back to a toast on failure.
-  // Expand a free-form selection to the nearest sentence boundaries so
-  // the LLM never sees half-words or fragmented clauses. Walks left from
-  // `from` until a sentence-end char + whitespace (or paragraph break);
-  // walks right from `to` until the next sentence-end. If the user
-  // selected exactly one full sentence the boundaries don't move.
+  // Expand a mid-sentence selection to the nearest sentence boundaries
+  // so the LLM doesn't get a half-word fragment. If the selection
+  // already contains a sentence boundary anywhere inside it (i.e. the
+  // user grabbed at least one whole sentence), we leave it alone —
+  // expanding would steal extra sentences the user didn't ask for.
   function snapToSentence(start: number, end: number) {
     if (!editor) return { from: start, to: end, text: "" };
     const docSize = editor.state.doc.content.size;
@@ -714,6 +714,15 @@ export default function ContentEditor({
 
     let newFrom = Math.max(0, Math.min(start, docSize));
     let newTo = Math.max(newFrom, Math.min(end, docSize));
+
+    const fragment = editor.state.doc.textBetween(newFrom, newTo, "\n", "\n");
+
+    // If the selected fragment itself contains a sentence-end followed
+    // by whitespace or end-of-text, the user already picked at least
+    // one full sentence boundary — keep the range as-is.
+    if (/[.!?…](?:\s|$)/.test(fragment) || /\n/.test(fragment)) {
+      return { from: newFrom, to: newTo, text: fragment };
+    }
 
     // Walk left from from. We're at sentence start when the char before
     // is a sentence-end + boundary, OR the previous position is a block
