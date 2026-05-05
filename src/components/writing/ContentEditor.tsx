@@ -678,7 +678,10 @@ export default function ContentEditor({
         const err = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(err.error ?? "Rewrite failed");
       }
-      const data = (await res.json()) as { rewrite: string };
+      const data = (await res.json()) as {
+        rewrite: string;
+        lostMarkers?: string[];
+      };
       const rewrite = data.rewrite?.trim();
       if (!rewrite) {
         toast.error("Empty rewrite — try again with a different action.");
@@ -691,9 +694,27 @@ export default function ContentEditor({
         .focus()
         .insertContentAt({ from, to }, rewrite)
         .run();
-      toast.success(
-        action === "custom" ? "Custom rewrite uygulandı" : "Yeniden yazım uygulandı",
-      );
+      if (data.lostMarkers && data.lostMarkers.length > 0) {
+        // The model lost at least one citation, footnote, or
+        // cross-reference marker. Don't undo silently — let the user
+        // decide whether to revert via Ctrl+Z.
+        const labels: Record<string, string> = {
+          cite: "atıf",
+          fn: "dipnot",
+          ref: "cross-ref",
+        };
+        const lost = data.lostMarkers.map((m) => labels[m] ?? m).join(", ");
+        toast.warning(
+          `Yeniden yazımda ${lost} markerı kayboldu — kontrol edip gerekirse Ctrl+Z ile geri alabilirsin.`,
+          { duration: 8000 },
+        );
+      } else {
+        toast.success(
+          action === "custom"
+            ? "Custom rewrite uygulandı"
+            : "Yeniden yazım uygulandı",
+        );
+      }
       setShowCustomRewrite(false);
       setCustomRewritePrompt("");
     } catch (err) {

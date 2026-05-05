@@ -27,14 +27,31 @@ type RewriteAction = 'rewrite' | 'shorten' | 'expand' | 'academic' | 'custom'
 
 const ACTION_INSTRUCTIONS: Record<RewriteAction, string> = {
   rewrite:
-    'Aşağıdaki metni anlamını ve tüm citation markerlarını ([cite:…]) koruyarak yeniden ifade et. Cümle yapısını ve kelime seçimini değiştirebilirsin ama aynı bilgiyi söyle.',
+    'Aşağıdaki metni anlamını koruyarak yeniden ifade et. Cümle yapısını ve kelime seçimini değiştirebilirsin ama aynı bilgiyi söyle.',
   shorten:
-    'Aşağıdaki metni daha öz, kısa hâle getir. Tekrarları ve doldurma cümleleri çıkar; ana fikri ve [cite:…] markerlarını koru.',
+    'Aşağıdaki metni daha öz, kısa hâle getir. Tekrarları ve doldurma cümleleri çıkar; ana fikri koru.',
   expand:
-    'Aşağıdaki metni daha fazla detay, örnek ve nüansla genişlet. Yeni iddialar uydurma — sadece var olan fikri açıklayan cümleler ekle. [cite:…] markerlarını ait oldukları cümlelerde tut.',
+    'Aşağıdaki metni daha fazla detay, örnek ve nüansla genişlet. Yeni iddialar uydurma — sadece var olan fikri açıklayan cümleler ekle.',
   academic:
-    'Aşağıdaki metni daha resmi, akademik bir Türkçeye çevir; analitik ve nesnel bir tonla yeniden yaz. Birinci tekil/çoğul şahıs varsa kaldır. [cite:…] markerlarını koru.',
+    'Aşağıdaki metni daha resmi, akademik bir Türkçeye çevir; analitik ve nesnel bir tonla yeniden yaz. Birinci tekil/çoğul şahıs varsa kaldır.',
   custom: '', // overwritten by user prompt below
+}
+
+// Inline markers that MUST round-trip unchanged. We log these to the
+// system prompt below so the LLM treats them as opaque tokens, and we
+// post-check counts to catch drift before returning the rewrite.
+const PRESERVE_PATTERNS: { name: string; regex: RegExp }[] = [
+  { name: 'cite', regex: /\[cite:[^\]]+\]/g },
+  { name: 'fn', regex: /\[fn:[^\]]+\]/g },
+  { name: 'ref', regex: /\[ref:[^\]]+\]/g },
+]
+
+function countMarkers(text: string): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const { name, regex } of PRESERVE_PATTERNS) {
+    out[name] = (text.match(regex) ?? []).length
+  }
+  return out
 }
 
 const VALID_ACTIONS: ReadonlyArray<RewriteAction> = [
@@ -111,8 +128,13 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     const systemPrompt =
       'Sen akademik bir editörsün. Verilen metin parçasını kullanıcının talebine göre yeniden yazarsın. ' +
-      'Çıktıda sadece yeniden yazılmış metni döndür — başına/sonuna açıklama, tırnak, "İşte yeniden yazım:" gibi şeyler ekleme. ' +
-      "Citation markerları ([cite:bibId,p=...]) varsa aynen koru. Markdown formatlarını (italik, kalın, alıntı) bozmadan korumaya çalış. Yeni atıf uydurma."
+      'Çıktıda sadece yeniden yazılmış metni döndür — başına/sonuna açıklama, tırnak, "İşte yeniden yazım:" gibi şeyler ekleme.\n\n' +
+      'KORUNACAK İŞARETLER (opak token gibi düşün, içeriklerini değiştirme, sayılarını azaltma, yerlerini ait oldukları cümlede tut):\n' +
+      '  • [cite:bibId,p=...] — atıf markerı\n' +
+      '  • [fn: ...]          — dipnot markerı\n' +
+      '  • [ref:id]           — şekil/tablo/denklem cross-reference\n\n' +
+      'Bu işaretlerden hiçbirini silme, birleştirme veya çoğaltma. Bağlı oldukları cümle yeniden yazıldıysa onları yine ilgili cümlede tut. ' +
+      'Markdown formatlarını (**kalın**, *italik*, > alıntı, listeler, tablolar) bozmadan korumaya çalış. Yeni atıf uydurma; mevcut olmayan cite/fn/ref ekleme.'
 
     const userMessage =
       `${instruction}\n\n` +
@@ -130,17 +152,33 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     const rewrite = result.fullText.trim()
 
+    // Marker drift check: if the input had cite/fn/ref markers and the
+    // rewrite dropped any, surface a flag so the client can warn the
+    // user. We don't refuse the rewrite — sometimes the user wants to
+    // shorten and accept the loss — but we make it visible.
+    const before = countMarkers(text)
+    const after = countMarkers(rewrite)
+    const lostMarkers: string[] = []
+    for (const { name } of PRESERVE_PATTERNS) {
+      if ((before[name] ?? 0) > (after[name] ?? 0)) lostMarkers.push(name)
+    }
+
     await deductCredits(
       session.user.id,
       'rewrite_selection',
       result.inputTokens,
       result.outputTokens,
       'sonnet',
-      { projectId, subsectionId, action },
+      { projectId, subsectionId, action, lostMarkers },
       { read: result.cacheReadTokens, creation: result.cacheCreationTokens },
     )
 
-    return NextResponse.json({ rewrite })
+    return NextResponse.json({
+      rewrite,
+      markersBefore: before,
+      markersAfter: after,
+      lostMarkers, // e.g. ['cite'] if any cite markers were dropped
+    })
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
