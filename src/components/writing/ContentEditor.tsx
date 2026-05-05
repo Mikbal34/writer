@@ -364,6 +364,14 @@ export default function ContentEditor({
   const lastStreamRef = useRef<string>("");
   const isStreamingRef = useRef(isStreaming);
   isStreamingRef.current = isStreaming;
+  // Tracks the last value persisted to the server. Lets autoSave skip
+  // the API call (and the "Saving…" flash) when the user toggles modes
+  // or hits Save without having changed anything.
+  const lastSavedRef = useRef<string>(initialContent);
+  useEffect(() => {
+    lastSavedRef.current = initialContent;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subsectionId]);
 
   const initialHtml = useMemo(
     () => markdownToHtml(initialContent),
@@ -451,6 +459,10 @@ export default function ContentEditor({
 
   const autoSave = useCallback(
     async (text: string) => {
+      // Skip when nothing has actually changed since the last save —
+      // mode toggles and explicit Save clicks shouldn't flash "Saving…"
+      // and "Saved" for a no-op request.
+      if (text === lastSavedRef.current) return;
       setSaveState("saving");
       try {
         const res = await fetch(`/api/subsections/${subsectionId}`, {
@@ -462,6 +474,7 @@ export default function ContentEditor({
           }),
         });
         if (!res.ok) throw new Error("Save failed");
+        lastSavedRef.current = text;
         setSaveState("saved");
         setTimeout(() => setSaveState("idle"), 2000);
       } catch {
