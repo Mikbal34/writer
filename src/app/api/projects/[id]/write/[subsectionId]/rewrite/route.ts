@@ -149,8 +149,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Subsection not found' }, { status: 404 })
     }
 
-    // Credit gate.
-    const credits = await checkCredits(session.user.id, 'rewrite_selection')
+    // Credit gate. Estimate scales with selection length so a quick
+    // 50-char tone tweak doesn't see the same gate as a 5000-char
+    // expand. Floor at 40 (a kept-busy minimum), ceiling at 500
+    // (the actual deductCredits below uses real token usage anyway).
+    const estimatedCost = Math.max(40, Math.min(500, Math.ceil(text.length / 30)))
+    const credits = await checkCredits(session.user.id, 'rewrite_selection', estimatedCost)
     if (!credits.allowed) {
       return NextResponse.json(
         { error: 'Insufficient credits', balance: credits.balance, cost: credits.estimatedCost },
@@ -213,45 +217,82 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       '\n--- METİN BİTİŞ ---\n\n' +
       'Yeniden yazılmış metin (sadece metin, açıklama / tırnak / etiket yok):'
 
-    const result = await streamChatWithUsage(
-      [{ role: 'user', content: userMessage }],
-      systemPrompt,
-      undefined,
-      { model: undefined },
-    )
-
-    const rewrite = result.fullText.trim()
-
-    // Marker drift check: lost = original marker disappeared (LLM
-    // ate it); fabricated = new marker id appeared (LLM hallucinated
-    // a citation/cross-ref). Both surface to the client; we don't
-    // refuse the rewrite (the user might want a Shorten that drops
-    // a parenthetical) but the Review bar makes the drift obvious.
+    // Stream the LLM response as SSE so the client can render a live
+    // character counter while the model writes — much nicer than a
+    // 5–10 s opaque spinner on Expand actions.
+    const encoder = new TextEncoder()
     const beforeIds = listMarkers(text)
-    const afterIds = listMarkers(rewrite)
-    const lostMarkers: string[] = []
-    const fabricatedMarkers: string[] = []
-    for (const { name } of PRESERVE_PATTERNS) {
-      const beforeSet = new Set(beforeIds[name] ?? [])
-      const afterSet = new Set(afterIds[name] ?? [])
-      for (const m of beforeSet) if (!afterSet.has(m)) lostMarkers.push(`${name}:${m}`)
-      for (const m of afterSet) if (!beforeSet.has(m)) fabricatedMarkers.push(`${name}:${m}`)
-    }
 
-    await deductCredits(
-      session.user.id,
-      'rewrite_selection',
-      result.inputTokens,
-      result.outputTokens,
-      'sonnet',
-      { projectId, subsectionId, action, lostMarkers, fabricatedMarkers },
-      { read: result.cacheReadTokens, creation: result.cacheCreationTokens },
-    )
+    const stream = new ReadableStream({
+      async start(controller) {
+        const safeEnqueue = (payload: string): boolean => {
+          try {
+            controller.enqueue(encoder.encode(payload))
+            return true
+          } catch {
+            return false
+          }
+        }
 
-    return NextResponse.json({
-      rewrite,
-      lostMarkers, // e.g. ['cite:bibId123']
-      fabricatedMarkers, // e.g. ['cite:made-up-id']
+        try {
+          const result = await streamChatWithUsage(
+            [{ role: 'user', content: userMessage }],
+            systemPrompt,
+            (chunk) => {
+              safeEnqueue(`data: ${JSON.stringify({ delta: chunk })}\n\n`)
+            },
+            { model: undefined },
+          )
+
+          const rewrite = result.fullText.trim()
+
+          // Marker drift: lost = original disappeared, fabricated = new
+          // id invented. Both surface to client.
+          const afterIds = listMarkers(rewrite)
+          const lostMarkers: string[] = []
+          const fabricatedMarkers: string[] = []
+          for (const { name } of PRESERVE_PATTERNS) {
+            const beforeSet = new Set(beforeIds[name] ?? [])
+            const afterSet = new Set(afterIds[name] ?? [])
+            for (const m of beforeSet) if (!afterSet.has(m)) lostMarkers.push(`${name}:${m}`)
+            for (const m of afterSet) if (!beforeSet.has(m)) fabricatedMarkers.push(`${name}:${m}`)
+          }
+
+          await deductCredits(
+            session.user.id,
+            'rewrite_selection',
+            result.inputTokens,
+            result.outputTokens,
+            'sonnet',
+            { projectId, subsectionId, action, lostMarkers, fabricatedMarkers },
+            { read: result.cacheReadTokens, creation: result.cacheCreationTokens },
+          )
+
+          safeEnqueue(
+            `data: ${JSON.stringify({ done: true, rewrite, lostMarkers, fabricatedMarkers })}\n\n`,
+          )
+          safeEnqueue('data: [DONE]\n\n')
+        } catch (err) {
+          console.error('[rewrite/stream]', err)
+          safeEnqueue(
+            `data: ${JSON.stringify({ error: err instanceof Error ? err.message : 'rewrite failed' })}\n\n`,
+          )
+        } finally {
+          try {
+            controller.close()
+          } catch {
+            // already closed
+          }
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
     })
   } catch (err) {
     if (err instanceof AuthError) {

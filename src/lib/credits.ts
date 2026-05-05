@@ -180,10 +180,17 @@ export class InsufficientCreditsError extends Error {
 
 export async function checkCredits(
   userId: string,
-  operation: string
+  operation: string,
+  /**
+   * Optional override for the preflight estimate. Used by variable-cost
+   * operations (e.g. selection rewrite) where the static
+   * ESTIMATED_COSTS entry is just a baseline — a 50-char selection and
+   * a 5000-char selection shouldn't see the same gate.
+   */
+  costOverride?: number,
 ): Promise<{ allowed: boolean; balance: number; estimatedCost: number }> {
   const balance = await ensureMonthlyAllowance(userId)
-  const estimatedCost = ESTIMATED_COSTS[operation] ?? 50
+  const estimatedCost = costOverride ?? ESTIMATED_COSTS[operation] ?? 50
 
   return {
     allowed: balance >= estimatedCost,

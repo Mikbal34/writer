@@ -12,6 +12,8 @@ import {
   Maximize2,
   GraduationCap,
   MessageSquarePlus,
+  RotateCw,
+  GitCompare,
   Bold,
   Italic,
   List,
@@ -345,6 +347,58 @@ function tableToMarkdown(table: HTMLElement): string {
   return lines.join("\n");
 }
 
+// ---- Word-level diff (for the rewrite Review bar's diff popover) -------
+type DiffOp = { type: "equal" | "insert" | "delete"; text: string };
+
+function diffWords(a: string, b: string): DiffOp[] {
+  // Tokenise on whitespace boundaries so word and the gap before it stay
+  // associated — preserves spacing in the rendered diff.
+  const aw = a.split(/(\s+)/).filter((t) => t.length > 0);
+  const bw = b.split(/(\s+)/).filter((t) => t.length > 0);
+  const m = aw.length;
+  const n = bw.length;
+  // Classic LCS DP. m,n stay small for selection-sized text — typical
+  // rewrite is < 800 tokens so the m·n table is fine.
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = aw[i - 1] === bw[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  // Walk back to recover edits.
+  const ops: DiffOp[] = [];
+  let i = m;
+  let j = n;
+  while (i > 0 && j > 0) {
+    if (aw[i - 1] === bw[j - 1]) {
+      ops.push({ type: "equal", text: aw[i - 1] });
+      i--; j--;
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      ops.push({ type: "delete", text: aw[i - 1] });
+      i--;
+    } else {
+      ops.push({ type: "insert", text: bw[j - 1] });
+      j--;
+    }
+  }
+  while (i > 0) { ops.push({ type: "delete", text: aw[i - 1] }); i--; }
+  while (j > 0) { ops.push({ type: "insert", text: bw[j - 1] }); j--; }
+  ops.reverse();
+  // Coalesce runs of the same op-type for cleaner spans.
+  const coalesced: DiffOp[] = [];
+  for (const op of ops) {
+    const last = coalesced[coalesced.length - 1];
+    if (last && last.type === op.type) {
+      last.text += op.text;
+    } else {
+      coalesced.push({ ...op });
+    }
+  }
+  return coalesced;
+}
+
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 export default function ContentEditor({
@@ -644,21 +698,22 @@ export default function ContentEditor({
   // the AI's response, and falls back to a toast on failure.
   type RewriteAction = "rewrite" | "shorten" | "expand" | "academic" | "custom";
   const [rewriteBusy, setRewriteBusy] = useState(false);
+  const [streamingChars, setStreamingChars] = useState(0);
   const [showCustomRewrite, setShowCustomRewrite] = useState(false);
   const [customRewritePrompt, setCustomRewritePrompt] = useState("");
   // Stash the active selection on mousedown before any BubbleMenu
-  // button click can shift focus away. Without this the button
-  // handler reads a collapsed selection and the rewrite drops in
-  // the wrong place.
+  // button click can shift focus away.
   const lastSelectionRef = useRef<{ from: number; to: number; text: string } | null>(null);
   // After a successful rewrite we keep the original snippet around so
-  // the floating Review bar can revert it without relying on the Tiptap
-  // history stack (which gets fragile if the user edits in between).
+  // the floating Review bar can revert / regenerate / show diff.
   const [pendingReview, setPendingReview] = useState<{
     originalText: string;
+    rewriteText: string;
     range: { from: number; to: number };
     action: RewriteAction;
+    customPrompt?: string;
   } | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
 
   async function runRewrite(action: RewriteAction, customPrompt?: string) {
     if (!editor || rewriteBusy) return;
@@ -676,6 +731,8 @@ export default function ContentEditor({
     if (!text.trim()) return;
 
     setRewriteBusy(true);
+    setStreamingChars(0);
+    setShowDiff(false);
     try {
       const res = await fetch(
         `/api/projects/${projectId}/write/${subsectionId}/rewrite`,
@@ -695,20 +752,62 @@ export default function ContentEditor({
         );
         return;
       }
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(err.error ?? "Rewrite failed");
       }
-      const data = (await res.json()) as {
-        rewrite: string;
-        lostMarkers?: string[];
-        fabricatedMarkers?: string[];
-      };
-      const rewrite = data.rewrite?.trim();
+
+      // SSE parse loop. Each `delta` event grows the char counter; the
+      // `done` event carries the final rewrite text + drift metadata.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let charsSeen = 0;
+      let finalRewrite = "";
+      let lostMarkers: string[] = [];
+      let fabricatedMarkers: string[] = [];
+      let serverError: string | null = null;
+      reader: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") break reader;
+          try {
+            const parsed = JSON.parse(data) as {
+              delta?: string;
+              done?: boolean;
+              rewrite?: string;
+              lostMarkers?: string[];
+              fabricatedMarkers?: string[];
+              error?: string;
+            };
+            if (parsed.error) {
+              serverError = parsed.error;
+            } else if (parsed.delta) {
+              charsSeen += parsed.delta.length;
+              setStreamingChars(charsSeen);
+            } else if (parsed.done && parsed.rewrite) {
+              finalRewrite = parsed.rewrite.trim();
+              lostMarkers = parsed.lostMarkers ?? [];
+              fabricatedMarkers = parsed.fabricatedMarkers ?? [];
+            }
+          } catch {
+            // ignore malformed event line
+          }
+        }
+      }
+      if (serverError) throw new Error(serverError);
+      const rewrite = finalRewrite;
       if (!rewrite) {
         toast.error("Empty rewrite — try again with a different action.");
         return;
       }
+      const data = { rewrite, lostMarkers, fabricatedMarkers };
       // Convert markdown back to HTML so multi-paragraph and inline
       // formatting (**bold**, *italic*, lists, blockquote) survive
       // the round-trip. insertContentAt with a string would treat
@@ -723,15 +822,17 @@ export default function ContentEditor({
         toast.error("Replace failed — selection drifted; try again.");
         return;
       }
-      // Track the new range so the Review bar can revert it. The
-      // inserted content's character length isn't directly exposed
-      // by Tiptap, so derive it from the editor's current cursor
-      // position right after insert.
+      // Track the new range so the Review bar can revert / regenerate
+      // / show diff. Tiptap doesn't directly expose the inserted
+      // content's length, so derive it from the cursor position
+      // right after insert.
       const insertedTo = editor.state.selection.from;
       setPendingReview({
         originalText: text,
+        rewriteText: rewrite,
         range: { from: sel.from, to: insertedTo },
         action,
+        customPrompt: action === "custom" ? customPrompt : undefined,
       });
       const drift: string[] = [];
       if (data.lostMarkers && data.lostMarkers.length > 0) drift.push(`kayıp: ${data.lostMarkers.join(", ")}`);
@@ -754,11 +855,13 @@ export default function ContentEditor({
       toast.error(err instanceof Error ? err.message : "Rewrite failed");
     } finally {
       setRewriteBusy(false);
+      setStreamingChars(0);
     }
   }
 
   function applyReview() {
     setPendingReview(null);
+    setShowDiff(false);
   }
   function revertReview() {
     if (!editor || !pendingReview) return;
@@ -768,7 +871,27 @@ export default function ContentEditor({
       .insertContentAt(pendingReview.range, pendingReview.originalText)
       .run();
     setPendingReview(null);
+    setShowDiff(false);
     toast.info("Yeniden yazım geri alındı.");
+  }
+  // "Başka versiyon" — re-run the same action against the original
+  // text so the user can iterate without re-selecting + re-clicking.
+  async function regenerateReview() {
+    if (!editor || !pendingReview || rewriteBusy) return;
+    const { range, originalText, action, customPrompt } = pendingReview;
+    // Restore the original text in place so the next runRewrite has
+    // the right baseline to extend.
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(range, originalText)
+      .run();
+    const restoredFrom = range.from;
+    const restoredTo = restoredFrom + originalText.length;
+    lastSelectionRef.current = { from: restoredFrom, to: restoredTo, text: originalText };
+    setPendingReview(null);
+    setShowDiff(false);
+    await runRewrite(action, customPrompt);
   }
 
   if (!editor) return null;
@@ -1156,7 +1279,10 @@ export default function ContentEditor({
               {rewriteBusy && (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-border bg-muted/40 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  <span>AI çalışıyor…</span>
+                  <span>
+                    AI çalışıyor
+                    {streamingChars > 0 ? ` · ${streamingChars} karakter` : "…"}
+                  </span>
                 </div>
               )}
             </BubbleMenu>
@@ -1201,30 +1327,88 @@ export default function ContentEditor({
           </div>
         )}
         {pendingReview && previewMode === "edit" && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-[#2D1F0E] text-[#FAF7F0] shadow-xl pl-4 pr-1.5 py-1.5">
-            <span className="font-ui text-xs">
-              Yeniden yazım uygulandı —{" "}
-              <span className="text-[#C9A84C] font-medium">
-                {pendingReview.action === "custom"
-                  ? "özel komut"
-                  : pendingReview.action}
+          <>
+            {showDiff && (
+              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 max-w-[640px] w-[90%] max-h-48 overflow-y-auto rounded-md border border-border bg-popover shadow-xl p-4 text-sm leading-relaxed">
+                <div className="font-ui text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+                  Karşılaştırma
+                </div>
+                <div className="font-serif">
+                  {diffWords(pendingReview.originalText, pendingReview.rewriteText).map((op, i) => {
+                    if (op.type === "equal") {
+                      return <span key={i}>{op.text}</span>;
+                    }
+                    if (op.type === "delete") {
+                      return (
+                        <span
+                          key={i}
+                          className="line-through bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200 px-0.5"
+                        >
+                          {op.text}
+                        </span>
+                      );
+                    }
+                    return (
+                      <span
+                        key={i}
+                        className="bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200 px-0.5"
+                      >
+                        {op.text}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-[#2D1F0E] text-[#FAF7F0] shadow-xl pl-4 pr-1.5 py-1.5">
+              <span className="font-ui text-xs mr-1">
+                Yeniden yazım uygulandı —{" "}
+                <span className="text-[#C9A84C] font-medium">
+                  {pendingReview.action === "custom"
+                    ? "özel komut"
+                    : pendingReview.action}
+                </span>
               </span>
-            </span>
-            <button
-              type="button"
-              onClick={revertReview}
-              className="font-ui text-xs px-2.5 py-1 rounded-full bg-transparent hover:bg-[#FAF7F0]/10 transition-colors"
-            >
-              Geri al
-            </button>
-            <button
-              type="button"
-              onClick={applyReview}
-              className="font-ui text-xs font-semibold px-3 py-1 rounded-full bg-[#C9A84C] text-[#1A0F05] hover:bg-[#d4b85a] transition-colors"
-            >
-              Tamam
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => setShowDiff((v) => !v)}
+                className={cn(
+                  "flex items-center gap-1 font-ui text-xs px-2.5 py-1 rounded-full transition-colors",
+                  showDiff
+                    ? "bg-[#FAF7F0]/15 text-[#FAF7F0]"
+                    : "bg-transparent hover:bg-[#FAF7F0]/10",
+                )}
+                title="Diff"
+              >
+                <GitCompare className="h-3 w-3" />
+                Diff
+              </button>
+              <button
+                type="button"
+                onClick={regenerateReview}
+                disabled={rewriteBusy}
+                className="flex items-center gap-1 font-ui text-xs px-2.5 py-1 rounded-full bg-transparent hover:bg-[#FAF7F0]/10 transition-colors disabled:opacity-50"
+                title="Aynı action'la yeniden üret"
+              >
+                <RotateCw className="h-3 w-3" />
+                Başka versiyon
+              </button>
+              <button
+                type="button"
+                onClick={revertReview}
+                className="font-ui text-xs px-2.5 py-1 rounded-full bg-transparent hover:bg-[#FAF7F0]/10 transition-colors"
+              >
+                Geri al
+              </button>
+              <button
+                type="button"
+                onClick={applyReview}
+                className="font-ui text-xs font-semibold px-3 py-1 rounded-full bg-[#C9A84C] text-[#1A0F05] hover:bg-[#d4b85a] transition-colors"
+              >
+                Tamam
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>
