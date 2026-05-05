@@ -696,6 +696,53 @@ export default function ContentEditor({
   // BubbleMenu surfaces these when the user has a non-empty selection.
   // Each calls the rewrite endpoint, replaces the selection range with
   // the AI's response, and falls back to a toast on failure.
+  // Expand a free-form selection to the nearest sentence boundaries so
+  // the LLM never sees half-words or fragmented clauses. Walks left from
+  // `from` until a sentence-end char + whitespace (or paragraph break);
+  // walks right from `to` until the next sentence-end. If the user
+  // selected exactly one full sentence the boundaries don't move.
+  function snapToSentence(start: number, end: number) {
+    if (!editor) return { from: start, to: end, text: "" };
+    const docSize = editor.state.doc.content.size;
+    const isSentenceEnd = (ch: string) => /[.!?…]/.test(ch);
+    const isBoundary = (ch: string) => /\s/.test(ch) || ch === "\n" || ch === "";
+
+    let newFrom = Math.max(0, Math.min(start, docSize));
+    let newTo = Math.max(newFrom, Math.min(end, docSize));
+
+    // Walk left from from. We're at sentence start when the char before
+    // is a sentence-end + boundary, OR the previous position is a block
+    // break (newline returned by textBetween across nodes).
+    while (newFrom > 0) {
+      const prev = editor.state.doc.textBetween(newFrom - 1, newFrom, "\n", "");
+      if (prev === "\n") break;
+      if (newFrom >= 2) {
+        const prevPrev = editor.state.doc.textBetween(newFrom - 2, newFrom - 1, "\n", "");
+        if (isSentenceEnd(prevPrev) && isBoundary(prev)) break;
+      }
+      newFrom--;
+    }
+
+    // Walk right from to. We stop AFTER the sentence-end char so the
+    // selection includes the period/?/!.
+    while (newTo < docSize) {
+      const ch = editor.state.doc.textBetween(newTo, newTo + 1, "\n", "");
+      if (ch === "\n") break;
+      const next =
+        newTo + 1 < docSize
+          ? editor.state.doc.textBetween(newTo + 1, newTo + 2, "\n", "")
+          : "";
+      if (isSentenceEnd(ch) && isBoundary(next)) {
+        newTo++;
+        break;
+      }
+      newTo++;
+    }
+
+    const text = editor.state.doc.textBetween(newFrom, newTo, "\n", "\n");
+    return { from: newFrom, to: newTo, text };
+  }
+
   type RewriteAction = "rewrite" | "shorten" | "expand" | "academic" | "custom";
   const [rewriteBusy, setRewriteBusy] = useState(false);
   const [streamingChars, setStreamingChars] = useState(0);
@@ -721,13 +768,20 @@ export default function ContentEditor({
     // live state, since clicking the menu button can collapse the
     // current selection on some browsers.
     const liveSel = editor.state.selection;
-    const sel = lastSelectionRef.current ?? {
+    const captured = lastSelectionRef.current ?? {
       from: liveSel.from,
       to: liveSel.to,
-      text: editor.state.doc.textBetween(liveSel.from, liveSel.to, "\n", "\n"),
     };
+    if (captured.from === captured.to) return;
+    // Snap the range to whole-sentence boundaries so the LLM doesn't
+    // get a mid-word fragment. Update the editor's visible selection
+    // so the user sees the expanded range before the rewrite lands.
+    const sel = snapToSentence(captured.from, captured.to);
     if (sel.from === sel.to) return;
-    const text = sel.text || editor.state.doc.textBetween(sel.from, sel.to, "\n", "\n");
+    if (sel.from !== captured.from || sel.to !== captured.to) {
+      editor.commands.setTextSelection({ from: sel.from, to: sel.to });
+    }
+    const text = sel.text;
     if (!text.trim()) return;
 
     setRewriteBusy(true);
