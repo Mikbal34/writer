@@ -7,6 +7,11 @@ import {
   Loader2,
   Eye,
   Pencil,
+  Wand2,
+  Scissors,
+  Maximize2,
+  GraduationCap,
+  MessageSquarePlus,
   Bold,
   Italic,
   List,
@@ -24,8 +29,10 @@ import {
   Workflow,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
 import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
@@ -631,6 +638,71 @@ export default function ContentEditor({
     ]);
   }
 
+  // ---- Selection-based AI rewrite ----------------------------------------
+  // BubbleMenu surfaces these when the user has a non-empty selection.
+  // Each calls the rewrite endpoint, replaces the selection range with
+  // the AI's response, and falls back to a toast on failure.
+  type RewriteAction = "rewrite" | "shorten" | "expand" | "academic" | "custom";
+  const [rewriteBusy, setRewriteBusy] = useState(false);
+  const [showCustomRewrite, setShowCustomRewrite] = useState(false);
+  const [customRewritePrompt, setCustomRewritePrompt] = useState("");
+
+  async function runRewrite(action: RewriteAction, customPrompt?: string) {
+    if (!editor || rewriteBusy) return;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) return;
+    const text = editor.state.doc.textBetween(from, to, "\n", "\n");
+    if (!text.trim()) return;
+
+    setRewriteBusy(true);
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/write/${subsectionId}/rewrite`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, action, customPrompt }),
+        },
+      );
+      if (res.status === 402) {
+        const err = (await res.json().catch(() => ({}))) as {
+          balance?: number;
+          cost?: number;
+        };
+        toast.error(
+          `Insufficient credits (${err.balance ?? 0} remaining). Need ~${err.cost ?? "?"} for rewrite.`,
+        );
+        return;
+      }
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? "Rewrite failed");
+      }
+      const data = (await res.json()) as { rewrite: string };
+      const rewrite = data.rewrite?.trim();
+      if (!rewrite) {
+        toast.error("Empty rewrite — try again with a different action.");
+        return;
+      }
+      // Replace the selection in-place. Use insertContentAt with a range
+      // so Tiptap drops the old text and inserts the new in one tx.
+      editor
+        .chain()
+        .focus()
+        .insertContentAt({ from, to }, rewrite)
+        .run();
+      toast.success(
+        action === "custom" ? "Custom rewrite uygulandı" : "Yeniden yazım uygulandı",
+      );
+      setShowCustomRewrite(false);
+      setCustomRewritePrompt("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Rewrite failed");
+    } finally {
+      setRewriteBusy(false);
+    }
+  }
+
   if (!editor) return null;
 
   return (
@@ -917,7 +989,102 @@ export default function ContentEditor({
       {/* Editor / preview */}
       <div className="flex-1 overflow-y-auto relative">
         {previewMode === "edit" && (
-          <EditorContent editor={editor} className="h-full" />
+          <>
+            <EditorContent editor={editor} className="h-full" />
+            <BubbleMenu
+              editor={editor}
+              shouldShow={({ editor: ed, state }) => {
+                const { from, to, empty } = state.selection;
+                if (empty || isStreaming) return false;
+                const text = ed.state.doc.textBetween(from, to, "\n", "\n").trim();
+                return text.length >= 3; // ignore single-character selections
+              }}
+              className="flex flex-col rounded-md border border-border bg-popover shadow-lg overflow-hidden"
+            >
+              {showCustomRewrite ? (
+                <div className="flex items-center gap-1.5 p-2 min-w-[280px]">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={customRewritePrompt}
+                    onChange={(e) => setCustomRewritePrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && customRewritePrompt.trim()) {
+                        runRewrite("custom", customRewritePrompt.trim());
+                      } else if (e.key === "Escape") {
+                        setShowCustomRewrite(false);
+                        setCustomRewritePrompt("");
+                      }
+                    }}
+                    placeholder="Örn. daha kısa yap, dipnot ekle, …"
+                    className="flex-1 px-2 py-1 text-xs font-ui rounded-sm border border-border bg-background focus:outline-none focus:border-[#C9A84C]"
+                    disabled={rewriteBusy}
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      customRewritePrompt.trim() &&
+                      runRewrite("custom", customRewritePrompt.trim())
+                    }
+                    disabled={rewriteBusy || !customRewritePrompt.trim()}
+                    className="px-2 py-1 text-xs font-ui font-medium bg-[#C9A84C] text-[#1A0F05] rounded-sm hover:bg-[#b5943d] disabled:opacity-50 transition-colors"
+                  >
+                    {rewriteBusy ? "…" : "Uygula"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCustomRewrite(false);
+                      setCustomRewritePrompt("");
+                    }}
+                    disabled={rewriteBusy}
+                    className="px-2 py-1 text-xs font-ui text-muted-foreground hover:text-foreground"
+                  >
+                    İptal
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center divide-x divide-border">
+                  <BubbleMenuButton
+                    onClick={() => runRewrite("rewrite")}
+                    disabled={rewriteBusy}
+                    icon={<Wand2 className="h-3 w-3" />}
+                    label="Yeniden yaz"
+                  />
+                  <BubbleMenuButton
+                    onClick={() => runRewrite("shorten")}
+                    disabled={rewriteBusy}
+                    icon={<Scissors className="h-3 w-3" />}
+                    label="Kısalt"
+                  />
+                  <BubbleMenuButton
+                    onClick={() => runRewrite("expand")}
+                    disabled={rewriteBusy}
+                    icon={<Maximize2 className="h-3 w-3" />}
+                    label="Genişlet"
+                  />
+                  <BubbleMenuButton
+                    onClick={() => runRewrite("academic")}
+                    disabled={rewriteBusy}
+                    icon={<GraduationCap className="h-3 w-3" />}
+                    label="Akademikleştir"
+                  />
+                  <BubbleMenuButton
+                    onClick={() => setShowCustomRewrite(true)}
+                    disabled={rewriteBusy}
+                    icon={<MessageSquarePlus className="h-3 w-3" />}
+                    label="Özel"
+                  />
+                </div>
+              )}
+              {rewriteBusy && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-border bg-muted/40 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>AI çalışıyor…</span>
+                </div>
+              )}
+            </BubbleMenu>
+          </>
         )}
         {previewMode === "read" && (
           <div
@@ -987,6 +1154,30 @@ function ToolbarButton({
       )}
     >
       {children}
+    </button>
+  );
+}
+
+function BubbleMenuButton({
+  onClick,
+  disabled,
+  icon,
+  label,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-ui font-medium text-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none transition-colors"
+    >
+      {icon}
+      {label}
     </button>
   );
 }
