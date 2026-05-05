@@ -18,6 +18,10 @@ import {
   Minus,
   Undo2,
   Redo2,
+  BarChart3,
+  ImageIcon,
+  Sigma,
+  Workflow,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -552,6 +556,76 @@ export default function ContentEditor({
     }
   }
 
+  // ---- Block-snippet inserters --------------------------------------------
+  // Each toolbar button below drops a fully-formed markdown template at the
+  // cursor. We insert as one Tiptap paragraph with hardBreak nodes between
+  // lines so the multi-line block (e.g. a chart's vega-lite spec inside
+  // ``` fences) round-trips through htmlToMarkdown without acquiring blank
+  // lines that would split it across multiple parseMarkdownBlocks blocks
+  // on export.
+
+  function shortId(prefix: string): string {
+    const t = Date.now().toString(36).slice(-4);
+    const r = Math.floor(Math.random() * 1296).toString(36).padStart(2, "0");
+    return `${prefix}-${t}${r}`;
+  }
+
+  function insertSnippet(lines: string[]) {
+    if (!editor) return;
+    const content: { type: string; text?: string }[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line) content.push({ type: "text", text: line });
+      if (i < lines.length - 1) content.push({ type: "hardBreak" });
+    }
+    if (content.length === 0) return;
+    editor
+      .chain()
+      .focus()
+      .insertContent({ type: "paragraph", content })
+      .run();
+  }
+
+  function insertChart() {
+    insertSnippet([
+      `[chart:${shortId("chart")} type=bar caption="Açıklama"]`,
+      "```vega-lite",
+      "{",
+      `  "data": { "values": [{ "x": "A", "y": 28 }, { "x": "B", "y": 55 }] },`,
+      `  "mark": "bar",`,
+      `  "encoding": {`,
+      `    "x": { "field": "x", "type": "nominal" },`,
+      `    "y": { "field": "y", "type": "quantitative" }`,
+      "  }",
+      "}",
+      "```",
+    ]);
+  }
+
+  function insertFigure() {
+    insertSnippet([
+      `[figure:${shortId("fig")} caption="Açıklama"]`,
+      "![Alt metin](URL)",
+    ]);
+  }
+
+  function insertEquation() {
+    insertSnippet([
+      `[equation:${shortId("eq")}]`,
+      "$$ E = mc^2 $$",
+    ]);
+  }
+
+  function insertMermaid() {
+    insertSnippet([
+      `[mermaid:${shortId("diag")} caption="Açıklama"]`,
+      "```mermaid",
+      "graph LR",
+      "    A[Başlangıç] --> B[Son]",
+      "```",
+    ]);
+  }
+
   if (!editor) return null;
 
   return (
@@ -653,6 +727,34 @@ export default function ContentEditor({
             title="Insert Table"
           >
             <TableIcon className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={insertChart}
+            disabled={isStreaming}
+            title="Insert Chart (Vega-Lite)"
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={insertFigure}
+            disabled={isStreaming}
+            title="Insert Figure"
+          >
+            <ImageIcon className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={insertEquation}
+            disabled={isStreaming}
+            title="Insert Equation"
+          >
+            <Sigma className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={insertMermaid}
+            disabled={isStreaming}
+            title="Insert Diagram (Mermaid)"
+          >
+            <Workflow className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().setHorizontalRule().run()}
