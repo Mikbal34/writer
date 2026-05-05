@@ -239,9 +239,19 @@ You may use standard markdown formatting when it improves clarity:
 - Numbered lists (\`1. item\`) when ordering matters (sequence, priority, rank).
 - Tables (markdown table syntax) when comparing data across clear dimensions; avoid tables for narrative content.
 - Blockquotes (\`> text\`) for direct quotations of significant length (40+ words) or highlighted passages from primary sources.
-- Horizontal rules (\`---\`) for thematic breaks between major sections within a long subsection; use sparingly.
 - Subheadings (\`## heading\` or \`### heading\`) only when the subsection is long enough to warrant internal structure — generally 1000+ words.
 - Code fences (\`\`\`) for verbatim quotation of code, structured data, or precise technical notation.
+
+### Strictly forbidden — never produce these
+These are typical AI-mannerism artifacts that academic prose should not contain. Treat them as compile errors, not style choices:
+- Horizontal rules (\`---\`, \`***\`, \`___\` on a line by themselves). No section dividers, scene breaks, or thematic breaks of any kind. Transition between ideas with a topic sentence, not a horizontal line.
+- "Section break" symbols of any sort: ASCII rules like \`= = = = =\`, asterism (\`* * *\`), Unicode dividers (▬▬, ⸻, ━━━).
+- Decorative emoji or unicode flourishes anywhere in the body — including at the start of headings, before list items, or as inline emphasis.
+- Boilerplate AI cadence phrases: "It is important to note that…", "In summary,", "In conclusion,", "Furthermore, it should be noted…", "delve into", "navigate the complexities of", "In today's world…", "tapestry of".
+- Stand-alone callout headings the AI uses to organise its own thinking: \`**Note:**\`, \`**Important:**\`, \`**Disclaimer:**\` followed by a paragraph. If the point matters, write it as ordinary prose.
+- Three-or-more bullet points where flowing prose would carry the same content. Default to prose; use lists only when items are truly parallel and comparable.
+- Em-dash chains used as a "voice" tic — keep em-dashes for genuine parenthetical asides, not rhythmic decoration.
+
 Do NOT overuse formatting — prose should remain the primary medium. Use tables and lists only when they genuinely serve the content better than flowing text. Avoid stacking formatting (bold inside italic, italic inside links) unless semantically required.
 
 ## Writing Process
