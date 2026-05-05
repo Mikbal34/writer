@@ -646,12 +646,33 @@ export default function ContentEditor({
   const [rewriteBusy, setRewriteBusy] = useState(false);
   const [showCustomRewrite, setShowCustomRewrite] = useState(false);
   const [customRewritePrompt, setCustomRewritePrompt] = useState("");
+  // Stash the active selection on mousedown before any BubbleMenu
+  // button click can shift focus away. Without this the button
+  // handler reads a collapsed selection and the rewrite drops in
+  // the wrong place.
+  const lastSelectionRef = useRef<{ from: number; to: number; text: string } | null>(null);
+  // After a successful rewrite we keep the original snippet around so
+  // the floating Review bar can revert it without relying on the Tiptap
+  // history stack (which gets fragile if the user edits in between).
+  const [pendingReview, setPendingReview] = useState<{
+    originalText: string;
+    range: { from: number; to: number };
+    action: RewriteAction;
+  } | null>(null);
 
   async function runRewrite(action: RewriteAction, customPrompt?: string) {
     if (!editor || rewriteBusy) return;
-    const { from, to, empty } = editor.state.selection;
-    if (empty) return;
-    const text = editor.state.doc.textBetween(from, to, "\n", "\n");
+    // Prefer the stashed selection (captured on mousedown) over the
+    // live state, since clicking the menu button can collapse the
+    // current selection on some browsers.
+    const liveSel = editor.state.selection;
+    const sel = lastSelectionRef.current ?? {
+      from: liveSel.from,
+      to: liveSel.to,
+      text: editor.state.doc.textBetween(liveSel.from, liveSel.to, "\n", "\n"),
+    };
+    if (sel.from === sel.to) return;
+    const text = sel.text || editor.state.doc.textBetween(sel.from, sel.to, "\n", "\n");
     if (!text.trim()) return;
 
     setRewriteBusy(true);
@@ -681,38 +702,50 @@ export default function ContentEditor({
       const data = (await res.json()) as {
         rewrite: string;
         lostMarkers?: string[];
+        fabricatedMarkers?: string[];
       };
       const rewrite = data.rewrite?.trim();
       if (!rewrite) {
         toast.error("Empty rewrite — try again with a different action.");
         return;
       }
-      // Replace the selection in-place. Use insertContentAt with a range
-      // so Tiptap drops the old text and inserts the new in one tx.
-      editor
+      // Convert markdown back to HTML so multi-paragraph and inline
+      // formatting (**bold**, *italic*, lists, blockquote) survive
+      // the round-trip. insertContentAt with a string would treat
+      // \n\n as text and collapse paragraphs.
+      const rewriteHtml = markdownToHtml(rewrite);
+      const transaction = editor
         .chain()
         .focus()
-        .insertContentAt({ from, to }, rewrite)
+        .insertContentAt({ from: sel.from, to: sel.to }, rewriteHtml)
         .run();
-      if (data.lostMarkers && data.lostMarkers.length > 0) {
-        // The model lost at least one citation, footnote, or
-        // cross-reference marker. Don't undo silently — let the user
-        // decide whether to revert via Ctrl+Z.
-        const labels: Record<string, string> = {
-          cite: "atıf",
-          fn: "dipnot",
-          ref: "cross-ref",
-        };
-        const lost = data.lostMarkers.map((m) => labels[m] ?? m).join(", ");
+      if (!transaction) {
+        toast.error("Replace failed — selection drifted; try again.");
+        return;
+      }
+      // Track the new range so the Review bar can revert it. The
+      // inserted content's character length isn't directly exposed
+      // by Tiptap, so derive it from the editor's current cursor
+      // position right after insert.
+      const insertedTo = editor.state.selection.from;
+      setPendingReview({
+        originalText: text,
+        range: { from: sel.from, to: insertedTo },
+        action,
+      });
+      const drift: string[] = [];
+      if (data.lostMarkers && data.lostMarkers.length > 0) drift.push(`kayıp: ${data.lostMarkers.join(", ")}`);
+      if (data.fabricatedMarkers && data.fabricatedMarkers.length > 0) drift.push(`uydurulan: ${data.fabricatedMarkers.join(", ")}`);
+      if (drift.length > 0) {
         toast.warning(
-          `Yeniden yazımda ${lost} markerı kayboldu — kontrol edip gerekirse Ctrl+Z ile geri alabilirsin.`,
-          { duration: 8000 },
+          `Yeniden yazımda marker drift'i var (${drift.join(" · ")}) — Review bar'dan Geri Al ile düzeltebilirsin.`,
+          { duration: 10000 },
         );
       } else {
         toast.success(
           action === "custom"
-            ? "Custom rewrite uygulandı"
-            : "Yeniden yazım uygulandı",
+            ? "Custom rewrite uygulandı — Review bar'dan onay/red"
+            : "Yeniden yazım uygulandı — Review bar'dan onay/red",
         );
       }
       setShowCustomRewrite(false);
@@ -722,6 +755,20 @@ export default function ContentEditor({
     } finally {
       setRewriteBusy(false);
     }
+  }
+
+  function applyReview() {
+    setPendingReview(null);
+  }
+  function revertReview() {
+    if (!editor || !pendingReview) return;
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(pendingReview.range, pendingReview.originalText)
+      .run();
+    setPendingReview(null);
+    toast.info("Yeniden yazım geri alındı.");
   }
 
   if (!editor) return null;
@@ -1018,9 +1065,17 @@ export default function ContentEditor({
                 const { from, to, empty } = state.selection;
                 if (empty || isStreaming) return false;
                 const text = ed.state.doc.textBetween(from, to, "\n", "\n").trim();
-                return text.length >= 3; // ignore single-character selections
+                if (text.length < 3) return false;
+                // Snapshot the live selection so a mouse-down on the
+                // menu doesn't make us lose it.
+                lastSelectionRef.current = { from, to, text };
+                return true;
               }}
               className="flex flex-col rounded-md border border-border bg-popover shadow-lg overflow-hidden"
+              // Prevent any pointerdown inside the menu from collapsing
+              // the editor selection — without this, Firefox/Safari
+              // sometimes deselect before our click handler fires.
+              onMouseDown={(e) => e.preventDefault()}
             >
               {showCustomRewrite ? (
                 <div className="flex items-center gap-1.5 p-2 min-w-[280px]">
@@ -1143,6 +1198,32 @@ export default function ContentEditor({
           <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs text-primary-foreground shadow-lg">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             AI writing...
+          </div>
+        )}
+        {pendingReview && previewMode === "edit" && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-[#2D1F0E] text-[#FAF7F0] shadow-xl pl-4 pr-1.5 py-1.5">
+            <span className="font-ui text-xs">
+              Yeniden yazım uygulandı —{" "}
+              <span className="text-[#C9A84C] font-medium">
+                {pendingReview.action === "custom"
+                  ? "özel komut"
+                  : pendingReview.action}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={revertReview}
+              className="font-ui text-xs px-2.5 py-1 rounded-full bg-transparent hover:bg-[#FAF7F0]/10 transition-colors"
+            >
+              Geri al
+            </button>
+            <button
+              type="button"
+              onClick={applyReview}
+              className="font-ui text-xs font-semibold px-3 py-1 rounded-full bg-[#C9A84C] text-[#1A0F05] hover:bg-[#d4b85a] transition-colors"
+            >
+              Tamam
+            </button>
           </div>
         )}
       </div>

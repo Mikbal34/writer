@@ -17,6 +17,15 @@ import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { streamChatWithUsage } from '@/lib/claude'
 import { checkCredits, deductCredits } from '@/lib/credits'
+import { CITATION_FORMAT_META } from '@/lib/citations/metadata'
+import type { CitationFormat } from '@prisma/client'
+
+const INLINE_STYLE_HINT: Record<string, string> = {
+  'author-date': 'metin içinde "(Yazar, Yıl, s. N)" formunda görünür',
+  'parenthetical-author-page': 'metin içinde "(Yazar Sayfa)" formunda görünür',
+  numeric: 'metin içinde "[N]" numaralı atıf formunda görünür',
+  footnote: 'dipnot olarak görünür — gövde metninde yalnızca üs simgesiyle anılır',
+}
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -37,19 +46,37 @@ const ACTION_INSTRUCTIONS: Record<RewriteAction, string> = {
   custom: '', // overwritten by user prompt below
 }
 
-// Inline markers that MUST round-trip unchanged. We log these to the
-// system prompt below so the LLM treats them as opaque tokens, and we
-// post-check counts to catch drift before returning the rewrite.
+// Markers that MUST round-trip unchanged. We hand the LLM a list of
+// these in the system prompt as opaque tokens and post-check both
+// missing markers (model deleted one) and fabricated markers (model
+// invented an id that wasn't in the original — i.e. a hallucinated
+// citation or cross-reference).
 const PRESERVE_PATTERNS: { name: string; regex: RegExp }[] = [
+  // Inline markers — citations, footnotes, cross-refs.
   { name: 'cite', regex: /\[cite:[^\]]+\]/g },
   { name: 'fn', regex: /\[fn:[^\]]+\]/g },
   { name: 'ref', regex: /\[ref:[^\]]+\]/g },
+  // Block markers — only the opening token (chart specs span multiple
+  // lines but the marker line is unique).
+  { name: 'chart', regex: /\[chart:[^\]]+\]/g },
+  { name: 'figure', regex: /\[figure:[^\]]+\]/g },
+  { name: 'mermaid', regex: /\[mermaid:[^\]]+\]/g },
+  { name: 'equation', regex: /\[equation:[^\]]+\]/g },
+  { name: 'table', regex: /\[table:[^\]]+\]/g },
 ]
 
 function countMarkers(text: string): Record<string, number> {
   const out: Record<string, number> = {}
   for (const { name, regex } of PRESERVE_PATTERNS) {
     out[name] = (text.match(regex) ?? []).length
+  }
+  return out
+}
+
+function listMarkers(text: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  for (const { name, regex } of PRESERVE_PATTERNS) {
+    out[name] = text.match(regex) ?? []
   }
   return out
 }
@@ -98,17 +125,25 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       )
     }
 
-    // Verify project + subsection ownership.
+    // Verify project + subsection ownership and load the bits we need
+    // for context-aware prompting (citation format, style profile,
+    // surrounding paragraph).
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
-      select: { id: true, language: true },
+      select: {
+        id: true,
+        language: true,
+        citationFormat: true,
+        styleProfile: true,
+        linkedStyleProfile: { select: { profile: true } },
+      },
     })
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
     const subsection = await prisma.subsection.findFirst({
       where: { id: subsectionId, section: { chapter: { projectId } } },
-      select: { id: true },
+      select: { id: true, content: true, title: true },
     })
     if (!subsection) {
       return NextResponse.json({ error: 'Subsection not found' }, { status: 404 })
@@ -126,22 +161,57 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const instruction =
       action === 'custom' ? customPrompt : ACTION_INSTRUCTIONS[action]
 
+    // Surround the selection with the rest of the subsection so the
+    // model can match flow on either side. We tag the rewritten span
+    // with <SEÇIM> so it knows which slice to actually return.
+    const fullContent = subsection.content?.trim() ?? ''
+    let surroundingContext = ''
+    if (fullContent && fullContent.includes(text)) {
+      const marked = fullContent.replace(text, `<SEÇIM>${text}</SEÇIM>`)
+      surroundingContext =
+        '\n\nSUBSECTION TAM METNİ (yeniden yazılan kısım <SEÇIM>...</SEÇIM> ile işaretli — yalnızca seçim içeriğini yeniden yaz, çevredeki cümleleri olduğu gibi bırak):\n' +
+        marked
+    }
+
+    // Citation format awareness — so the LLM doesn't, e.g., paraphrase
+    // (Smith, 2020) into just "Smith" on a Shorten action.
+    const formatMeta = CITATION_FORMAT_META[project.citationFormat as CitationFormat]
+    const formatBlock = formatMeta
+      ? `\n\nATIF FORMATI: ${formatMeta.displayName}${formatMeta.version ? ' ' + formatMeta.version : ''} — ${INLINE_STYLE_HINT[formatMeta.inlineStyle] ?? ''}`
+      : ''
+
+    // User's writing-twin style profile, if linked. Keep the dump
+    // small to not balloon the prompt — the relevant signals live in
+    // a handful of fields the writing prompt already uses.
+    const stylePayload =
+      (project.linkedStyleProfile?.profile as Record<string, unknown> | null) ??
+      (project.styleProfile as Record<string, unknown> | null) ??
+      null
+    const styleBlock = stylePayload
+      ? `\n\nKULLANICININ YAZIM STİLİ (writing twin — yeniden yazımda bu sesle uyumlu kal):\n${JSON.stringify(stylePayload).slice(0, 1500)}`
+      : ''
+
     const systemPrompt =
       'Sen akademik bir editörsün. Verilen metin parçasını kullanıcının talebine göre yeniden yazarsın. ' +
       'Çıktıda sadece yeniden yazılmış metni döndür — başına/sonuna açıklama, tırnak, "İşte yeniden yazım:" gibi şeyler ekleme.\n\n' +
       'KORUNACAK İŞARETLER (opak token gibi düşün, içeriklerini değiştirme, sayılarını azaltma, yerlerini ait oldukları cümlede tut):\n' +
       '  • [cite:bibId,p=...] — atıf markerı\n' +
       '  • [fn: ...]          — dipnot markerı\n' +
-      '  • [ref:id]           — şekil/tablo/denklem cross-reference\n\n' +
+      '  • [ref:id]           — şekil/tablo/denklem cross-reference\n' +
+      '  • [chart:id ...] / [figure:id ...] / [mermaid:id ...] / [equation:id] / [table:id ...] — blok markerları\n\n' +
       'Bu işaretlerden hiçbirini silme, birleştirme veya çoğaltma. Bağlı oldukları cümle yeniden yazıldıysa onları yine ilgili cümlede tut. ' +
-      'Markdown formatlarını (**kalın**, *italik*, > alıntı, listeler, tablolar) bozmadan korumaya çalış. Yeni atıf uydurma; mevcut olmayan cite/fn/ref ekleme.'
+      'Markdown formatlarını (**kalın**, *italik*, > alıntı, listeler, tablolar) bozmadan korumaya çalış. ' +
+      'YENİ MARKER UYDURMA: orijinalde olmayan bir [cite:...], [fn:...], [ref:...], [chart:...], [figure:...], [mermaid:...], [equation:...], [table:...] çıktıya ekleme. Yeni atıf, dipnot veya cross-reference önerme.'
 
     const userMessage =
-      `${instruction}\n\n` +
-      '--- METIN BAŞLANGIÇ ---\n' +
+      `${instruction}` +
+      formatBlock +
+      styleBlock +
+      surroundingContext +
+      '\n\n--- YENİDEN YAZILACAK METİN ---\n' +
       text +
-      '\n--- METIN BİTİŞ ---\n\n' +
-      'Yeniden yazılmış metin (sadece metin, başka şey yazma):'
+      '\n--- METİN BİTİŞ ---\n\n' +
+      'Yeniden yazılmış metin (sadece metin, açıklama / tırnak / etiket yok):'
 
     const result = await streamChatWithUsage(
       [{ role: 'user', content: userMessage }],
@@ -152,15 +222,20 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     const rewrite = result.fullText.trim()
 
-    // Marker drift check: if the input had cite/fn/ref markers and the
-    // rewrite dropped any, surface a flag so the client can warn the
-    // user. We don't refuse the rewrite — sometimes the user wants to
-    // shorten and accept the loss — but we make it visible.
-    const before = countMarkers(text)
-    const after = countMarkers(rewrite)
+    // Marker drift check: lost = original marker disappeared (LLM
+    // ate it); fabricated = new marker id appeared (LLM hallucinated
+    // a citation/cross-ref). Both surface to the client; we don't
+    // refuse the rewrite (the user might want a Shorten that drops
+    // a parenthetical) but the Review bar makes the drift obvious.
+    const beforeIds = listMarkers(text)
+    const afterIds = listMarkers(rewrite)
     const lostMarkers: string[] = []
+    const fabricatedMarkers: string[] = []
     for (const { name } of PRESERVE_PATTERNS) {
-      if ((before[name] ?? 0) > (after[name] ?? 0)) lostMarkers.push(name)
+      const beforeSet = new Set(beforeIds[name] ?? [])
+      const afterSet = new Set(afterIds[name] ?? [])
+      for (const m of beforeSet) if (!afterSet.has(m)) lostMarkers.push(`${name}:${m}`)
+      for (const m of afterSet) if (!beforeSet.has(m)) fabricatedMarkers.push(`${name}:${m}`)
     }
 
     await deductCredits(
@@ -169,15 +244,14 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       result.inputTokens,
       result.outputTokens,
       'sonnet',
-      { projectId, subsectionId, action, lostMarkers },
+      { projectId, subsectionId, action, lostMarkers, fabricatedMarkers },
       { read: result.cacheReadTokens, creation: result.cacheCreationTokens },
     )
 
     return NextResponse.json({
       rewrite,
-      markersBefore: before,
-      markersAfter: after,
-      lostMarkers, // e.g. ['cite'] if any cite markers were dropped
+      lostMarkers, // e.g. ['cite:bibId123']
+      fabricatedMarkers, // e.g. ['cite:made-up-id']
     })
   } catch (err) {
     if (err instanceof AuthError) {
