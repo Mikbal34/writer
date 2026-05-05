@@ -37,13 +37,14 @@ export default function CitationSettingsPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#F5F0E6" }}>
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Breadcrumbs */}
+        {/* Breadcrumbs — Atıf Formatı genelde Export sayfasından açılır,
+            kullanıcı oradan geldiyse oraya dönmek doğru olur. */}
         <Link
-          href={`/projects/${projectId}`}
+          href={`/projects/${projectId}/export`}
           className="inline-flex items-center gap-1 font-ui text-xs text-[#8a7a65] hover:text-[#2D1F0E] mb-4 transition-colors"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
-          {projectTitle || "Projeye dön"}
+          Export sayfasına dön
         </Link>
 
         {/* Header */}
