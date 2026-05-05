@@ -1,15 +1,17 @@
 'use client'
 
 /**
- * Reusable book-page preview. Renders one or two pages at the project's
- * configured pageSize (A4/A5/B5/…) with the BookDesign typography,
- * margins, and page-number placement applied. Used by:
+ * Reusable book-page preview. Renders one or many pages at the
+ * project's configured pageSize (A4/A5/B5/…) using the BookDesign
+ * typography, margins, and page-number placement.
  *
- *  - the Design page sidebar — with no contentHtml so we get the
- *    legacy lorem-ipsum spread (Chapter 1 / The Beginning + body)
- *  - the writing editor's Page-view preview — with contentHtml from
- *    `/api/projects/[id]/subsections/[subId]/preview` so the user sees
- *    their actual prose in book layout.
+ *  - No `contentHtml` (sample / design-page mode) → one or two
+ *    lorem-ipsum pages, used by the design sidebar.
+ *  - With `contentHtml` (writing-editor preview) → the body is
+ *    measured once, then split across N A4-shaped pages stacked
+ *    vertically; spread mode pairs them into spreads. There is no
+ *    inner scroll — the parent container handles vertical scrolling
+ *    so the user reads the document page-by-page like a real book.
  */
 import type { BookDesign } from '@/lib/book-styles'
 import React from 'react'
@@ -42,7 +44,7 @@ export type PagePreviewMode = 'single' | 'spread'
 
 export interface PagePreviewProps {
   design: BookDesign
-  /** 'single' = one recto page, 'spread' = verso + recto side by side */
+  /** 'single' = one column of pages, 'spread' = pages paired side by side */
   mode?: PagePreviewMode
   /**
    * Pre-rendered HTML for the body text. When omitted we fall back to
@@ -50,7 +52,7 @@ export interface PagePreviewProps {
    * still gets a meaningful preview without real content.
    */
   contentHtml?: string
-  /** Width of a single page in CSS pixels. 110 fits the design sidebar; 380+ for the writing editor. */
+  /** Width of a single page in CSS pixels. */
   pageWidthPx?: number
   /** Show the small "A4 · serif 12pt" caption underneath. */
   showCaption?: boolean
@@ -71,41 +73,33 @@ export function PagePreview({
   const pageWidthPt = PAGE_SIZE_PT_WIDTH[design.pageSize] ?? 595
   const ptToPx = (pt: number) => (pt / pageWidthPt) * pageW
 
+  if (contentHtml) {
+    return (
+      <MultiPagePreview
+        design={design}
+        mode={mode}
+        contentHtml={contentHtml}
+        pageW={pageW}
+        pageH={previewH}
+        ptToPx={ptToPx}
+        showCaption={showCaption}
+        className={className}
+      />
+    )
+  }
+
+  // Sample mode (no real content): keep the legacy single-spread render.
   return (
     <div className={`flex flex-col items-center gap-2 ${className ?? ''}`}>
-      <div
-        className="flex shadow-md rounded-sm overflow-hidden"
-        style={{ background: '#d4c9b5' }}
-      >
+      <div className="flex shadow-md rounded-sm overflow-hidden" style={{ background: '#d4c9b5' }}>
         {mode === 'spread' ? (
           <>
-            <PageInner
-              design={design}
-              side="verso"
-              contentHtml={contentHtml}
-              pageW={pageW}
-              previewH={previewH}
-              ptToPx={ptToPx}
-            />
+            <SamplePage design={design} side="verso" pageW={pageW} previewH={previewH} ptToPx={ptToPx} />
             <div style={{ width: 1, background: '#a89e8b' }} aria-hidden />
-            <PageInner
-              design={design}
-              side="recto"
-              contentHtml={contentHtml}
-              pageW={pageW}
-              previewH={previewH}
-              ptToPx={ptToPx}
-            />
+            <SamplePage design={design} side="recto" pageW={pageW} previewH={previewH} ptToPx={ptToPx} />
           </>
         ) : (
-          <PageInner
-            design={design}
-            side="recto"
-            contentHtml={contentHtml}
-            pageW={pageW}
-            previewH={previewH}
-            ptToPx={ptToPx}
-          />
+          <SamplePage design={design} side="recto" pageW={pageW} previewH={previewH} ptToPx={ptToPx} />
         )}
       </div>
       {showCaption && (
@@ -117,37 +111,45 @@ export function PagePreview({
   )
 }
 
-interface PageInnerProps {
+// ---------------------------------------------------------------------------
+// Multi-page preview: measure → split → render N clipped pages.
+// ---------------------------------------------------------------------------
+
+interface MultiPageProps {
   design: BookDesign
-  side: 'verso' | 'recto'
-  contentHtml?: string
+  mode: PagePreviewMode
+  contentHtml: string
   pageW: number
-  previewH: number
+  pageH: number
   ptToPx: (pt: number) => number
+  showCaption?: boolean
+  className?: string
 }
 
-function PageInner({ design, side, contentHtml, pageW, previewH, ptToPx }: PageInnerProps) {
-  const isVerso = side === 'verso'
-  const isRecto = side === 'recto'
-  const pageNumber = isVerso ? 2 : 3
-  const hasRealContent = !!contentHtml
+function MultiPagePreview({
+  design,
+  mode,
+  contentHtml,
+  pageW,
+  pageH,
+  ptToPx,
+  showCaption,
+  className,
+}: MultiPageProps) {
+  const measureRef = React.useRef<HTMLDivElement | null>(null)
+  const [pageCount, setPageCount] = React.useState(1)
 
-  const chapterTitleWeight =
-    design.chapterTitleStyle === 'bold' || design.chapterTitleStyle === 'bold-italic'
-      ? 'bold'
-      : 'normal'
-  const chapterTitleFontStyle =
-    design.chapterTitleStyle === 'italic' || design.chapterTitleStyle === 'bold-italic'
-      ? 'italic'
-      : 'normal'
+  const contentLeft = ptToPx(design.marginLeft)
+  const contentTop = ptToPx(design.marginTop)
+  const contentRight = ptToPx(design.marginRight)
+  const contentBottom = ptToPx(design.marginBottom)
+  const contentWidth = pageW - contentLeft - contentRight
+  const pageContentH = pageH - contentTop - contentBottom
 
-  const pageNumLeftSide =
-    design.pageNumberPosition === 'bottom-outside'
-      ? isVerso
-        ? 'left'
-        : 'right'
-      : 'center'
-
+  // Body styling — same for the measurement node and every visible page
+  // so heights line up. We strip color here; the page-level <div> below
+  // re-applies it (color doesn't affect layout, so leaving it on the
+  // measurement div would only complicate dark-mode flickers).
   const bodyStyle: React.CSSProperties = {
     fontSize: ptToPx(design.bodyFontSize),
     lineHeight: design.lineHeight,
@@ -159,49 +161,182 @@ function PageInner({ design, side, contentHtml, pageW, previewH, ptToPx }: PageI
   const paragraphIndent = design.firstLineIndent ? ptToPx(design.firstLineIndent) : 0
   const paragraphSpacing = ptToPx(design.paragraphSpacing)
 
+  const styleId = React.useId().replace(/[^\w]/g, '')
+  const bodyClass = `pp-body-${styleId}`
+  const bodyCss =
+    `.${bodyClass} p { margin-bottom: ${paragraphSpacing}px;` +
+    (paragraphIndent ? ` text-indent: ${paragraphIndent}px;` : '') +
+    ` }` +
+    `.${bodyClass} h2, .${bodyClass} h3 { font-weight: 600; margin-top: 0.5em; margin-bottom: 0.3em; line-height: 1.2; }` +
+    `.${bodyClass} h2 { font-size: 1.2em; }` +
+    `.${bodyClass} h3 { font-size: 1.05em; }` +
+    `.${bodyClass} em { font-style: italic; }` +
+    `.${bodyClass} strong { font-weight: 600; }`
+
+  React.useLayoutEffect(() => {
+    if (!measureRef.current) return
+    const measured = measureRef.current.scrollHeight
+    if (measured > 0 && pageContentH > 0) {
+      const next = Math.max(1, Math.ceil(measured / pageContentH))
+      setPageCount((prev) => (prev === next ? prev : next))
+    }
+  }, [contentHtml, pageContentH, contentWidth, paragraphSpacing, paragraphIndent])
+
+  // Group pages: single → one page per row, spread → pairs.
+  const groups: number[][] =
+    mode === 'spread'
+      ? Array.from({ length: Math.ceil(pageCount / 2) }, (_, i) =>
+          [i * 2, i * 2 + 1].filter((p) => p < pageCount),
+        )
+      : Array.from({ length: pageCount }, (_, i) => [i])
+
+  return (
+    <div className={`flex flex-col items-center gap-4 ${className ?? ''}`}>
+      <style>{bodyCss}</style>
+
+      {/* Off-screen measurement — same width and styling as a single
+          page's content area so heights match the visible pages. */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          left: -99999,
+          top: 0,
+          visibility: 'hidden',
+          pointerEvents: 'none',
+          width: contentWidth,
+        }}
+      >
+        <div
+          ref={measureRef}
+          className={bodyClass}
+          style={bodyStyle}
+          dangerouslySetInnerHTML={{ __html: contentHtml }}
+        />
+      </div>
+
+      {groups.map((group, gi) => (
+        <div
+          key={gi}
+          className="flex shadow-md rounded-sm overflow-hidden"
+          style={{ background: '#d4c9b5' }}
+        >
+          {group.map((pageIdx, posInGroup) => (
+            <React.Fragment key={pageIdx}>
+              {posInGroup === 1 && (
+                <div style={{ width: 1, background: '#a89e8b' }} aria-hidden />
+              )}
+              <PageSlice
+                design={design}
+                pageIdx={pageIdx}
+                inSpread={mode === 'spread'}
+                positionInSpread={mode === 'spread' ? (posInGroup === 0 ? 'verso' : 'recto') : 'recto'}
+                pageW={pageW}
+                pageH={pageH}
+                pageContentH={pageContentH}
+                contentTop={contentTop}
+                contentBottom={contentBottom}
+                contentLeft={contentLeft}
+                contentRight={contentRight}
+                ptToPx={ptToPx}
+                bodyClass={bodyClass}
+                bodyStyle={bodyStyle}
+                contentHtml={contentHtml}
+              />
+            </React.Fragment>
+          ))}
+        </div>
+      ))}
+
+      {showCaption && (
+        <p className="font-ui text-[10px] text-muted-foreground">
+          {design.pageSize} · {design.bodyFont} {design.bodyFontSize}pt
+          {pageCount > 1 ? ` · ${pageCount} pages` : ''}
+        </p>
+      )}
+    </div>
+  )
+}
+
+interface PageSliceProps {
+  design: BookDesign
+  pageIdx: number
+  inSpread: boolean
+  positionInSpread: 'verso' | 'recto'
+  pageW: number
+  pageH: number
+  pageContentH: number
+  contentTop: number
+  contentBottom: number
+  contentLeft: number
+  contentRight: number
+  ptToPx: (pt: number) => number
+  bodyClass: string
+  bodyStyle: React.CSSProperties
+  contentHtml: string
+}
+
+function PageSlice({
+  design,
+  pageIdx,
+  inSpread,
+  positionInSpread,
+  pageW,
+  pageH,
+  pageContentH,
+  contentTop,
+  contentBottom,
+  contentLeft,
+  contentRight,
+  ptToPx,
+  bodyClass,
+  bodyStyle,
+  contentHtml,
+}: PageSliceProps) {
+  const pageNumber = pageIdx + 1
+
+  const pageNumLeftSide =
+    design.pageNumberPosition === 'bottom-outside'
+      ? inSpread
+        ? positionInSpread === 'verso'
+          ? 'left'
+          : 'right'
+        : 'right'
+      : 'center'
+
   return (
     <div
       className="relative bg-white shadow-md overflow-hidden"
       style={{
         width: pageW,
-        height: previewH,
-        borderRadius: isVerso ? '2px 0 0 2px' : '0 2px 2px 0',
+        height: pageH,
+        borderRadius:
+          inSpread && positionInSpread === 'verso'
+            ? '2px 0 0 2px'
+            : inSpread && positionInSpread === 'recto'
+              ? '0 2px 2px 0'
+              : '2px',
       }}
     >
       <div
         style={{
           position: 'absolute',
-          top: ptToPx(design.marginTop),
-          bottom: ptToPx(design.marginBottom),
-          left: ptToPx(design.marginLeft),
-          right: ptToPx(design.marginRight),
-          overflow: hasRealContent ? 'auto' : 'hidden',
+          top: contentTop,
+          bottom: contentBottom,
+          left: contentLeft,
+          right: contentRight,
+          overflow: 'hidden',
         }}
       >
-        {hasRealContent ? (
-          isRecto ? (
-            <PageBody
-              html={contentHtml}
-              bodyStyle={bodyStyle}
-              paragraphIndent={paragraphIndent}
-              paragraphSpacing={paragraphSpacing}
-            />
-          ) : (
-            <FacingPagePlaceholder pageW={pageW} ptToPx={ptToPx} />
-          )
-        ) : (
-          <SampleContent
-            design={design}
-            isRecto={isRecto}
-            isVerso={isVerso}
-            ptToPx={ptToPx}
-            chapterTitleWeight={chapterTitleWeight}
-            chapterTitleFontStyle={chapterTitleFontStyle}
-            bodyStyle={bodyStyle}
-            paragraphIndent={paragraphIndent}
-            paragraphSpacing={paragraphSpacing}
-          />
-        )}
+        <div
+          className={bodyClass}
+          style={{
+            ...bodyStyle,
+            transform: `translateY(-${pageIdx * pageContentH}px)`,
+            willChange: 'transform',
+          }}
+          dangerouslySetInnerHTML={{ __html: contentHtml }}
+        />
       </div>
 
       {design.showPageNumbers && (
@@ -230,157 +365,165 @@ function PageInner({ design, side, contentHtml, pageW, previewH, ptToPx }: PageI
   )
 }
 
-interface PageBodyProps {
-  html: string
-  bodyStyle: React.CSSProperties
-  paragraphIndent: number
-  paragraphSpacing: number
-}
+// ---------------------------------------------------------------------------
+// Sample / lorem-ipsum page used by the design sidebar when no real
+// content is available. Preserves the legacy "Chapter 1 / The Beginning"
+// + body for each page side. Kept inline so the multi-page path doesn't
+// have to handle the sample-only widgets (image placeholders, etc.).
+// ---------------------------------------------------------------------------
 
-function PageBody({ html, bodyStyle, paragraphIndent, paragraphSpacing }: PageBodyProps) {
-  // Scope paragraph-level indent + spacing via a unique class so we can
-  // style the markdown HTML without forcing the editor's prose classes.
-  const styleId = React.useId().replace(/[^\w]/g, '')
-  const className = `pp-body-${styleId}`
-  return (
-    <>
-      <style>
-        {`.${className} p { margin-bottom: ${paragraphSpacing}px; ${
-          paragraphIndent ? `text-indent: ${paragraphIndent}px;` : ''
-        } }`}
-        {`.${className} h2, .${className} h3 { font-weight: 600; margin-top: 0.5em; margin-bottom: 0.3em; line-height: 1.2; }`}
-        {`.${className} h2 { font-size: 1.2em; }`}
-        {`.${className} h3 { font-size: 1.05em; }`}
-        {`.${className} em { font-style: italic; }`}
-        {`.${className} strong { font-weight: 600; }`}
-      </style>
-      <div className={className} style={bodyStyle} dangerouslySetInnerHTML={{ __html: html }} />
-    </>
-  )
-}
-
-function FacingPagePlaceholder({ pageW, ptToPx }: { pageW: number; ptToPx: (pt: number) => number }) {
-  // Subtle hint that the spread shows just one page of real content.
-  return (
-    <div
-      style={{
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: Math.max(8, ptToPx(7)),
-        color: 'rgba(0,0,0,0.3)',
-        fontStyle: 'italic',
-        textAlign: 'center',
-        padding: pageW * 0.05,
-      }}
-    >
-      ← previous page
-    </div>
-  )
-}
-
-interface SampleContentProps {
+interface SamplePageProps {
   design: BookDesign
-  isRecto: boolean
-  isVerso: boolean
+  side: 'verso' | 'recto'
+  pageW: number
+  previewH: number
   ptToPx: (pt: number) => number
-  chapterTitleWeight: 'bold' | 'normal'
-  chapterTitleFontStyle: 'italic' | 'normal'
-  bodyStyle: React.CSSProperties
-  paragraphIndent: number
-  paragraphSpacing: number
 }
 
-function SampleContent({
-  design,
-  isRecto,
-  isVerso,
-  ptToPx,
-  chapterTitleWeight,
-  chapterTitleFontStyle,
-  bodyStyle,
-  paragraphIndent,
-  paragraphSpacing,
-}: SampleContentProps) {
+function SamplePage({ design, side, pageW, previewH, ptToPx }: SamplePageProps) {
+  const isVerso = side === 'verso'
+  const isRecto = side === 'recto'
+  const pageNumber = isVerso ? 2 : 3
+
+  const chapterTitleWeight =
+    design.chapterTitleStyle === 'bold' || design.chapterTitleStyle === 'bold-italic'
+      ? 'bold'
+      : 'normal'
+  const chapterTitleFontStyle =
+    design.chapterTitleStyle === 'italic' || design.chapterTitleStyle === 'bold-italic'
+      ? 'italic'
+      : 'normal'
+
+  const pageNumLeftSide =
+    design.pageNumberPosition === 'bottom-outside'
+      ? isVerso
+        ? 'left'
+        : 'right'
+      : 'center'
+
+  const bodyStyle: React.CSSProperties = {
+    fontSize: ptToPx(design.bodyFontSize),
+    lineHeight: design.lineHeight,
+    color: design.textColor,
+    textAlign: design.textAlign as React.CSSProperties['textAlign'],
+    fontFamily: 'serif',
+  }
+
+  const paragraphIndent = design.firstLineIndent ? ptToPx(design.firstLineIndent) : 0
+  const paragraphSpacing = ptToPx(design.paragraphSpacing)
   const paragraphStyle: React.CSSProperties = {
     marginBottom: paragraphSpacing,
     textIndent: paragraphIndent || undefined,
   }
 
   return (
-    <>
-      {isRecto && (
-        <>
-          <div
-            style={{
-              fontSize: ptToPx(design.chapterTitleSize) * 0.75,
-              fontWeight: chapterTitleWeight,
-              fontStyle: chapterTitleFontStyle,
-              color: design.headingColor,
-              textAlign: design.chapterTitleAlign as React.CSSProperties['textAlign'],
-              marginBottom: ptToPx(6),
-              lineHeight: 1.2,
-            }}
-          >
-            Chapter 1
-          </div>
-          <div
-            style={{
-              fontSize: ptToPx(design.sectionTitleSize) * 0.85,
-              fontWeight: 600,
-              color: design.headingColor,
-              textAlign: design.chapterTitleAlign as React.CSSProperties['textAlign'],
-              marginBottom: ptToPx(8),
-            }}
-          >
-            The Beginning
-          </div>
-          {design.showChapterDivider && (
+    <div
+      className="relative bg-white shadow-md overflow-hidden"
+      style={{
+        width: pageW,
+        height: previewH,
+        borderRadius: isVerso ? '2px 0 0 2px' : '0 2px 2px 0',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: ptToPx(design.marginTop),
+          bottom: ptToPx(design.marginBottom),
+          left: ptToPx(design.marginLeft),
+          right: ptToPx(design.marginRight),
+          overflow: 'hidden',
+        }}
+      >
+        {isRecto && (
+          <>
             <div
               style={{
-                borderTop: `1px solid ${design.accentColor}`,
+                fontSize: ptToPx(design.chapterTitleSize) * 0.75,
+                fontWeight: chapterTitleWeight,
+                fontStyle: chapterTitleFontStyle,
+                color: design.headingColor,
+                textAlign: design.chapterTitleAlign as React.CSSProperties['textAlign'],
+                marginBottom: ptToPx(6),
+                lineHeight: 1.2,
+              }}
+            >
+              Chapter 1
+            </div>
+            <div
+              style={{
+                fontSize: ptToPx(design.sectionTitleSize) * 0.85,
+                fontWeight: 600,
+                color: design.headingColor,
+                textAlign: design.chapterTitleAlign as React.CSSProperties['textAlign'],
                 marginBottom: ptToPx(8),
               }}
-            />
-          )}
-        </>
-      )}
+            >
+              The Beginning
+            </div>
+            {design.showChapterDivider && (
+              <div
+                style={{
+                  borderTop: `1px solid ${design.accentColor}`,
+                  marginBottom: ptToPx(8),
+                }}
+              />
+            )}
+          </>
+        )}
 
-      {isRecto &&
-        (design.imageLayout === 'float_right' ||
-          design.imageLayout === 'inline_right' ||
-          design.imageLayout === 'float_left' ||
-          design.imageLayout === 'inline_left' ||
-          design.imageLayout === 'half_page') && (
+        {isRecto &&
+          (design.imageLayout === 'float_right' ||
+            design.imageLayout === 'inline_right' ||
+            design.imageLayout === 'float_left' ||
+            design.imageLayout === 'inline_left' ||
+            design.imageLayout === 'half_page') && (
+            <div
+              style={{
+                float:
+                  design.imageLayout === 'float_right' || design.imageLayout === 'inline_right'
+                    ? 'right'
+                    : 'left',
+                width:
+                  design.imageLayout === 'half_page'
+                    ? '50%'
+                    : `${design.imageWidthPercent}%`,
+                height: ptToPx(60),
+                backgroundColor: design.accentColor + '33',
+                border: `1px solid ${design.accentColor}55`,
+                borderRadius: 2,
+                marginLeft:
+                  design.imageLayout === 'float_right' || design.imageLayout === 'inline_right'
+                    ? ptToPx(4)
+                    : 0,
+                marginRight:
+                  design.imageLayout === 'float_left' || design.imageLayout === 'inline_left'
+                    ? ptToPx(4)
+                    : 0,
+                marginBottom: ptToPx(4),
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: ptToPx(7), color: design.accentColor, opacity: 0.8 }}>
+                img
+              </span>
+            </div>
+          )}
+        {isRecto && design.imageLayout === 'full_page' && (
           <div
             style={{
-              float:
-                design.imageLayout === 'float_right' || design.imageLayout === 'inline_right'
-                  ? 'right'
-                  : 'left',
-              width:
-                design.imageLayout === 'half_page'
-                  ? '50%'
-                  : `${design.imageWidthPercent}%`,
-              height: ptToPx(60),
+              width: '100%',
+              height: ptToPx(55),
               backgroundColor: design.accentColor + '33',
               border: `1px solid ${design.accentColor}55`,
               borderRadius: 2,
-              marginLeft:
-                design.imageLayout === 'float_right' || design.imageLayout === 'inline_right'
-                  ? ptToPx(4)
-                  : 0,
-              marginRight:
-                design.imageLayout === 'float_left' || design.imageLayout === 'inline_left'
-                  ? ptToPx(4)
-                  : 0,
               marginBottom: ptToPx(4),
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              flexShrink: 0,
             }}
           >
             <span style={{ fontSize: ptToPx(7), color: design.accentColor, opacity: 0.8 }}>
@@ -388,40 +531,45 @@ function SampleContent({
             </span>
           </div>
         )}
-      {isRecto && design.imageLayout === 'full_page' && (
+
+        <div style={bodyStyle}>
+          <p style={paragraphStyle}>
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
+            incididunt ut labore et dolore magna aliqua.
+          </p>
+          <p style={paragraphStyle}>
+            Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi.
+          </p>
+          {isVerso && (
+            <p style={paragraphStyle}>
+              Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {design.showPageNumbers && (
         <div
           style={{
-            width: '100%',
-            height: ptToPx(55),
-            backgroundColor: design.accentColor + '33',
-            border: `1px solid ${design.accentColor}55`,
-            borderRadius: 2,
-            marginBottom: ptToPx(4),
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            position: 'absolute',
+            bottom: ptToPx(design.marginBottom) * 0.4,
+            left:
+              pageNumLeftSide === 'left'
+                ? ptToPx(design.marginLeft)
+                : pageNumLeftSide === 'center'
+                  ? '50%'
+                  : 'auto',
+            right:
+              pageNumLeftSide === 'right' ? ptToPx(design.marginRight) : 'auto',
+            transform: pageNumLeftSide === 'center' ? 'translateX(-50%)' : undefined,
+            fontSize: ptToPx(8),
+            color: design.textColor,
+            opacity: 0.6,
           }}
         >
-          <span style={{ fontSize: ptToPx(7), color: design.accentColor, opacity: 0.8 }}>
-            img
-          </span>
+          {pageNumber}
         </div>
       )}
-
-      <div style={bodyStyle}>
-        <p style={paragraphStyle}>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
-          incididunt ut labore et dolore magna aliqua.
-        </p>
-        <p style={paragraphStyle}>
-          Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi.
-        </p>
-        {isVerso && (
-          <p style={paragraphStyle}>
-            Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore.
-          </p>
-        )}
-      </div>
-    </>
+    </div>
   )
 }
