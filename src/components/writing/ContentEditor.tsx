@@ -763,17 +763,22 @@ export default function ContentEditor({
           />
         )}
         {previewMode === "page" && (
-          <div className="flex items-start justify-center p-6 bg-muted/30 min-h-full">
+          <div className="flex items-start justify-center p-6 bg-muted/30 min-h-full overflow-x-auto">
             {previewLoading ? (
               <p className="text-muted-foreground italic font-ui text-sm">
                 Loading preview…
               </p>
             ) : (
+              // Wide enough that 12pt body text is comfortably readable.
+              // The A4 height that follows from the aspect ratio (≈1100px
+              // at 780px wide) intentionally exceeds the editor viewport
+              // — the parent .overflow-y-auto handles vertical scrolling
+              // so the user reads the page like a real document.
               <PagePreview
                 design={bookDesign}
                 mode={pageLayout}
                 contentHtml={previewHtml}
-                pageWidthPx={pageLayout === "spread" ? 320 : 480}
+                pageWidthPx={pageLayout === "spread" ? 440 : 780}
                 showCaption
               />
             )}
