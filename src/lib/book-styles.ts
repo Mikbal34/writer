@@ -46,6 +46,42 @@ export interface BookDesign {
   showChapterDivider: boolean
 }
 
+/**
+ * Sensible defaults for a project that has not yet customised its
+ * design — A4, 12pt serif body, 1in margins, gold accent. Used as a
+ * fallback wherever a missing/null `bookDesign` would otherwise leave
+ * the page-preview rendering blank.
+ */
+export const DEFAULT_BOOK_DESIGN: BookDesign = {
+  bodyFont: 'main',
+  bodyFontSize: 12,
+  headingFont: 'main-bold',
+  headingFontSize: 18,
+  lineHeight: 1.5,
+  paragraphSpacing: 6,
+  firstLineIndent: 0,
+  textAlign: 'left',
+  pageSize: 'A4',
+  marginTop: 72,
+  marginBottom: 72,
+  marginLeft: 72,
+  marginRight: 72,
+  chapterTitleSize: 24,
+  chapterTitleAlign: 'left',
+  chapterTitleStyle: 'bold',
+  sectionTitleSize: 16,
+  subsectionTitleSize: 13,
+  imageLayout: 'float_right',
+  imageWidthPercent: 50,
+  imagePosition: 'after',
+  textColor: '#1a1a1a',
+  headingColor: '#1a1a1a',
+  accentColor: '#C9A84C',
+  showPageNumbers: true,
+  pageNumberPosition: 'bottom-center',
+  showChapterDivider: false,
+}
+
 export type ArtStyle =
   | 'watercolor'
   | 'digital_art'

@@ -30,7 +30,7 @@ import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { PagePreview } from "@/components/preview/PagePreview";
-import type { BookDesign } from "@/lib/book-styles";
+import { DEFAULT_BOOK_DESIGN, type BookDesign } from "@/lib/book-styles";
 
 interface ContentEditorProps {
   subsectionId: string;
@@ -345,7 +345,10 @@ export default function ContentEditor({
   const [pageLayout, setPageLayout] = useState<"single" | "spread">("single");
   const [previewHtml, setPreviewHtml] = useState<string>("");
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [bookDesign, setBookDesign] = useState<BookDesign | null>(null);
+  // Seeded with sensible defaults so Page mode renders instantly even
+  // before the project's saved design has come back from the API.
+  const [bookDesign, setBookDesign] = useState<BookDesign>(DEFAULT_BOOK_DESIGN);
+  const [bookDesignLoaded, setBookDesignLoaded] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusInfo = STATUS_STYLES[status] ?? STATUS_STYLES.pending;
   const lastStreamRef = useRef<string>("");
@@ -499,14 +502,20 @@ export default function ContentEditor({
             setPreviewHtml(markdownToHtml(data.content));
           }),
       ];
-      // Page mode needs BookDesign — fetch once, cache in state.
-      if (mode === "page" && !bookDesign) {
+      // Page mode needs the project's BookDesign — fetch once, cache in
+      // state. We always end up with a valid design either way: if the
+      // project hasn't been customised, we keep DEFAULT_BOOK_DESIGN.
+      if (mode === "page" && !bookDesignLoaded) {
         tasks.push(
           fetch(`/api/projects/${projectId}`, { cache: "no-store" })
             .then((res) => (res.ok ? res.json() : null))
-            .then((proj: { bookDesign?: BookDesign } | null) => {
-              if (proj?.bookDesign) setBookDesign(proj.bookDesign);
-            }),
+            .then((proj: { bookDesign?: BookDesign | null } | null) => {
+              if (proj?.bookDesign) {
+                setBookDesign({ ...DEFAULT_BOOK_DESIGN, ...proj.bookDesign });
+              }
+              setBookDesignLoaded(true);
+            })
+            .catch(() => setBookDesignLoaded(true)),
         );
       }
       await Promise.all(tasks);
@@ -755,7 +764,7 @@ export default function ContentEditor({
         )}
         {previewMode === "page" && (
           <div className="flex items-start justify-center p-6 bg-muted/30 min-h-full">
-            {previewLoading || !bookDesign ? (
+            {previewLoading ? (
               <p className="text-muted-foreground italic font-ui text-sm">
                 Loading preview…
               </p>
