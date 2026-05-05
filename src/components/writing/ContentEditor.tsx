@@ -6,7 +6,8 @@ import {
   CheckCircle2,
   Loader2,
   Eye,
-  EyeOff,
+  Pencil,
+  BookOpen,
   Bold,
   Italic,
   List,
@@ -28,6 +29,8 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { Placeholder } from "@tiptap/extension-placeholder";
+import { PagePreview } from "@/components/preview/PagePreview";
+import type { BookDesign } from "@/lib/book-styles";
 
 interface ContentEditorProps {
   subsectionId: string;
@@ -333,9 +336,16 @@ export default function ContentEditor({
   isStreaming,
 }: ContentEditorProps) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [showPreview, setShowPreview] = useState(false);
+  // 'edit' = the live Tiptap editor (default).
+  // 'read' = simple prose render with [cite:…] resolved — fastest preview.
+  // 'page' = real A4/A5 page geometry with project's BookDesign tokens.
+  const [previewMode, setPreviewMode] = useState<"edit" | "read" | "page">(
+    "edit",
+  );
+  const [pageLayout, setPageLayout] = useState<"single" | "spread">("single");
   const [previewHtml, setPreviewHtml] = useState<string>("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [bookDesign, setBookDesign] = useState<BookDesign | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusInfo = STATUS_STYLES[status] ?? STATUS_STYLES.pending;
   const lastStreamRef = useRef<string>("");
@@ -461,33 +471,46 @@ export default function ContentEditor({
     return 0;
   }, [editor, isStreaming, streamingContent, editor?.state.doc.content.size]);
 
-  // Preview toggle — fetch the resolved-citations version from the
-  // server so the user sees what the export will look like
-  // (e.g. "[cite:bibId,p=872]" → "(Smith, 2020, p. 872)") instead of
-  // raw markers cluttering the page.
-  async function togglePreview() {
-    if (showPreview) {
-      setShowPreview(false);
+  // Preview switching — both 'read' and 'page' modes fetch the
+  // resolved-citations version of the body. 'page' additionally needs
+  // the project's BookDesign tokens to render at A4/A5/B5 geometry.
+  async function enterPreviewMode(mode: "edit" | "read" | "page") {
+    if (mode === "edit") {
+      setPreviewMode("edit");
       return;
     }
     if (!editor) return;
-    // Save the latest edit before previewing so the server's preview
-    // reflects what's actually in the buffer, not the last saved version.
+    // Save the buffer first so the server preview reflects what's
+    // actually on screen, not the last persisted version.
     const md = htmlToMarkdown(editor.getHTML());
+    setPreviewMode(mode);
     setPreviewLoading(true);
-    setShowPreview(true);
     try {
       await autoSave(md);
-      const res = await fetch(
-        `/api/projects/${projectId}/subsections/${subsectionId}/preview`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("preview failed");
-      const data = (await res.json()) as { content: string };
-      setPreviewHtml(markdownToHtml(data.content));
+      const tasks: Promise<void>[] = [
+        fetch(`/api/projects/${projectId}/subsections/${subsectionId}/preview`, {
+          cache: "no-store",
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error("preview failed");
+            return res.json() as Promise<{ content: string }>;
+          })
+          .then((data) => {
+            setPreviewHtml(markdownToHtml(data.content));
+          }),
+      ];
+      // Page mode needs BookDesign — fetch once, cache in state.
+      if (mode === "page" && !bookDesign) {
+        tasks.push(
+          fetch(`/api/projects/${projectId}`, { cache: "no-store" })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((proj: { bookDesign?: BookDesign } | null) => {
+              if (proj?.bookDesign) setBookDesign(proj.bookDesign);
+            }),
+        );
+      }
+      await Promise.all(tasks);
     } catch {
-      // Fallback — render the local content without resolution so the
-      // user still gets some preview rather than a blank.
       setPreviewHtml(markdownToHtml(md));
     } finally {
       setPreviewLoading(false);
@@ -620,18 +643,65 @@ export default function ContentEditor({
         </div>
 
         <div className="flex items-center gap-2">
-          <ToolbarButton
-            onClick={togglePreview}
-            active={showPreview}
-            disabled={isStreaming || previewLoading}
-            title={showPreview ? "Edit mode" : "Preview (citations resolved)"}
-          >
-            {showPreview ? (
-              <EyeOff className="h-3.5 w-3.5" />
-            ) : (
+          {/* Edit / Read / Page tri-toggle */}
+          <div className="flex items-center rounded-md border border-border bg-background overflow-hidden">
+            <ToolbarButton
+              onClick={() => enterPreviewMode("edit")}
+              active={previewMode === "edit"}
+              disabled={isStreaming}
+              title="Edit"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => enterPreviewMode("read")}
+              active={previewMode === "read"}
+              disabled={isStreaming || previewLoading}
+              title="Read view (citations resolved)"
+            >
               <Eye className="h-3.5 w-3.5" />
-            )}
-          </ToolbarButton>
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => enterPreviewMode("page")}
+              active={previewMode === "page"}
+              disabled={isStreaming || previewLoading}
+              title="Page view (book layout)"
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+            </ToolbarButton>
+          </div>
+
+          {/* Single / spread sub-toggle, only visible inside page view */}
+          {previewMode === "page" && (
+            <div className="flex items-center rounded-md border border-border bg-background overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setPageLayout("single")}
+                className={cn(
+                  "px-2 py-1 text-[11px] font-ui font-medium transition-colors",
+                  pageLayout === "single"
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-muted/50",
+                )}
+                title="Single page"
+              >
+                1
+              </button>
+              <button
+                type="button"
+                onClick={() => setPageLayout("spread")}
+                className={cn(
+                  "px-2 py-1 text-[11px] font-ui font-medium transition-colors",
+                  pageLayout === "spread"
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-muted/50",
+                )}
+                title="Two-page spread"
+              >
+                2
+              </button>
+            </div>
+          )}
 
           <span className="text-xs text-muted-foreground tabular-nums">
             {wordCount.toLocaleString()} word{wordCount !== 1 ? "s" : ""}
@@ -670,7 +740,10 @@ export default function ContentEditor({
 
       {/* Editor / preview */}
       <div className="flex-1 overflow-y-auto relative">
-        {showPreview ? (
+        {previewMode === "edit" && (
+          <EditorContent editor={editor} className="h-full" />
+        )}
+        {previewMode === "read" && (
           <div
             className="prose prose-sm dark:prose-invert max-w-none p-6 font-serif text-sm leading-7"
             dangerouslySetInnerHTML={{
@@ -679,8 +752,23 @@ export default function ContentEditor({
                 : previewHtml,
             }}
           />
-        ) : (
-          <EditorContent editor={editor} className="h-full" />
+        )}
+        {previewMode === "page" && (
+          <div className="flex items-start justify-center p-6 bg-muted/30 min-h-full">
+            {previewLoading || !bookDesign ? (
+              <p className="text-muted-foreground italic font-ui text-sm">
+                Loading preview…
+              </p>
+            ) : (
+              <PagePreview
+                design={bookDesign}
+                mode={pageLayout}
+                contentHtml={previewHtml}
+                pageWidthPx={pageLayout === "spread" ? 320 : 480}
+                showCaption
+              />
+            )}
+          </div>
         )}
         {isStreaming && (
           <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs text-primary-foreground shadow-lg">
