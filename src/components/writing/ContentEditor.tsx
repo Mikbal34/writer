@@ -41,6 +41,8 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { Placeholder } from "@tiptap/extension-placeholder";
+import { Highlight } from "@tiptap/extension-highlight";
+import { createPortal } from "react-dom";
 import { PagePreview } from "@/components/preview/PagePreview";
 import { DEFAULT_BOOK_DESIGN, type BookDesign } from "@/lib/book-styles";
 
@@ -460,6 +462,9 @@ export default function ContentEditor({
         TableRow,
         TableCell,
         TableHeader,
+        // Used to flag a freshly-applied AI rewrite; the colour is set
+        // when the rewrite lands and cleared on Apply / Revert.
+        Highlight.configure({ multicolor: true }),
         Placeholder.configure({
           placeholder:
             "Start writing here... or use the 'Write with AI' button to generate content.",
@@ -876,11 +881,19 @@ export default function ContentEditor({
         toast.error("Replace failed — selection drifted; try again.");
         return;
       }
-      // Track the new range so the Review bar can revert / regenerate
+      // Track the new range so the Review card can revert / regenerate
       // / show diff. Tiptap doesn't directly expose the inserted
       // content's length, so derive it from the cursor position
       // right after insert.
       const insertedTo = editor.state.selection.from;
+      // Wrap the freshly inserted text with the Highlight mark so the
+      // user can see exactly which span was rewritten.
+      editor
+        .chain()
+        .setTextSelection({ from: sel.from, to: insertedTo })
+        .setMark("highlight", { color: "#FAF3E3" })
+        .setTextSelection(insertedTo)
+        .run();
       setPendingReview({
         originalText: text,
         rewriteText: rewrite,
@@ -913,12 +926,29 @@ export default function ContentEditor({
     }
   }
 
+  function clearHighlightAt(range: { from: number; to: number }) {
+    if (!editor) return;
+    const docSize = editor.state.doc.content.size;
+    const safeFrom = Math.max(0, Math.min(range.from, docSize));
+    const safeTo = Math.max(safeFrom, Math.min(range.to, docSize));
+    if (safeFrom === safeTo) return;
+    editor
+      .chain()
+      .setTextSelection({ from: safeFrom, to: safeTo })
+      .unsetMark("highlight")
+      .setTextSelection(safeTo)
+      .run();
+  }
+
   function applyReview() {
+    if (pendingReview) clearHighlightAt(pendingReview.range);
     setPendingReview(null);
     setShowDiff(false);
   }
   function revertReview() {
     if (!editor || !pendingReview) return;
+    // insertContentAt with plain string also strips the highlight mark
+    // from the replaced span — no separate unset needed.
     editor
       .chain()
       .focus()
@@ -934,7 +964,8 @@ export default function ContentEditor({
     if (!editor || !pendingReview || rewriteBusy) return;
     const { range, originalText, action, customPrompt } = pendingReview;
     // Restore the original text in place so the next runRewrite has
-    // the right baseline to extend.
+    // the right baseline to extend. insertContentAt with plain text
+    // also clears the highlight mark on that range.
     editor
       .chain()
       .focus()
@@ -1380,92 +1411,193 @@ export default function ContentEditor({
             AI writing...
           </div>
         )}
-        {pendingReview && previewMode === "edit" && (
-          <>
-            {showDiff && (
-              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 max-w-[640px] w-[90%] max-h-48 overflow-y-auto rounded-md border border-border bg-popover shadow-xl p-4 text-sm leading-relaxed">
-                <div className="font-ui text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
-                  Karşılaştırma
-                </div>
-                <div className="font-serif">
-                  {diffWords(pendingReview.originalText, pendingReview.rewriteText).map((op, i) => {
-                    if (op.type === "equal") {
-                      return <span key={i}>{op.text}</span>;
-                    }
-                    if (op.type === "delete") {
-                      return (
-                        <span
-                          key={i}
-                          className="line-through bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200 px-0.5"
-                        >
-                          {op.text}
-                        </span>
-                      );
-                    }
-                    return (
-                      <span
-                        key={i}
-                        className="bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200 px-0.5"
-                      >
-                        {op.text}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-[#2D1F0E] text-[#FAF7F0] shadow-xl pl-4 pr-1.5 py-1.5">
-              <span className="font-ui text-xs mr-1">
-                Yeniden yazım uygulandı —{" "}
-                <span className="text-[#C9A84C] font-medium">
-                  {pendingReview.action === "custom"
-                    ? "özel komut"
-                    : pendingReview.action}
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowDiff((v) => !v)}
-                className={cn(
-                  "flex items-center gap-1 font-ui text-xs px-2.5 py-1 rounded-full transition-colors",
-                  showDiff
-                    ? "bg-[#FAF7F0]/15 text-[#FAF7F0]"
-                    : "bg-transparent hover:bg-[#FAF7F0]/10",
-                )}
-                title="Diff"
-              >
-                <GitCompare className="h-3 w-3" />
-                Diff
-              </button>
-              <button
-                type="button"
-                onClick={regenerateReview}
-                disabled={rewriteBusy}
-                className="flex items-center gap-1 font-ui text-xs px-2.5 py-1 rounded-full bg-transparent hover:bg-[#FAF7F0]/10 transition-colors disabled:opacity-50"
-                title="Aynı action'la yeniden üret"
-              >
-                <RotateCw className="h-3 w-3" />
-                Başka versiyon
-              </button>
-              <button
-                type="button"
-                onClick={revertReview}
-                className="font-ui text-xs px-2.5 py-1 rounded-full bg-transparent hover:bg-[#FAF7F0]/10 transition-colors"
-              >
-                Geri al
-              </button>
-              <button
-                type="button"
-                onClick={applyReview}
-                className="font-ui text-xs font-semibold px-3 py-1 rounded-full bg-[#C9A84C] text-[#1A0F05] hover:bg-[#d4b85a] transition-colors"
-              >
-                Tamam
-              </button>
-            </div>
-          </>
+        {pendingReview && previewMode === "edit" && editor && (
+          <RewriteReviewCard
+            editor={editor}
+            review={pendingReview}
+            showDiff={showDiff}
+            onToggleDiff={() => setShowDiff((v) => !v)}
+            onRegenerate={regenerateReview}
+            onRevert={revertReview}
+            onApply={applyReview}
+            rewriteBusy={rewriteBusy}
+          />
         )}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RewriteReviewCard — Cursor-style floating action card pinned to the
+// rewritten range. Renders into document.body via a portal so the card
+// can escape the editor's overflow:auto and z-index stacking.
+// ---------------------------------------------------------------------------
+
+interface RewriteReviewCardProps {
+  editor: NonNullable<ReturnType<typeof useEditor>>;
+  review: {
+    originalText: string;
+    rewriteText: string;
+    range: { from: number; to: number };
+    action: "rewrite" | "shorten" | "expand" | "academic" | "custom";
+    customPrompt?: string;
+  };
+  showDiff: boolean;
+  onToggleDiff: () => void;
+  onRegenerate: () => void | Promise<void>;
+  onRevert: () => void;
+  onApply: () => void;
+  rewriteBusy: boolean;
+}
+
+const ACTION_LABELS: Record<RewriteReviewCardProps["review"]["action"], string> = {
+  rewrite: "Yeniden yazım",
+  shorten: "Kısaltma",
+  expand: "Genişletme",
+  academic: "Akademikleştirme",
+  custom: "Özel komut",
+};
+
+function RewriteReviewCard({
+  editor,
+  review,
+  showDiff,
+  onToggleDiff,
+  onRegenerate,
+  onRevert,
+  onApply,
+  rewriteBusy,
+}: RewriteReviewCardProps) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    const recompute = () => {
+      try {
+        const docSize = editor.state.doc.content.size;
+        const safeFrom = Math.max(0, Math.min(review.range.from, docSize));
+        const safeTo = Math.max(safeFrom, Math.min(review.range.to, docSize));
+        const start = editor.view.coordsAtPos(safeFrom);
+        const end = editor.view.coordsAtPos(safeTo);
+        const cardWidth = 460; // matches max-w below
+        const left = Math.max(
+          12,
+          Math.min(window.innerWidth - cardWidth - 12, start.left),
+        );
+        setPos({ top: end.bottom + 8, left });
+      } catch {
+        setPos(null);
+      }
+    };
+    recompute();
+    window.addEventListener("scroll", recompute, true);
+    window.addEventListener("resize", recompute);
+    return () => {
+      window.removeEventListener("scroll", recompute, true);
+      window.removeEventListener("resize", recompute);
+    };
+  }, [editor, review.range.from, review.range.to]);
+
+  if (!mounted || !pos) return null;
+
+  return createPortal(
+    <div
+      style={{
+        position: "fixed",
+        top: pos.top,
+        left: pos.left,
+        zIndex: 50,
+        maxWidth: 460,
+      }}
+      className="rounded-md border border-[#d4c9b5] bg-[#FAF7F0] shadow-xl overflow-hidden"
+    >
+      {/* Header strip — small label of which action ran */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#d4c9b5]/60 bg-[#FAF3E3]">
+        <Wand2 className="h-3.5 w-3.5 text-[#8a5a1a]" />
+        <span className="font-ui text-[11px] uppercase tracking-widest text-[#8a5a1a]">
+          {ACTION_LABELS[review.action]} uygulandı
+        </span>
+      </div>
+
+      {/* Diff popover (in-card, below header) */}
+      {showDiff && (
+        <div className="px-3 py-2.5 border-b border-[#d4c9b5]/40 max-h-44 overflow-y-auto bg-white text-[13px] leading-relaxed font-serif text-ink">
+          {diffWords(review.originalText, review.rewriteText).map((op, i) => {
+            if (op.type === "equal") return <span key={i}>{op.text}</span>;
+            if (op.type === "delete") {
+              return (
+                <span
+                  key={i}
+                  className="line-through bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200 px-0.5"
+                >
+                  {op.text}
+                </span>
+              );
+            }
+            return (
+              <span
+                key={i}
+                className="bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200 px-0.5"
+              >
+                {op.text}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Actions row */}
+      <div className="flex items-center gap-1 px-2 py-1.5">
+        {/* Tertiary: icon-only Diff + Başka versiyon */}
+        <button
+          type="button"
+          onClick={onToggleDiff}
+          className={cn(
+            "flex items-center justify-center h-7 w-7 rounded-sm transition-colors",
+            showDiff
+              ? "bg-[#C9A84C]/20 text-[#8a5a1a]"
+              : "text-ink-light hover:text-ink hover:bg-[#d4c9b5]/40",
+          )}
+          title="Karşılaştırma"
+          aria-label="Karşılaştırma"
+        >
+          <GitCompare className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={onRegenerate}
+          disabled={rewriteBusy}
+          className="flex items-center justify-center h-7 w-7 rounded-sm text-ink-light hover:text-ink hover:bg-[#d4c9b5]/40 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+          title="Başka versiyon"
+          aria-label="Başka versiyon"
+        >
+          <RotateCw className="h-3.5 w-3.5" />
+        </button>
+
+        <div className="flex-1" />
+
+        {/* Secondary: ghost Geri al */}
+        <button
+          type="button"
+          onClick={onRevert}
+          className="font-ui text-xs px-2.5 py-1 rounded-sm text-ink-light hover:text-ink hover:bg-[#d4c9b5]/40 transition-colors"
+        >
+          Geri al
+        </button>
+        {/* Primary: Tamam */}
+        <button
+          type="button"
+          onClick={onApply}
+          className="font-ui text-xs font-semibold px-3 py-1 rounded-sm bg-[#C9A84C] text-[#1A0F05] hover:bg-[#d4b85a] transition-colors"
+        >
+          Tamam
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
