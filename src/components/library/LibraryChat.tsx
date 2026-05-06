@@ -15,10 +15,13 @@ import {
   Library,
   Feather,
   LogOut,
+  User,
 } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import NotificationBell from "@/components/shared/NotificationBell";
 
@@ -426,7 +429,12 @@ export default function LibraryChat() {
             ) : (
               <div className="max-w-3xl mx-auto space-y-6">
                 {messages.map((m, i) => (
-                  <MessageBubble key={i} message={m} />
+                  <MessageBubble
+                    key={i}
+                    message={m}
+                    isStreaming={isStreaming}
+                    isLast={i === messages.length - 1}
+                  />
                 ))}
               </div>
             )}
@@ -619,21 +627,37 @@ function EmptyState() {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({
+  message,
+  isStreaming,
+  isLast,
+}: {
+  message: ChatMessage;
+  isStreaming?: boolean;
+  isLast?: boolean;
+}) {
   const isUser = message.role === "user";
+  const showCursor = isStreaming && isLast && !isUser && message.content.length > 0;
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "max-w-[80%] rounded-sm px-4 py-3 shadow-sm",
-          isUser
-            ? "bg-[#2D1F0E] text-[#F5EDE0] border border-[#C9A84C]/30"
-            : "bg-white/90 border border-[#d4c9b5]/70 text-[#2D1F0E]",
-        )}
-      >
+    <div className="flex gap-3 items-start">
+      {isUser ? (
+        <div
+          className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center border border-[#d4c9b5]/60 bg-[#FAF3E3]"
+          aria-hidden
+        >
+          <User className="h-4 w-4 text-[#8a7a65]" />
+        </div>
+      ) : (
+        <img
+          src="/images/quilpen-icon.png"
+          alt="Q"
+          className="h-8 w-8 shrink-0 rounded-md border border-[#d4c9b5]/60 bg-white/70"
+        />
+      )}
+      <div className="flex-1 min-w-0">
         {!isUser && message.scope && (
           <div
-            className="font-ui text-[10px] uppercase tracking-widest text-[#8a5a1a] mb-1.5"
+            className="font-ui text-[10px] uppercase tracking-widest text-[#8a5a1a] mb-1"
             style={{ letterSpacing: "0.16em" }}
           >
             {message.scope === "all"
@@ -643,21 +667,26 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         )}
         <div
           className={cn(
-            "text-sm leading-relaxed whitespace-pre-wrap",
-            isUser
-              ? "font-body text-[#F5EDE0]"
-              : "font-serif text-[#2D1F0E]",
+            "prose-chat font-body text-sm break-words text-[#2D1F0E]",
+            isUser && "italic text-[#5C4A32]",
           )}
         >
-          {message.content || (
-            <span className="opacity-60 italic">
-              <Loader2 className="inline h-3 w-3 animate-spin mr-1.5" />
+          {message.content ? (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content}
+            </ReactMarkdown>
+          ) : (
+            <span className="opacity-60 italic flex items-center gap-1.5">
+              <Loader2 className="h-3 w-3 animate-spin" />
               Yazıyor…
             </span>
           )}
+          {showCursor && (
+            <span className="inline-block w-1.5 h-4 bg-[#2D1F0E]/60 animate-pulse ml-0.5 align-middle" />
+          )}
         </div>
         {!isUser && message.sources && message.sources.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-[#d4c9b5]/40 flex flex-wrap gap-1.5">
+          <div className="mt-3 pt-2 border-t border-[#d4c9b5]/40 flex flex-wrap gap-1.5">
             {message.sources.map((src) => (
               <span
                 key={`${src.entryId}-${src.marker}`}
@@ -665,9 +694,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                 title={`${src.title}${src.page !== null ? ` (s. ${src.page})` : ""}`}
               >
                 <span className="font-mono">[{src.marker}]</span>
-                <span className="line-clamp-1 max-w-[180px]">
+                <span className="line-clamp-1 max-w-[200px]">
                   {src.authorSurname ?? src.title}
-                  {src.page !== null ? ` (s. ${src.page})` : ""}
+                  {src.page !== null ? `, s. ${src.page}` : ""}
                 </span>
               </span>
             ))}
