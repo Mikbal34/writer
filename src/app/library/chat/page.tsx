@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/lib/auth";
 import LibraryChat from "@/components/library/LibraryChat";
+import WorkspaceShell from "@/components/shared/WorkspaceShell";
 
 export const metadata = { title: "Kütüphane Sohbeti — Quilpen" };
 export const dynamic = "force-dynamic";
@@ -10,5 +11,9 @@ export default async function LibraryChatPage() {
   if (!session?.user?.id) {
     redirect("/api/auth/signin?callbackUrl=/library/chat");
   }
-  return <LibraryChat />;
+  return (
+    <WorkspaceShell fullHeight>
+      <LibraryChat />
+    </WorkspaceShell>
+  );
 }

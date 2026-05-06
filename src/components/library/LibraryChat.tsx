@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ChevronLeft,
   Send,
   Plus,
   X,
@@ -12,21 +11,12 @@ import {
   FileText,
   Sparkles,
   Search,
-  Library,
-  Feather,
-  LogOut,
   User,
 } from "lucide-react";
-import Link from "next/link";
-import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
-import NotificationBell from "@/components/shared/NotificationBell";
-
-const TEXTURE_URL =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp";
 
 type Scope = "all" | "picked" | "single";
 
@@ -289,80 +279,22 @@ export default function LibraryChat() {
   }
 
   return (
-    <div
-      className="h-screen flex flex-col"
-      style={{
-        backgroundImage: `url(${TEXTURE_URL})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundAttachment: "fixed",
-      }}
-    >
-      {/* App navbar — same chrome as /library and /style for consistency */}
-      <nav className="bg-[#1A0F05]/95 backdrop-blur-md border-b border-[#C9A84C]/20 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <img
-              src="/images/quilpen-logo-horizontal.png"
-              alt="Quilpen"
-              className="h-20 animate-logo-in"
-              style={{ filter: "brightness(0) invert(1)" }}
-            />
-          </Link>
-
-          <div className="flex items-center gap-1">
-            <Link
-              href="/style"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
-            >
-              <Feather className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Writing Twin</span>
-            </Link>
-            <Link
-              href="/library"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
-            >
-              <Library className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">My Library</span>
-            </Link>
-            <NotificationBell />
-            <button
-              onClick={() => signOut({ callbackUrl: "/" })}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Sign Out</span>
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      {/* Page header — back link + ornament title block */}
-      <div className="max-w-7xl w-full mx-auto px-6 pt-6">
-        <Link
-          href="/library"
-          className="inline-flex items-center gap-1.5 font-ui text-xs text-[#8a7a65] hover:text-[#2D1F0E] transition-colors mb-4"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Library
-        </Link>
-        <div className="text-center mb-6">
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-[#C9A84C]/60" />
-            <Sparkles className="h-5 w-5 text-[#C9A84C]" />
-            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-[#C9A84C]/60" />
-          </div>
-          <h1 className="font-display text-3xl font-bold text-[#2D1F0E] tracking-tight">
+    <div className="flex flex-col h-full min-h-0">
+      {/* Compact ornament header */}
+      <div className="px-6 pt-5 pb-3 border-b border-[#d4c9b5]/40">
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles className="h-4 w-4 text-[#C9A84C]" />
+          <h1 className="font-display text-lg font-semibold text-[#2D1F0E]">
             Kütüphane Sohbeti
           </h1>
-          <p className="font-body text-sm text-[#6b5a45] mt-1.5">
-            PDF&apos;lerine sor — yanıt başlık ve sayfa numarasıyla alıntılansın.
-          </p>
         </div>
+        <p className="font-body text-xs text-[#6b5a45]">
+          PDF&apos;lerine sor — yanıt başlık ve sayfa numarasıyla alıntılansın.
+        </p>
       </div>
 
-      {/* 3-column layout */}
-      <div className="flex-1 grid grid-cols-[240px_1fr_300px] min-h-0 max-w-7xl w-full mx-auto px-6 pb-6 gap-3">
+      {/* 3-column content */}
+      <div className="flex-1 grid grid-cols-[200px_1fr_260px] min-h-0 px-3 py-3 gap-3">
         {/* Left: sessions */}
         <aside className="rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/85 backdrop-blur-sm shadow-sm flex flex-col overflow-hidden">
           <div className="p-3 border-b border-[#d4c9b5]/60 bg-[#FAF7F0]/90">

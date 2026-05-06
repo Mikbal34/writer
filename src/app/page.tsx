@@ -20,6 +20,7 @@ import NewProjectDialog from "@/components/NewProjectDialog";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import SignOutButton from "@/components/shared/SignOutButton";
+import WorkspaceShell from "@/components/shared/WorkspaceShell";
 import { FadeUp, FadeUpLarge, FadeIn, ScrollFadeUp, ScrollFadeIn, AnimatedBar } from "@/components/shared/Animations";
 
 const TEXTURE_URL =
@@ -97,55 +98,8 @@ export default async function HomePage() {
 
   const completedCount = projects.filter((p) => p.status === "completed").length;
   return (
-    <div
-      className="min-h-screen"
-      style={{
-        backgroundImage: `url(${TEXTURE_URL})`,
-        backgroundSize: "cover",
-        backgroundAttachment: "fixed",
-        backgroundColor: "#F5F0E6",
-      }}
-    >
-      {/* Navbar */}
-      <nav
-        className="sticky top-0 z-50 border-b"
-        style={{
-          backgroundColor: "rgba(26,15,5,0.95)",
-          backdropFilter: "blur(12px)",
-          borderColor: "rgba(201,168,76,0.20)",
-        }}
-      >
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <img src="/images/quilpen-logo-horizontal.png" alt="Quilpen" className="h-20 animate-logo-in" style={{ filter: "brightness(0) invert(1)" }} />
-          </div>
-
-          <div className="flex items-center gap-1">
-            <Link
-              href="/library"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-sm font-ui transition-colors duration-150"
-              style={{ color: "rgba(250,247,240,0.70)" }}
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-              <span className="hidden sm:block">My Library</span>
-            </Link>
-            <Link
-              href="/style"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-sm font-ui transition-colors duration-150"
-              style={{ color: "rgba(250,247,240,0.70)" }}
-            >
-              <Feather className="h-3.5 w-3.5" />
-              <span className="hidden sm:block">Writing Twin</span>
-            </Link>
-            <SignOutButton
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-sm font-ui transition-colors duration-150"
-              style={{ color: "rgba(250,247,240,0.55)" }}
-            />
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-6xl mx-auto px-6 py-10">
+    <WorkspaceShell>
+      <div className="max-w-5xl w-full mx-auto px-6 py-8">
         {/* Page header */}
         <FadeUp className="text-center mb-10">
           <div className="flex items-center justify-center gap-3 mb-3" aria-hidden="true">
@@ -421,8 +375,8 @@ export default async function HomePage() {
             </span>
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </WorkspaceShell>
   );
 }
 
