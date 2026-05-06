@@ -85,9 +85,16 @@ export async function enrichLibraryEntryFromPdfText(
       url: true,
       abstract: true,
       keywords: true,
+      importSource: true,
     },
   })
   if (!entry) return
+
+  // For drag-drop uploads the title/authorSurname are placeholders
+  // derived from the filename — always overwrite with whatever the
+  // PDF text actually says. For lit-search / Zotero / BibTeX entries
+  // the existing metadata is canonical, so we still preserve it.
+  const isUpload = entry.importSource === 'pdf-upload'
 
   try {
     const result = await generateJSONWithUsage<PdfMetadataExtraction>(
@@ -144,14 +151,18 @@ Rules:
     ).catch((e) => console.error('[library-pipeline] extract credit deduction failed:', e))
 
     // Only fill fields the entry doesn't already have — never overwrite
-    // literature-search-derived metadata.
+    // literature-search-derived metadata. Exception: drag-drop uploads
+    // start with placeholder author/title from the filename, so for
+    // those we always overwrite.
     const data: Record<string, unknown> = {}
     const maybe = <K extends keyof typeof entry>(
       key: K,
       candidate: string | null | undefined
     ) => {
-      const existing = entry[key]
-      if (existing && String(existing).trim().length > 0) return
+      if (!isUpload) {
+        const existing = entry[key]
+        if (existing && String(existing).trim().length > 0) return
+      }
       if (!candidate || candidate === 'null' || candidate === 'Unknown') return
       data[key as string] = candidate
     }
@@ -174,17 +185,18 @@ Rules:
     maybe('url', extracted.url)
     maybe('abstract', extracted.abstract)
 
-    // Keywords: only fill if empty.
-    if ((!entry.keywords || entry.keywords.length === 0) && Array.isArray(extracted.keywords)) {
+    // Keywords: fill if empty (or always for drag-drop uploads).
+    if (
+      (isUpload || !entry.keywords || entry.keywords.length === 0) &&
+      Array.isArray(extracted.keywords)
+    ) {
       const clean = extracted.keywords.filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
       if (clean.length > 0) data.keywords = clean.slice(0, 6)
     }
 
-    // entryType — only if not manually set to something specific, and the
-    // extracted value is a valid enum value.
+    // entryType — trust the PDF-derived type when the entry is a default
+    // "kitap" (always true for drag-drop uploads).
     if (extracted.entryType && VALID_ENTRY_TYPES.has(extracted.entryType as EntryType)) {
-      // Always trust the PDF-derived type more than the default "kitap", but
-      // not when the entry already has a non-default type.
       if (entry.entryType === 'kitap' || !entry.entryType) {
         data.entryType = extracted.entryType
       }
