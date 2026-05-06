@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  BookOpen,
   Library,
   Plus,
   FileUp,
@@ -15,7 +14,6 @@ import {
   LayoutGrid,
   List,
   Sparkles,
-  MessageSquare,
 } from "lucide-react";
 import {
   Dialog,
@@ -30,6 +28,7 @@ import LibraryEntryTable, {
 import LibraryEntryForm from "@/components/library/LibraryEntryForm";
 import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
+import PdfDropZone from "@/components/library/PdfDropZone";
 import { Ornament } from "@/components/shared/BookElements";
 import { FadeUp, FadeIn } from "@/components/shared/Animations";
 import WorkspaceShell from "@/components/shared/WorkspaceShell";
@@ -148,50 +147,47 @@ export default function LibraryPage() {
           </p>
         </FadeUp>
 
-        {/* Action buttons */}
-        <FadeIn delay={0.2} className="flex items-center justify-between gap-3 flex-wrap mb-6">
-          <span className="font-ui text-xs text-[#8a7a65]">{total} sources</span>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => setShowZoteroPanel(!showZoteroPanel)}
-              className="font-ui text-xs px-3 py-2 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/80 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
-            >
-              Zotero
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowBibtexDialog(true)}
-              className="flex items-center gap-1.5 font-ui text-xs px-3 py-2 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/80 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
-            >
-              <FileUp className="h-3.5 w-3.5" />
-              Import BibTeX
-            </button>
-            <Link
-              href="/library/literature-search"
-              className="flex items-center gap-1.5 font-ui text-xs px-3 py-2 rounded-sm border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#8a7540] hover:bg-[#C9A84C]/20 transition-colors"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Literatür Tara
-            </Link>
-            <Link
-              href="/library/chat"
-              className="flex items-center gap-1.5 font-ui text-xs px-3 py-2 rounded-sm border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#8a7540] hover:bg-[#C9A84C]/20 transition-colors"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-              Library&apos;le konuş
-            </Link>
+        {/* Drop zone — primary CTA, drag PDFs to auto-extract bibliography */}
+        <FadeIn delay={0.2} className="mb-4">
+          <PdfDropZone onUploaded={fetchEntries} />
+        </FadeIn>
+
+        {/* Secondary action row — manual + import flows */}
+        <FadeIn delay={0.25} className="flex items-center justify-end gap-3 flex-wrap mb-6">
+          <div className="flex gap-1.5 flex-wrap">
             <button
               type="button"
               onClick={() => {
                 setEditingEntry(null);
                 setShowEntryDialog(true);
               }}
-              className="flex items-center gap-1.5 font-ui text-xs px-3 py-2 rounded-sm border border-[#C9A84C]/30 bg-[#2D1F0E] text-[#C9A84C] hover:bg-[#3a2910] transition-colors"
+              className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/70 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
             >
-              <Plus className="h-3.5 w-3.5" />
-              Add New
+              <Plus className="h-3 w-3" />
+              Manuel Ekle
             </button>
+            <button
+              type="button"
+              onClick={() => setShowBibtexDialog(true)}
+              className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/70 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
+            >
+              <FileUp className="h-3 w-3" />
+              Import BibTeX
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowZoteroPanel(!showZoteroPanel)}
+              className="font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/70 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
+            >
+              Zotero
+            </button>
+            <Link
+              href="/library/literature-search"
+              className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#8a7540] hover:bg-[#C9A84C]/20 transition-colors"
+            >
+              <Sparkles className="h-3 w-3" />
+              Literatür Tara
+            </Link>
           </div>
         </FadeIn>
 
