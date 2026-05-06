@@ -48,6 +48,7 @@ model User {
   sessions           Session[]
   projects           Project[]
   libraryEntries     LibraryEntry[]
+  libraryChatMessages LibraryChatMessage[]
   libraryTags        LibraryTag[]
   zoteroConnection   ZoteroConnection?
   creditBalance      Int                 @default(1500)
@@ -513,6 +514,27 @@ model LibraryChunk {
   libraryEntry LibraryEntry @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
 
   @@index([libraryEntryId])
+}
+
+// "Chat with your PDFs" feature — turns the user's library into a
+// queryable corpus. Messages persist per session so the user can come
+// back to a thread later. Sources is a denormalised JSON snapshot of
+// the chunks the assistant cited — chunk rows themselves can be
+// re-embedded or deleted, but the answer's citations stay readable.
+model LibraryChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  sessionId String
+  role      String // "user" | "assistant"
+  content   String   @db.Text
+  scope     String? // "all" | "picked" | "single" — only set on user rows
+  entryIds  String[] // selected library entries when scope != "all"
+  sources   Json? // citations on assistant rows: [{ entryId, title, page }]
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, sessionId, createdAt])
 }
 
 model LiteratureSearchCache {

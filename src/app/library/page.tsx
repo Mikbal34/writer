@@ -17,6 +17,7 @@ import {
   List,
   Feather,
   Sparkles,
+  MessageSquare,
 } from "lucide-react";
 import {
   Dialog,
@@ -229,6 +230,13 @@ export default function LibraryPage() {
             >
               <Sparkles className="h-3.5 w-3.5" />
               Literatür Tara
+            </Link>
+            <Link
+              href="/library/chat"
+              className="flex items-center gap-1.5 font-ui text-xs px-3 py-2 rounded-sm border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#8a7540] hover:bg-[#C9A84C]/20 transition-colors"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Library&apos;le konuş
             </Link>
             <button
               type="button"
