@@ -1,12 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import Link from "next/link"
 import {
   Search,
   Loader2,
   Sparkles,
-  ChevronLeft,
   ChevronUp,
   ChevronDown,
   CheckCircle2,
@@ -16,6 +14,9 @@ import {
   Library,
 } from "lucide-react"
 import { toast } from "sonner"
+import WorkspaceShell from "@/components/shared/WorkspaceShell"
+import { Ornament } from "@/components/shared/BookElements"
+import { FadeUp, FadeIn } from "@/components/shared/Animations"
 
 interface SearchResult {
   externalId: string
@@ -340,32 +341,32 @@ export default function LiteratureSearchPage() {
   const pdfMissing = results.filter((r) => !r.openAccessUrl)
 
   return (
-    <div className="min-h-screen bg-[#F5F0E6]">
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <Link
-              href="/library"
-              className="inline-flex items-center gap-1 font-ui text-xs text-[#8a7a65] hover:text-[#2D1F0E] mb-2"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              Kütüphaneye Dön
-            </Link>
-            <h1 className="font-display text-3xl font-bold text-[#2D1F0E] flex items-center gap-2">
-              <Sparkles className="h-6 w-6 text-[#C9A84C]" />
-              Literatür Tara
-            </h1>
-            <p className="font-body text-sm text-[#6b5a45] mt-1">
-              Konunu yaz, 8 akademik veritabanında (OpenAlex, Semantic Scholar, CrossRef, Google Books, arXiv, PMC, DOAJ, bioRxiv) paralel tarama yapılır; skorlanıp en alakalı 25 kaynak listelenir.
-            </p>
+    <WorkspaceShell>
+      <div className="max-w-5xl w-full mx-auto px-6 py-8">
+        {/* Page header — matches /library, /style pattern */}
+        <FadeUp className="mb-8 text-center">
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-[#C9A84C]/60" />
+            <Sparkles className="h-5 w-5 text-[#C9A84C]" />
+            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-[#C9A84C]/60" />
           </div>
-        </div>
+          <h1 className="font-display text-3xl font-bold text-[#2D1F0E] tracking-tight">
+            Literatür Tara
+          </h1>
+          <p className="font-body text-sm text-[#6b5a45] mt-1.5 max-w-2xl mx-auto">
+            Konunu yaz, 8 akademik veritabanı (OpenAlex, Semantic Scholar,
+            CrossRef, Google Books, arXiv, PMC, DOAJ, bioRxiv) paralel taranır
+            ve en alakalı 25 kaynak skorlanır.
+          </p>
+        </FadeUp>
+
+        <Ornament className="w-32 mx-auto text-[#c9bfad] mb-6" />
 
         {/* Search form */}
+        <FadeIn delay={0.15}>
         <form
           onSubmit={handleSearch}
-          className="bg-[#FAF7F0] border border-[#d4c9b5] rounded-sm p-5 mb-5"
+          className="bg-white/60 border border-[#d4c9b5]/60 rounded-sm p-5 mb-5"
         >
           <div className="flex gap-2 mb-3">
             <div className="relative flex-1">
@@ -444,6 +445,7 @@ export default function LiteratureSearchPage() {
             </div>
           )}
         </form>
+        </FadeIn>
 
         {/* Live progress — shown while stage !== idle/done */}
         {stage !== 'idle' && stage !== 'done' && (
@@ -597,8 +599,14 @@ export default function LiteratureSearchPage() {
             <div className="space-y-3">{pdfMissing.map(renderCard)}</div>
           </div>
         )}
+
+        <div className="text-center py-4 mt-4">
+          <span className="font-display text-xs text-[#a89880] italic">
+            --- x ---
+          </span>
+        </div>
       </div>
-    </div>
+    </WorkspaceShell>
   )
 
   function renderCard(r: SearchResult) {
