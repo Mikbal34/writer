@@ -9,13 +9,11 @@ import {
   FileUp,
   Search,
   Loader2,
-  LogOut,
   ChevronLeft,
   ChevronRight,
   Filter,
   LayoutGrid,
   List,
-  Feather,
   Sparkles,
   MessageSquare,
 } from "lucide-react";
@@ -25,7 +23,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 import LibraryEntryTable, {
   type LibraryEntryRow,
@@ -35,10 +32,7 @@ import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
 import { Ornament } from "@/components/shared/BookElements";
 import { FadeUp, FadeIn } from "@/components/shared/Animations";
-import NotificationBell from "@/components/shared/NotificationBell";
-
-const TEXTURE_URL =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp";
+import WorkspaceShell from "@/components/shared/WorkspaceShell";
 
 const ENTRY_TYPES = [
   { value: "", label: "All" },
@@ -137,59 +131,8 @@ export default function LibraryPage() {
   const totalPages = Math.ceil(total / 50);
 
   return (
-    <div
-      className="min-h-screen"
-      style={{
-        backgroundImage: `url(${TEXTURE_URL})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundAttachment: "fixed",
-      }}
-    >
-      {/* Navbar */}
-      <nav className="bg-[#1A0F05]/95 backdrop-blur-md border-b border-[#C9A84C]/20 sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <img src="/images/quilpen-logo-horizontal.png" alt="Quilpen" className="h-20 animate-logo-in" style={{ filter: "brightness(0) invert(1)" }} />
-          </Link>
-
-          <div className="flex items-center gap-1">
-            <Link
-              href="/style"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
-            >
-              <Feather className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Writing Twin</span>
-            </Link>
-            <Link
-              href="/library"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#F5EDE0] transition-colors"
-            >
-              <Library className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">My Library</span>
-            </Link>
-            <NotificationBell />
-            <button
-              onClick={() => signOut({ callbackUrl: "/" })}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Sign Out</span>
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-6xl mx-auto px-6 py-10">
-        {/* Back link */}
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 font-ui text-xs text-[#8a7a65] hover:text-[#2D1F0E] transition-colors mb-6"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Back to My Books
-        </Link>
-
+    <WorkspaceShell>
+      <div className="max-w-5xl w-full mx-auto px-6 py-8">
         {/* Page header */}
         <FadeUp className="mb-8 text-center">
           <div className="flex items-center justify-center gap-3 mb-3">
@@ -372,7 +315,7 @@ export default function LibraryPage() {
           <span className="font-display text-xs text-[#a89880] italic">— ix —</span>
         </div>
 
-      </main>
+      </div>
 
       {/* Entry Form Dialog */}
       <Dialog
@@ -432,6 +375,6 @@ export default function LibraryPage() {
         onOpenChange={setShowBibtexDialog}
         onImported={fetchEntries}
       />
-    </div>
+    </WorkspaceShell>
   );
 }

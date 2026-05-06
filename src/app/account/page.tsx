@@ -5,6 +5,7 @@ import { getServerSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { tierByName, TIERS } from '@/lib/billing/tiers'
 import { ensureMonthlyAllowance } from '@/lib/credits'
+import WorkspaceShell from '@/components/shared/WorkspaceShell'
 
 export const metadata = { title: 'Account — Quilpen' }
 export const dynamic = 'force-dynamic'
@@ -67,8 +68,8 @@ export default async function AccountPage() {
   })()
 
   return (
-    <div className="min-h-screen bg-[#FAF7F0]">
-      <div className="max-w-4xl mx-auto px-6 py-12">
+    <WorkspaceShell>
+      <div className="max-w-4xl w-full mx-auto px-6 py-10">
         <header className="mb-8">
           <h1 className="font-display text-3xl font-bold text-ink mb-1">Account</h1>
           <p className="font-ui text-sm text-ink-light">{user.email}</p>
@@ -227,6 +228,6 @@ export default async function AccountPage() {
           )}
         </section>
       </div>
-    </div>
+    </WorkspaceShell>
   )
 }
