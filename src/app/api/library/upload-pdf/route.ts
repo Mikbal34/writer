@@ -56,6 +56,9 @@ export async function POST(req: NextRequest) {
     // overwrites both fields a few seconds later, so the placeholder
     // is short-lived; if extraction fails it stays as a clear marker.
     const placeholderSurname = `(Yükleme ${randomUUID().slice(0, 8)})`
+    // Prod's `keywords` column is NOT NULL with no default, and the
+    // pg driver adapter under Prisma 7 doesn't auto-fill String[]
+    // fields — passing `[]` explicitly avoids a P2011 on insert.
     const entry = await prisma.libraryEntry.create({
       data: {
         userId: session.user.id,
@@ -65,6 +68,7 @@ export async function POST(req: NextRequest) {
         importSource: 'pdf-upload',
         pdfStatus: 'extracting',
         fileType: 'pdf',
+        keywords: [],
       },
       select: { id: true, title: true, pdfStatus: true },
     })
