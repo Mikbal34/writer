@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import {
   Library,
   Plus,
@@ -13,7 +12,6 @@ import {
   Filter,
   LayoutGrid,
   List,
-  Sparkles,
 } from "lucide-react";
 import {
   Dialog,
@@ -181,13 +179,6 @@ export default function LibraryPage() {
             >
               Zotero
             </button>
-            <Link
-              href="/library/literature-search"
-              className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#8a7540] hover:bg-[#C9A84C]/20 transition-colors"
-            >
-              <Sparkles className="h-3 w-3" />
-              Literatür Tara
-            </Link>
           </div>
         </FadeIn>
 

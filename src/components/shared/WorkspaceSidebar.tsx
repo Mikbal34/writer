@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   X,
+  Sparkles,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,11 @@ interface NavItem {
 const NAV: NavItem[] = [
   { label: "My Books", href: "/", icon: <BookOpen className="w-4 h-4" />, exact: true },
   { label: "Library", href: "/library", icon: <LibraryIcon className="w-4 h-4" />, exact: true },
+  {
+    label: "Literatür Tara",
+    href: "/library/literature-search",
+    icon: <Sparkles className="w-4 h-4" />,
+  },
   {
     label: "Kütüphane'yle Konuş",
     href: "/library/chat",
