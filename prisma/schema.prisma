@@ -482,7 +482,7 @@ model LibraryEntry {
 
   // Literature-search enrichment
   abstract       String?  @db.Text
-  keywords       String[]
+  keywords       String[] @default([])
   citationCount  Int?
   relevanceScore Float? // Haiku-scored against the user's query
   openAccessUrl  String? // Direct PDF URL when open access
