@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
+  ChevronLeft,
   Send,
   Plus,
   X,
@@ -12,10 +12,18 @@ import {
   FileText,
   Sparkles,
   Search,
+  Library,
+  Feather,
+  LogOut,
 } from "lucide-react";
 import Link from "next/link";
+import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import NotificationBell from "@/components/shared/NotificationBell";
+
+const TEXTURE_URL =
+  "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp";
 
 type Scope = "all" | "picked" | "single";
 
@@ -279,44 +287,102 @@ export default function LibraryChat() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ backgroundColor: "#F5F0E6" }}
+      className="h-screen flex flex-col"
+      style={{
+        backgroundImage: `url(${TEXTURE_URL})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundAttachment: "fixed",
+      }}
     >
-      {/* Top bar */}
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-[#d4c9b5]/60 bg-[#FAF7F0]/70">
+      {/* App navbar — same chrome as /library and /style for consistency */}
+      <nav className="bg-[#1A0F05]/95 backdrop-blur-md border-b border-[#C9A84C]/20 sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5">
+            <img
+              src="/images/quilpen-logo-horizontal.png"
+              alt="Quilpen"
+              className="h-20 animate-logo-in"
+              style={{ filter: "brightness(0) invert(1)" }}
+            />
+          </Link>
+
+          <div className="flex items-center gap-1">
+            <Link
+              href="/style"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
+            >
+              <Feather className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Writing Twin</span>
+            </Link>
+            <Link
+              href="/library"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
+            >
+              <Library className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">My Library</span>
+            </Link>
+            <NotificationBell />
+            <button
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-sm text-[#c9bfad] hover:text-[#F5EDE0] transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Page header — back link + ornament title block */}
+      <div className="max-w-7xl w-full mx-auto px-6 pt-6">
         <Link
           href="/library"
-          className="flex items-center gap-1.5 font-ui text-xs text-[#8a7a65] hover:text-[#2D1F0E] transition-colors"
+          className="inline-flex items-center gap-1.5 font-ui text-xs text-[#8a7a65] hover:text-[#2D1F0E] transition-colors mb-4"
         >
-          <ArrowLeft className="h-3.5 w-3.5" />
+          <ChevronLeft className="h-3.5 w-3.5" />
           Library
         </Link>
-        <div className="h-4 w-px bg-[#d4c9b5]/60" />
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-[#C9A84C]" />
-          <h1 className="font-display text-base font-semibold text-[#2D1F0E]">
-            Library Chat
+        <div className="text-center mb-6">
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-[#C9A84C]/60" />
+            <Sparkles className="h-5 w-5 text-[#C9A84C]" />
+            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-[#C9A84C]/60" />
+          </div>
+          <h1 className="font-display text-3xl font-bold text-[#2D1F0E] tracking-tight">
+            Kütüphane Sohbeti
           </h1>
+          <p className="font-body text-sm text-[#6b5a45] mt-1.5">
+            PDF&apos;lerine sor — yanıt başlık ve sayfa numarasıyla alıntılansın.
+          </p>
         </div>
-      </header>
+      </div>
 
       {/* 3-column layout */}
-      <div className="flex-1 grid grid-cols-[240px_1fr_300px] min-h-0">
+      <div className="flex-1 grid grid-cols-[240px_1fr_300px] min-h-0 max-w-7xl w-full mx-auto px-6 pb-6 gap-3">
         {/* Left: sessions */}
-        <aside className="border-r border-[#d4c9b5]/60 bg-[#FAF7F0]/40 flex flex-col">
-          <div className="p-3 border-b border-[#d4c9b5]/60">
+        <aside className="rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/85 backdrop-blur-sm shadow-sm flex flex-col overflow-hidden">
+          <div className="p-3 border-b border-[#d4c9b5]/60 bg-[#FAF7F0]/90">
             <button
               type="button"
               onClick={startNewSession}
-              className="w-full flex items-center justify-center gap-1.5 font-ui text-xs font-medium px-3 py-2 rounded-sm bg-[#C9A84C] text-[#1A0F05] hover:bg-[#d4b85a] transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 font-ui text-xs font-semibold px-3 py-2 rounded-sm bg-[#C9A84C] text-[#1A0F05] hover:bg-[#d4b85a] transition-colors shadow-sm"
             >
               <Plus className="h-3.5 w-3.5" />
               Yeni sohbet
             </button>
           </div>
+          <div className="px-3 py-2 border-b border-[#d4c9b5]/40 bg-[#FAF7F0]/60">
+            <span
+              className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]"
+              style={{ letterSpacing: "0.16em" }}
+            >
+              Önceki Sohbetler
+            </span>
+          </div>
           <div className="flex-1 overflow-y-auto py-2">
             {sessions.length === 0 ? (
-              <p className="text-center font-ui text-xs text-[#a89a82] mt-4 px-3">
+              <p className="text-center font-body italic text-xs text-[#a89a82] mt-4 px-3">
                 Henüz sohbet yok.
               </p>
             ) : (
@@ -327,10 +393,10 @@ export default function LibraryChat() {
                       type="button"
                       onClick={() => pickSession(s.sessionId)}
                       className={cn(
-                        "w-full text-left px-2.5 py-2 rounded-sm transition-colors",
+                        "w-full text-left px-2.5 py-2 rounded-sm transition-colors border-l-2",
                         currentSessionId === s.sessionId
-                          ? "bg-[#C9A84C]/15 border-l-2 border-[#C9A84C]"
-                          : "hover:bg-[#d4c9b5]/30",
+                          ? "bg-[#FAF3E3] border-[#C9A84C]"
+                          : "hover:bg-[#d4c9b5]/30 border-transparent",
                       )}
                     >
                       <div className="flex items-start gap-1.5">
@@ -348,12 +414,12 @@ export default function LibraryChat() {
         </aside>
 
         {/* Middle: thread */}
-        <section className="flex flex-col bg-[#FAF7F0]/20 min-w-0">
-          <div ref={threadRef} className="flex-1 overflow-y-auto px-6 py-6">
+        <section className="flex flex-col rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/90 backdrop-blur-sm shadow-sm min-w-0 overflow-hidden">
+          <div ref={threadRef} className="flex-1 overflow-y-auto px-8 py-6">
             {isLoadingHistory ? (
               <div className="flex justify-center py-12 text-[#8a7a65]">
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                <span className="font-ui text-xs">Yükleniyor…</span>
+                <span className="font-body italic text-xs">Yükleniyor…</span>
               </div>
             ) : messages.length === 0 ? (
               <EmptyState />
@@ -367,7 +433,7 @@ export default function LibraryChat() {
           </div>
 
           {/* Input bar */}
-          <div className="border-t border-[#d4c9b5]/60 bg-[#FAF7F0]/70 px-6 py-3">
+          <div className="border-t border-[#d4c9b5]/60 bg-[#FAF7F0]/95 px-8 py-3">
             <div className="max-w-3xl mx-auto flex items-end gap-2">
               <textarea
                 value={input}
@@ -415,9 +481,12 @@ export default function LibraryChat() {
         </section>
 
         {/* Right: scope */}
-        <aside className="border-l border-[#d4c9b5]/60 bg-[#FAF7F0]/40 flex flex-col">
-          <div className="p-4 border-b border-[#d4c9b5]/60">
-            <div className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] mb-2">
+        <aside className="rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/85 backdrop-blur-sm shadow-sm flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-[#d4c9b5]/60 bg-[#FAF7F0]/90">
+            <div
+              className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65] mb-2"
+              style={{ letterSpacing: "0.16em" }}
+            >
               Kapsam
             </div>
             <div className="space-y-1">
@@ -526,19 +595,24 @@ export default function LibraryChat() {
 
 function EmptyState() {
   return (
-    <div className="max-w-md mx-auto text-center py-16">
-      <div
-        className="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center"
-        style={{ backgroundColor: "rgba(201,168,76,0.18)" }}
-      >
-        <Sparkles className="h-5 w-5" style={{ color: "#8a5a1a" }} />
+    <div className="max-w-md mx-auto text-center py-20">
+      {/* Ornament block */}
+      <div className="flex items-center justify-center gap-3 mb-5">
+        <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-[#C9A84C]/60" />
+        <div
+          className="w-12 h-12 rounded-full flex items-center justify-center border border-[#C9A84C]/40"
+          style={{ backgroundColor: "rgba(201,168,76,0.12)" }}
+        >
+          <Sparkles className="h-5 w-5" style={{ color: "#8a5a1a" }} />
+        </div>
+        <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-[#C9A84C]/60" />
       </div>
-      <h2 className="font-display text-lg font-semibold text-[#2D1F0E] mb-2">
-        Library&apos;nle konuş
+      <h2 className="font-display text-xl font-semibold text-[#2D1F0E] mb-2">
+        Kütüphanenle konuş
       </h2>
       <p className="font-body text-sm text-[#6b5a45] leading-relaxed">
         Yüklediğin PDF&apos;lere sor. Yanıt, kullandığı kaynaklardan{" "}
-        <span className="font-medium">başlık + sayfa</span> ile alıntılanır.
+        <span className="font-medium text-[#8a5a1a]">başlık + sayfa</span> ile alıntılanır.
         Sağdan kapsamı seç, alt kutuya yaz, Enter ile gönder.
       </p>
     </div>
@@ -551,27 +625,32 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[80%] rounded-md px-4 py-3 shadow-sm",
+          "max-w-[80%] rounded-sm px-4 py-3 shadow-sm",
           isUser
-            ? "bg-[#2D1F0E] text-[#FAF7F0]"
-            : "bg-white border border-[#d4c9b5]/60 text-[#2D1F0E]",
+            ? "bg-[#2D1F0E] text-[#F5EDE0] border border-[#C9A84C]/30"
+            : "bg-white/90 border border-[#d4c9b5]/70 text-[#2D1F0E]",
         )}
       >
         {!isUser && message.scope && (
-          <div className="font-ui text-[10px] uppercase tracking-widest text-[#a89a82] mb-1">
+          <div
+            className="font-ui text-[10px] uppercase tracking-widest text-[#8a5a1a] mb-1.5"
+            style={{ letterSpacing: "0.16em" }}
+          >
             {message.scope === "all"
-              ? "Tüm library"
+              ? "Tüm Kütüphane"
               : `${message.entryIds?.length ?? 0} PDF`}
           </div>
         )}
         <div
           className={cn(
-            "font-body text-sm leading-relaxed whitespace-pre-wrap",
-            isUser ? "text-[#FAF7F0]" : "text-[#2D1F0E]",
+            "text-sm leading-relaxed whitespace-pre-wrap",
+            isUser
+              ? "font-body text-[#F5EDE0]"
+              : "font-serif text-[#2D1F0E]",
           )}
         >
           {message.content || (
-            <span className="opacity-60">
+            <span className="opacity-60 italic">
               <Loader2 className="inline h-3 w-3 animate-spin mr-1.5" />
               Yazıyor…
             </span>
