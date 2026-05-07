@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { deletePdf } from '@/lib/library-storage'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -98,12 +99,14 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
 
     const existing = await prisma.libraryEntry.findFirst({
       where: { id, userId: session.user.id },
+      select: { id: true, filePath: true },
     })
     if (!existing) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
     await prisma.libraryEntry.delete({ where: { id } })
+    await deletePdf(existing.filePath)
 
     return NextResponse.json({ success: true })
   } catch (err) {

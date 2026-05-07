@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { processLibraryPdfFromBytes } from '@/lib/library-pipeline'
+import { savePdfBytes } from '@/lib/library-storage'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -72,6 +73,19 @@ export async function POST(req: NextRequest) {
       },
       select: { id: true, title: true, pdfStatus: true },
     })
+
+    // Persist the PDF to durable storage so the citation verification
+    // flow can render the original page later. Failures are non-fatal:
+    // the chat / chunk pipeline still works without the original file.
+    try {
+      const filePath = await savePdfBytes(session.user.id, entry.id, bytes)
+      await prisma.libraryEntry.update({
+        where: { id: entry.id },
+        data: { filePath },
+      })
+    } catch (err) {
+      console.error('[upload-pdf] PDF persistence failed:', entry.id, err)
+    }
 
     setImmediate(() => {
       processLibraryPdfFromBytes(entry.id, file.name || 'upload.pdf', bytes).catch(

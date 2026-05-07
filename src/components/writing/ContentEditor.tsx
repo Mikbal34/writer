@@ -29,6 +29,7 @@ import {
   ImageIcon,
   Sigma,
   Workflow,
+  BookmarkPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -42,6 +43,8 @@ import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { Highlight } from "@tiptap/extension-highlight";
+import { CitationMark } from "@/components/writing/extensions/CitationMark";
+import CitationPicker from "@/components/writing/CitationPicker";
 import { createPortal } from "react-dom";
 import { PagePreview } from "@/components/preview/PagePreview";
 import { DEFAULT_BOOK_DESIGN, type BookDesign } from "@/lib/book-styles";
@@ -311,6 +314,17 @@ function nodeToMarkdown(node: Node): string {
     }
     case "div":
       return childMd();
+    case "span": {
+      // Preserve citation pills round-trip: their data-* attributes
+      // (bibId / page / quote) are the source of truth, the visible
+      // label is just for the writer. Re-emit the full HTML so when
+      // the saved markdown is re-parsed by markdownToHtml the span
+      // survives and Tiptap's CitationMark parseHTML can claim it.
+      if (el.hasAttribute("data-cite-bib-id")) {
+        return el.outerHTML;
+      }
+      return childMd();
+    }
     default:
       return childMd();
   }
@@ -431,6 +445,7 @@ export default function ContentEditor({
   // before the project's saved design has come back from the API.
   const [bookDesign, setBookDesign] = useState<BookDesign>(DEFAULT_BOOK_DESIGN);
   const [bookDesignLoaded, setBookDesignLoaded] = useState(false);
+  const [citationPickerOpen, setCitationPickerOpen] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusInfo = STATUS_STYLES[status] ?? STATUS_STYLES.pending;
   const lastStreamRef = useRef<string>("");
@@ -465,6 +480,10 @@ export default function ContentEditor({
         // Used to flag a freshly-applied AI rewrite; the colour is set
         // when the rewrite lands and cleared on Apply / Revert.
         Highlight.configure({ multicolor: true }),
+        // Inline atom node for academic citations — verification UI
+        // lives on the dedicated /citations page so the writer flow
+        // stays clean.
+        CitationMark,
         Placeholder.configure({
           placeholder:
             "Start writing here... or use the 'Write with AI' button to generate content.",
@@ -571,6 +590,25 @@ export default function ContentEditor({
     if (editor) return countWords(editor.getText());
     return 0;
   }, [editor, isStreaming, streamingContent, editor?.state.doc.content.size]);
+
+  // Keyboard shortcut for the citation picker — matches the toolbar
+  // button so users who learn the shortcut don't have to leave the
+  // keyboard while writing.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (isMod && e.shiftKey && e.key.toLowerCase() === "c") {
+        // Only activate while editing — don't hijack the shortcut in
+        // Read/Page preview modes.
+        if (previewMode === "edit" && !isStreaming) {
+          e.preventDefault();
+          setCitationPickerOpen(true);
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewMode, isStreaming]);
 
   // Preview switching — both 'read' and 'page' modes fetch the
   // resolved-citations version of the body. 'page' additionally needs
@@ -1078,6 +1116,13 @@ export default function ContentEditor({
             <Quote className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
+            onClick={() => setCitationPickerOpen(true)}
+            disabled={isStreaming}
+            title="Atıf ekle (Cmd+Shift+C)"
+          >
+            <BookmarkPlus className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
             onClick={() =>
               editor
                 .chain()
@@ -1433,6 +1478,16 @@ export default function ContentEditor({
           />
         )}
       </div>
+
+      <CitationPicker
+        open={citationPickerOpen}
+        onOpenChange={setCitationPickerOpen}
+        projectId={projectId}
+        onPick={(attrs) => {
+          if (!editor) return;
+          editor.commands.insertCitation(attrs);
+        }}
+      />
     </div>
   );
 }

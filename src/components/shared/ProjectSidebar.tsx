@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   Paintbrush,
+  BookmarkCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CreditBalance from "@/components/shared/CreditBalance";
@@ -102,6 +103,12 @@ export default function ProjectSidebar({
       label: "Write",
       href: `/projects/${projectId}/write`,
       icon: <PenLine className="w-4 h-4" />,
+      statusKey: "writing",
+    },
+    {
+      label: "Atıflar",
+      href: `/projects/${projectId}/citations`,
+      icon: <BookmarkCheck className="w-4 h-4" />,
       statusKey: "writing",
     },
     {
