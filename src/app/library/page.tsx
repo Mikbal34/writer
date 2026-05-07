@@ -57,37 +57,41 @@ export default function LibraryPage() {
   const [showBibtexDialog, setShowBibtexDialog] = useState(false);
   const [showZoteroPanel, setShowZoteroPanel] = useState(false);
 
-  const fetchEntries = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: "50" });
-      if (search) params.set("search", search);
-      if (entryTypeFilter) params.set("entryType", entryTypeFilter);
+  const fetchEntries = useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      if (!opts.silent) setIsLoading(true);
+      try {
+        const params = new URLSearchParams({ page: String(page), limit: "50" });
+        if (search) params.set("search", search);
+        if (entryTypeFilter) params.set("entryType", entryTypeFilter);
 
-      const res = await fetch(`/api/library?${params}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setEntries(data.entries ?? []);
-      setTotal(data.total ?? 0);
-    } catch {
-      toast.error("Failed to load library");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [page, search, entryTypeFilter]);
+        const res = await fetch(`/api/library?${params}`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        setEntries(data.entries ?? []);
+        setTotal(data.total ?? 0);
+      } catch {
+        if (!opts.silent) toast.error("Failed to load library");
+      } finally {
+        if (!opts.silent) setIsLoading(false);
+      }
+    },
+    [page, search, entryTypeFilter],
+  );
 
   useEffect(() => {
     fetchEntries();
   }, [fetchEntries]);
 
-  // Auto-refresh while any entry is still processing. Stops polling as soon
-  // as all visible entries reach a terminal state (ready / failed / none).
+  // Auto-refresh while any entry is still processing. Polls quietly
+  // (no loading spinner flash) and stops as soon as all visible
+  // entries reach a terminal state (ready / failed / none).
   useEffect(() => {
     const IN_PROGRESS = new Set(["pending", "downloading", "extracting", "embedding"]);
     const anyInProgress = entries.some((e) => IN_PROGRESS.has(e.pdfStatus ?? ""));
     if (!anyInProgress) return;
     const timer = setInterval(() => {
-      fetchEntries();
+      fetchEntries({ silent: true });
     }, 3000);
     return () => clearInterval(timer);
   }, [entries, fetchEntries]);
@@ -264,7 +268,7 @@ export default function LibraryPage() {
               entries={entries}
               onEdit={handleEdit}
               onDelete={handleDelete}
-              onPdfAttached={fetchEntries}
+              onPdfAttached={() => fetchEntries()}
               viewMode={viewMode}
             />
           )}
