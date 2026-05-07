@@ -253,17 +253,74 @@ async def ocr_status(source_id: str):
 # ─── Content-delivery variants (no shared filesystem) ────────────────────────
 
 
-def _process_local_path(source_id: str, file_path: str) -> ProcessResponse:
-    """Shared extract+chunk path used by /process-url and /process-bytes.
-    Extracts every page (OCR'd synchronously if the PDF is scanned) and
-    returns the lot as chunks plus a bibliography-page preview."""
-    total_pages = get_total_pages(file_path)
+def _ocr_remaining_pages_with_cleanup(source_id: str, file_path: str):
+    """Background OCR + temp-file cleanup for /process-url and /process-bytes."""
+    try:
+        _ocr_remaining_pages(source_id, file_path)
+    finally:
+        try:
+            os.unlink(file_path)
+        except OSError:
+            pass
 
-    # Single pass over the whole document — we always want all chunks for
-    # embedding, and the first N pages are enough for a bibliography preview.
+
+def _process_local_path(
+    source_id: str,
+    file_path: str,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> tuple[ProcessResponse, bool]:
+    """Shared extract+chunk path used by /process-url and /process-bytes.
+
+    Returns (response, defer_cleanup). When defer_cleanup is True the
+    caller must NOT delete file_path immediately — a background OCR task
+    is still using it and will clean up when done.
+    """
+    total_pages = get_total_pages(file_path)
+    scanned = is_scanned_pdf(file_path)
+
+    # Scanned books may have hundreds of pages; OCRing them all
+    # synchronously blows past the Node→Python fetch timeout (~5 min).
+    # Run the bibliography-page subset sync, queue the rest in the
+    # background so /process-bytes returns quickly with usable text.
+    if scanned and background_tasks is not None:
+        bib_pages = extract_text_by_page(file_path, max_pages=_BIB_PAGES)
+        extracted_text = "\n\n---\n\n".join(
+            f"[Page {p['page_number']}]\n{p['content']}" for p in bib_pages
+        )
+
+        # Bib-page chunks so the entry has *something* to embed against
+        # while the rest of the OCR catches up. The full set of chunks
+        # arrives via /ocr-status polling.
+        bib_raw_chunks = chunk_by_page(bib_pages)
+        chunks = [
+            ChunkItem(
+                pageNumber=c["page_number"],
+                chunkIndex=c["chunk_index"],
+                content=c["content"],
+            )
+            for c in bib_raw_chunks
+        ]
+
+        background_tasks.add_task(
+            _ocr_remaining_pages_with_cleanup, source_id, file_path
+        )
+
+        return (
+            ProcessResponse(
+                sourceId=source_id,
+                totalPages=total_pages,
+                extractedText=extracted_text,
+                chunks=chunks,
+                ocrPending=True,
+            ),
+            True,  # defer cleanup — background task owns file_path
+        )
+
+    # Native-text PDF (or scanned but caller didn't pass background_tasks):
+    # extract all pages in one pass.
     pages = extract_text_by_page(file_path)
 
-    first_pages = pages[: _BIB_PAGES]
+    first_pages = pages[:_BIB_PAGES]
     extracted_text = "\n\n---\n\n".join(
         f"[Page {p['page_number']}]\n{p['content']}" for p in first_pages
     )
@@ -278,12 +335,15 @@ def _process_local_path(source_id: str, file_path: str) -> ProcessResponse:
         for c in raw_chunks
     ]
 
-    return ProcessResponse(
-        sourceId=source_id,
-        totalPages=total_pages,
-        extractedText=extracted_text,
-        chunks=chunks,
-        ocrPending=False,
+    return (
+        ProcessResponse(
+            sourceId=source_id,
+            totalPages=total_pages,
+            extractedText=extracted_text,
+            chunks=chunks,
+            ocrPending=False,
+        ),
+        False,
     )
 
 
@@ -293,7 +353,7 @@ class ProcessUrlRequest(BaseModel):
 
 
 @router.post("/process-url", response_model=ProcessResponse)
-async def process_url(req: ProcessUrlRequest):
+async def process_url(req: ProcessUrlRequest, background_tasks: BackgroundTasks):
     """Download a PDF from a URL, extract + chunk, return. If the URL serves
     an HTML landing page, look for a citation_pdf_url meta tag and follow it."""
     pdf_bytes, _ = await _resolve_and_fetch_pdf(req.url)
@@ -305,19 +365,25 @@ async def process_url(req: ProcessUrlRequest):
         tmp.write(pdf_bytes)
         tmp_path = tmp.name
 
+    defer_cleanup = False
     try:
-        return _process_local_path(req.sourceId, tmp_path)
+        response, defer_cleanup = _process_local_path(
+            req.sourceId, tmp_path, background_tasks
+        )
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
     finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+        if not defer_cleanup:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 @router.post("/process-bytes", response_model=ProcessResponse)
 async def process_bytes(
+    background_tasks: BackgroundTasks,
     sourceId: str = Form(...),
     file: UploadFile = File(...),
 ):
@@ -336,12 +402,17 @@ async def process_bytes(
         tmp.write(pdf_bytes)
         tmp_path = tmp.name
 
+    defer_cleanup = False
     try:
-        return _process_local_path(sourceId, tmp_path)
+        response, defer_cleanup = _process_local_path(
+            sourceId, tmp_path, background_tasks
+        )
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
     finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+        if not defer_cleanup:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
