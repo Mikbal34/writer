@@ -288,7 +288,25 @@ export default function LibraryEntryTable({
            </span>
            <div className="flex items-center gap-2">
             {entry.filePath && (
-             <FileCheck className="h-3 w-3" style={{ color: "rgba(250,247,240,0.50)" }} />
+             <div
+              role="button"
+              tabIndex={0}
+              title="PDF'i yeni sekmede aç"
+              onClick={(e) => {
+               e.stopPropagation();
+               window.open(`/api/library/${entry.id}/pdf`, "_blank", "noopener,noreferrer");
+              }}
+              onKeyDown={(e) => {
+               if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                window.open(`/api/library/${entry.id}/pdf`, "_blank", "noopener,noreferrer");
+               }
+              }}
+              className="flex items-center justify-center h-5 w-5 rounded-sm hover:bg-white/10 transition-colors cursor-pointer"
+              style={{ color: "rgba(250,247,240,0.65)" }}
+             >
+              <ExternalLink className="h-3 w-3" />
+             </div>
             )}
             {(entry._count?.bibliographies ?? 0) > 0 && (
              <span className="flex items-center gap-0.5 font-ui text-[10px]" style={{ color: "rgba(250,247,240,0.50)" }}>
@@ -495,6 +513,30 @@ export default function LibraryEntryTable({
          <Upload className="h-3 w-3" />
         )}
         <span className="font-ui text-[10px]">PDF</span>
+       </div>
+      )}
+
+      {/* Open PDF in browser tab — only when the file is actually
+          persisted on the volume. Older entries with filePath:null
+          (uploaded before durable storage was wired up) hide this. */}
+      {entry.filePath && (
+       <div
+        role="button"
+        tabIndex={0}
+        title="PDF'i yeni sekmede aç"
+        onClick={(e) => {
+         e.stopPropagation();
+         window.open(`/api/library/${entry.id}/pdf`, "_blank", "noopener,noreferrer");
+        }}
+        onKeyDown={(e) => {
+         if (e.key === "Enter" || e.key === " ") {
+          e.stopPropagation();
+          window.open(`/api/library/${entry.id}/pdf`, "_blank", "noopener,noreferrer");
+         }
+        }}
+        className="flex items-center justify-center h-6 w-6 shrink-0 rounded-sm hover:bg-[#C9A84C]/15 transition-colors cursor-pointer"
+       >
+        <ExternalLink className="h-3.5 w-3.5 text-[#5C4A32]" />
        </div>
       )}
 
