@@ -15,7 +15,7 @@ router = APIRouter()
 
 class EmbedRequest(BaseModel):
     texts: list[str]
-    model: str = "models/gemini-embedding-001"
+    model: str = "models/gemini-embedding-2"
 
 
 class EmbedResponse(BaseModel):

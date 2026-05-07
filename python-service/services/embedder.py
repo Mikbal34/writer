@@ -8,7 +8,7 @@ import httpx
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 BATCH_SIZE = 20  # Max texts per single API call
 
-# pgvector column dimension. gemini-embedding-001 defaults to 3072,
+# pgvector column dimension. gemini-embedding-2 defaults to 3072,
 # but it accepts outputDimensionality so we can match our existing
 # vector(768) schema without re-migrating.
 DEFAULT_OUTPUT_DIM = 768
@@ -16,7 +16,7 @@ DEFAULT_OUTPUT_DIM = 768
 
 async def generate_embeddings(
     texts: list[str],
-    model: str = "models/gemini-embedding-001",
+    model: str = "models/gemini-embedding-2",
     api_key: str = "",
     output_dim: int = DEFAULT_OUTPUT_DIM,
 ) -> list[list[float]]:
@@ -25,7 +25,7 @@ async def generate_embeddings(
 
     Args:
         texts: List of strings to embed.
-        model: Embedding model name (default: models/gemini-embedding-001).
+        model: Embedding model name (default: models/gemini-embedding-2).
         api_key: Google AI API key.
         output_dim: Truncate embeddings to this dimension (default: 768).
 
