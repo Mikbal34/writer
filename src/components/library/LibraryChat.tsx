@@ -4,14 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Send,
   Plus,
-  X,
   Loader2,
   Square,
   MessageSquare,
-  FileText,
   Sparkles,
   Search,
   User,
+  BookOpen,
+  Library as LibraryIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -61,15 +61,36 @@ export default function LibraryChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  const [scope, setScope] = useState<Scope>("all");
-  const [selectedEntries, setSelectedEntries] = useState<LibraryEntry[]>([]);
+  // Library list lives in the right sidebar; selection is inferred —
+  // 0 selected = chat across the whole library, 1+ selected = chat
+  // scoped to those entries. No more explicit scope toggle.
+  const [allEntries, setAllEntries] = useState<LibraryEntry[]>([]);
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
 
-  const [showPicker, setShowPicker] = useState(false);
+  // Derived: which entry rows match the search box
+  const filteredEntries = useMemo(() => {
+    const q = librarySearch.trim().toLowerCase();
+    if (!q) return allEntries;
+    return allEntries.filter((e) => {
+      const hay = [e.title, e.authorSurname, e.authorName, e.year]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [allEntries, librarySearch]);
+
+  const selectedEntries = useMemo(
+    () => allEntries.filter((e) => selectedIds.has(e.id)),
+    [allEntries, selectedIds],
+  );
 
   // ── Sessions list ──────────────────────────────────────────────
   const fetchSessions = useCallback(async () => {
@@ -86,6 +107,25 @@ export default function LibraryChat() {
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
+
+  // ── Library list (right sidebar) ───────────────────────────────
+  const fetchAllEntries = useCallback(async () => {
+    setIsLoadingLibrary(true);
+    try {
+      const res = await fetch("/api/library?limit=200");
+      if (!res.ok) return;
+      const data = (await res.json()) as { entries: LibraryEntry[] };
+      setAllEntries(data.entries ?? []);
+    } catch {
+      /* ignore */
+    } finally {
+      setIsLoadingLibrary(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAllEntries();
+  }, [fetchAllEntries]);
 
   // ── Load a specific session's messages ─────────────────────────
   const loadSession = useCallback(async (sessionId: string) => {
@@ -144,12 +184,12 @@ export default function LibraryChat() {
   async function sendMessage() {
     const trimmed = input.trim();
     if (!trimmed || isStreaming) return;
-    if (scope !== "all" && selectedEntries.length === 0) {
-      toast.error("Bu modda en az bir PDF seçmelisin.");
-      return;
-    }
 
-    const entryIds = scope === "all" ? [] : selectedEntries.map((e) => e.id);
+    // Implicit scope: empty selection = whole library, otherwise the
+    // picked subset. The old explicit "single" mode was redundant —
+    // the user just checks one box.
+    const scope: Scope = selectedIds.size === 0 ? "all" : "picked";
+    const entryIds = scope === "all" ? [] : Array.from(selectedIds);
     const userMsg: ChatMessage = { role: "user", content: trimmed, scope, entryIds };
     setMessages((prev) => [...prev, userMsg, { role: "assistant", content: "" }]);
     setInput("");
@@ -259,23 +299,17 @@ export default function LibraryChat() {
     if (streamAbortRef.current) streamAbortRef.current.abort();
   }
 
-  // ── Picker (right pane) ────────────────────────────────────────
-  function addEntry(entry: LibraryEntry) {
-    setSelectedEntries((prev) => {
-      if (scope === "single") return [entry];
-      if (prev.some((e) => e.id === entry.id)) return prev;
-      return [...prev, entry];
+  // ── Library selection (right pane) ─────────────────────────────
+  function toggleEntry(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
   }
-  function removeEntry(id: string) {
-    setSelectedEntries((prev) => prev.filter((e) => e.id !== id));
-  }
-  function changeScope(next: Scope) {
-    setScope(next);
-    if (next === "all") setSelectedEntries([]);
-    if (next === "single" && selectedEntries.length > 1) {
-      setSelectedEntries([selectedEntries[0]]);
-    }
+  function clearSelection() {
+    setSelectedIds(new Set());
   }
 
   return (
@@ -385,11 +419,9 @@ export default function LibraryChat() {
                   }
                 }}
                 placeholder={
-                  scope === "all"
+                  selectedIds.size === 0
                     ? "Library'ne sor… (Enter gönder, Shift+Enter satır)"
-                    : selectedEntries.length === 0
-                      ? "Sağdan PDF seç, sonra sorunu yaz"
-                      : `${selectedEntries.length} PDF'e sor…`
+                    : `${selectedIds.size} PDF'e sor…`
                 }
                 disabled={isStreaming}
                 rows={1}
@@ -409,7 +441,7 @@ export default function LibraryChat() {
                 <button
                   type="button"
                   onClick={sendMessage}
-                  disabled={!input.trim() || (scope !== "all" && selectedEntries.length === 0)}
+                  disabled={!input.trim()}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-sm bg-[#C9A84C] text-[#1A0F05] font-ui text-xs font-semibold hover:bg-[#d4b85a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="h-3 w-3" />
@@ -420,113 +452,95 @@ export default function LibraryChat() {
           </div>
         </section>
 
-        {/* Right: scope */}
+        {/* Right: full library — pick zero for "ask everything",
+            tick boxes to scope the chat to specific entries. The
+            old radio-based scope toggle was redundant. */}
         <aside className="rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/85 backdrop-blur-sm shadow-sm flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-[#d4c9b5]/60 bg-[#FAF7F0]/90">
-            <div
-              className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65] mb-2"
-              style={{ letterSpacing: "0.16em" }}
-            >
-              Kapsam
-            </div>
-            <div className="space-y-1">
-              {(["all", "picked", "single"] as Scope[]).map((s) => (
-                <label
-                  key={s}
-                  className={cn(
-                    "flex items-center gap-2 px-2.5 py-1.5 rounded-sm cursor-pointer transition-colors",
-                    scope === s
-                      ? "bg-[#C9A84C]/15 border border-[#C9A84C]/40"
-                      : "border border-transparent hover:bg-[#d4c9b5]/30",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="scope"
-                    value={s}
-                    checked={scope === s}
-                    onChange={() => changeScope(s)}
-                    className="accent-[#C9A84C]"
-                  />
-                  <span className="font-ui text-xs font-medium text-[#2D1F0E]">
-                    {s === "all" ? "Tüm library" : s === "picked" ? "Seçili PDF'ler" : "Tek PDF"}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-4 flex-1 overflow-y-auto">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65]">
-                {scope === "all" ? "PDF'ler (otomatik)" : `Seçili (${selectedEntries.length})`}
-              </div>
-              {scope !== "all" && (
+          <div className="p-3 border-b border-[#d4c9b5]/60 bg-[#FAF7F0]/90">
+            <div className="flex items-center gap-1.5 mb-2">
+              <LibraryIcon className="h-3.5 w-3.5 text-[#8a7a65]" />
+              <span
+                className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]"
+                style={{ letterSpacing: "0.16em" }}
+              >
+                Kütüphane
+              </span>
+              {selectedIds.size > 0 && (
                 <button
                   type="button"
-                  onClick={() => setShowPicker(true)}
-                  disabled={scope === "single" && selectedEntries.length >= 1}
-                  className="flex items-center gap-1 font-ui text-[10px] uppercase tracking-wider text-[#8a5a1a] hover:text-[#2D1F0E] disabled:opacity-40"
+                  onClick={clearSelection}
+                  className="ml-auto font-ui text-[10px] uppercase tracking-wider text-[#8a5a1a] hover:text-[#2D1F0E]"
                 >
-                  <Plus className="h-3 w-3" />
-                  Ekle
+                  Temizle
                 </button>
               )}
             </div>
-            {scope === "all" ? (
-              <p className="font-body text-[11px] text-[#a89a82] leading-snug">
-                Sorulan soru tüm library PDF'lerinde aranır. Yanıtın altındaki
-                kaynak chip'lerinde hangi PDF'ten geldiği görünür.
-              </p>
-            ) : selectedEntries.length === 0 ? (
-              <p className="font-body text-[11px] text-[#a89a82] leading-snug">
-                Henüz PDF seçilmedi. Üstteki <strong>Ekle</strong> butonu ile
-                kütüphaneden seç.
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-sm border border-[#d4c9b5] bg-white">
+              <Search className="h-3 w-3 text-[#a89a82]" />
+              <input
+                value={librarySearch}
+                onChange={(e) => setLibrarySearch(e.target.value)}
+                placeholder="Ara…"
+                className="flex-1 bg-transparent outline-none font-ui text-xs text-[#2D1F0E] placeholder:text-[#a89a82]"
+              />
+            </div>
+            <p className="font-body text-[10px] text-[#a89a82] mt-2 leading-snug">
+              {selectedIds.size === 0
+                ? "Hiç seçim yoksa tüm kütüphaneye sorulur."
+                : `${selectedIds.size} PDF'e odaklanılıyor.`}
+            </p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto py-1.5 px-2">
+            {isLoadingLibrary ? (
+              <div className="flex justify-center py-8 text-[#8a7a65]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </div>
+            ) : filteredEntries.length === 0 ? (
+              <p className="text-center font-ui text-[11px] text-[#a89a82] py-8">
+                {allEntries.length === 0
+                  ? "Kütüphanen boş."
+                  : "Eşleşme yok."}
               </p>
             ) : (
-              <ul className="space-y-1.5">
-                {selectedEntries.map((e) => (
-                  <li
-                    key={e.id}
-                    className="flex items-start gap-2 p-2 rounded-sm bg-white border border-[#d4c9b5]/60"
-                  >
-                    <FileText className="h-3.5 w-3.5 mt-0.5 text-[#8a7a65] shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-body text-[11px] text-[#2D1F0E] line-clamp-2 leading-snug">
-                        {e.title}
-                      </div>
-                      <div className="font-ui text-[10px] text-[#8a7a65]">
-                        {e.authorSurname}
-                        {e.year ? `, ${e.year}` : ""}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeEntry(e.id)}
-                      className="text-[#a89a82] hover:text-red-600"
-                      aria-label="Kaldır"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </li>
-                ))}
+              <ul className="space-y-0.5">
+                {filteredEntries.map((e) => {
+                  const isSelected = selectedIds.has(e.id);
+                  return (
+                    <li key={e.id}>
+                      <label
+                        className={cn(
+                          "flex items-start gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-colors border-l-2",
+                          isSelected
+                            ? "bg-[#FAF3E3] border-[#C9A84C]"
+                            : "hover:bg-[#d4c9b5]/30 border-transparent",
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleEntry(e.id)}
+                          className="mt-0.5 h-3 w-3 accent-[#C9A84C] shrink-0"
+                        />
+                        <BookOpen className="h-3 w-3 mt-0.5 text-[#8a7a65] shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-body text-[11px] text-[#2D1F0E] line-clamp-2 leading-snug">
+                            {e.title}
+                          </div>
+                          <div className="font-ui text-[10px] text-[#8a7a65] truncate">
+                            {e.authorSurname}
+                            {e.year ? `, ${e.year}` : ""}
+                          </div>
+                        </div>
+                      </label>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
         </aside>
       </div>
-
-      {showPicker && (
-        <EntryPickerModal
-          mode={scope === "single" ? "single" : "multi"}
-          alreadySelected={new Set(selectedEntries.map((e) => e.id))}
-          onClose={() => setShowPicker(false)}
-          onPick={(entry) => {
-            addEntry(entry);
-            if (scope === "single") setShowPicker(false);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -639,121 +653,3 @@ function MessageBubble({
   );
 }
 
-function EntryPickerModal({
-  mode,
-  alreadySelected,
-  onClose,
-  onPick,
-}: {
-  mode: "single" | "multi";
-  alreadySelected: Set<string>;
-  onClose: () => void;
-  onPick: (entry: LibraryEntry) => void;
-}) {
-  const [entries, setEntries] = useState<LibraryEntry[]>([]);
-  const [search, setSearch] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-
-  const fetchEntries = useCallback(async (query: string) => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams({ limit: "100" });
-      if (query) params.set("search", query);
-      const res = await fetch(`/api/library?${params}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setEntries((data.entries ?? []) as LibraryEntry[]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchEntries(search);
-  }, [search, fetchEntries]);
-
-  // Only entries with usable PDFs are eligible — chunks need to exist.
-  const eligible = useMemo(
-    () => entries.filter((e) => e.pdfStatus === "ready" || !!e.pdfStatus),
-    [entries],
-  );
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-xl bg-[#FAF7F0] rounded-md shadow-xl overflow-hidden flex flex-col max-h-[80vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#d4c9b5]/60">
-          <h3 className="font-display font-semibold text-[#2D1F0E]">
-            {mode === "single" ? "PDF seç" : "PDF'ler ekle"}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[#a89a82] hover:text-[#2D1F0E]"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="px-4 py-2 border-b border-[#d4c9b5]/60">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-sm border border-[#d4c9b5] bg-white">
-            <Search className="h-3.5 w-3.5 text-[#a89a82]" />
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Başlık veya yazar ara…"
-              className="flex-1 bg-transparent outline-none font-ui text-sm text-[#2D1F0E] placeholder:text-[#a89a82]"
-            />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-2 py-2">
-          {isLoading ? (
-            <div className="flex justify-center py-8 text-[#8a7a65]">
-              <Loader2 className="h-4 w-4 animate-spin" />
-            </div>
-          ) : eligible.length === 0 ? (
-            <p className="text-center font-ui text-xs text-[#a89a82] py-8">
-              Eşleşen PDF bulunamadı.
-            </p>
-          ) : (
-            <ul className="space-y-0.5">
-              {eligible.map((e) => {
-                const already = alreadySelected.has(e.id);
-                return (
-                  <li key={e.id}>
-                    <button
-                      type="button"
-                      onClick={() => !already && onPick(e)}
-                      disabled={already}
-                      className={cn(
-                        "w-full text-left px-3 py-2 rounded-sm transition-colors",
-                        already
-                          ? "opacity-50 cursor-not-allowed bg-[#d4c9b5]/20"
-                          : "hover:bg-[#C9A84C]/10",
-                      )}
-                    >
-                      <div className="font-body text-sm text-[#2D1F0E] leading-snug line-clamp-2">
-                        {e.title}
-                      </div>
-                      <div className="font-ui text-[11px] text-[#8a7a65] mt-0.5">
-                        {e.authorSurname}
-                        {e.year ? `, ${e.year}` : ""}
-                        {already ? " · seçili" : ""}
-                      </div>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
