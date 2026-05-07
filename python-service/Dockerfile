@@ -1,10 +1,16 @@
 FROM python:3.11-slim
 
-# System deps — poppler for PyMuPDF, build tools for lxml
+# System deps — build tools for lxml + tesseract for OCR fallback on
+# scanned PDFs. Languages: English (default for academic PDFs),
+# Turkish (kullanıcı dili), Arabic (kitabı tabanlı kaynaklar).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libxml2-dev \
     libxslt1-dev \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-tur \
+    tesseract-ocr-ara \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

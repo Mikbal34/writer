@@ -27,14 +27,25 @@ except ImportError:
 _MIN_TEXT_CHARS = 30
 
 
+# Languages tesseract attempts in one pass. Multi-language costs ~30% on
+# CPU but is necessary because academic PDFs in this app routinely mix
+# Latin scripts with Turkish diacritics or Arabic transliteration.
+_OCR_LANGS = "eng+tur+ara"
+
+
 def _ocr_page(page: fitz.Page) -> str:
     """Render a page to image and run OCR via tesseract."""
     if not HAS_OCR:
         return ""
     pix = page.get_pixmap(dpi=300)
     img = Image.open(io.BytesIO(pix.tobytes("png")))
-    text = pytesseract.image_to_string(img, lang="eng")
-    return text
+    try:
+        return pytesseract.image_to_string(img, lang=_OCR_LANGS)
+    except pytesseract.TesseractError:
+        # Fall back to English-only if the multi-lang traineddata is
+        # missing in this image (shouldn't happen in our Dockerfile,
+        # but resilient against ad-hoc deployments).
+        return pytesseract.image_to_string(img, lang="eng")
 
 
 def _pypdf_page_count(file_path: str) -> int:
