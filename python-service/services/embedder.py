@@ -8,19 +8,26 @@ import httpx
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 BATCH_SIZE = 20  # Max texts per single API call
 
+# pgvector column dimension. gemini-embedding-001 defaults to 3072,
+# but it accepts outputDimensionality so we can match our existing
+# vector(768) schema without re-migrating.
+DEFAULT_OUTPUT_DIM = 768
+
 
 async def generate_embeddings(
     texts: list[str],
-    model: str = "models/text-embedding-004",
+    model: str = "models/gemini-embedding-001",
     api_key: str = "",
+    output_dim: int = DEFAULT_OUTPUT_DIM,
 ) -> list[list[float]]:
     """
     Generate embeddings for a list of texts using Google Gemini Embedding API.
 
     Args:
         texts: List of strings to embed.
-        model: Embedding model name (default: models/text-embedding-004).
+        model: Embedding model name (default: models/gemini-embedding-001).
         api_key: Google AI API key.
+        output_dim: Truncate embeddings to this dimension (default: 768).
 
     Returns:
         List of embedding vectors (list of floats) in the same order as input texts.
@@ -33,7 +40,7 @@ async def generate_embeddings(
     # Process in batches
     for i in range(0, len(texts), BATCH_SIZE):
         batch = texts[i : i + BATCH_SIZE]
-        batch_embeddings = await _embed_batch(batch, model, api_key)
+        batch_embeddings = await _embed_batch(batch, model, api_key, output_dim)
         all_embeddings.extend(batch_embeddings)
 
     return all_embeddings
@@ -43,6 +50,7 @@ async def _embed_batch(
     texts: list[str],
     model: str,
     api_key: str,
+    output_dim: int,
 ) -> list[list[float]]:
     """
     Embed a single batch of texts using the batchEmbedContents endpoint.
@@ -56,6 +64,7 @@ async def _embed_batch(
             "content": {
                 "parts": [{"text": text}],
             },
+            "outputDimensionality": output_dim,
         })
 
     payload = {"requests": requests_body}
