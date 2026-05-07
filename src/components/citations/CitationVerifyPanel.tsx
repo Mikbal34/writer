@@ -33,6 +33,10 @@ export interface CitationRecord {
   subsectionTitle: string;
   chapterTitle: string;
   chapterNumber: number;
+  // Set when the citation targets a specific volume of a multi-volume
+  // work; null for single-volume sources.
+  volumeId: string | null;
+  volumeNumber: number | null;
   bibliography: {
     id: string;
     authorSurname: string;
@@ -89,6 +93,8 @@ export default function CitationVerifyPanel({
   const bib = citation.bibliography;
   const entryId = bib?.libraryEntryId ?? null;
   const page = citation.page;
+  const volumeId = citation.volumeId;
+  const volumeQuery = volumeId ? `?volume=${encodeURIComponent(volumeId)}` : "";
 
   useEffect(() => {
     setShowPdf(false);
@@ -99,14 +105,14 @@ export default function CitationVerifyPanel({
       return;
     }
     setLoading(true);
-    fetch(`/api/library/${entryId}/page/${page}`)
+    fetch(`/api/library/${entryId}/page/${page}${volumeQuery}`)
       .then((r) =>
         r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
       )
       .then((d: PageData) => setData(d))
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [entryId, page]);
+  }, [entryId, page, volumeQuery]);
 
   const headerLabel = bib
     ? `${bib.authorSurname}${bib.year ? `, ${bib.year}` : ""}`
@@ -128,6 +134,9 @@ export default function CitationVerifyPanel({
           </h2>
           <p className="font-ui text-sm text-[#5C4A32] mt-1">
             {headerLabel}
+            {citation.volumeNumber !== null && (
+              <span className="text-[#6b5a45]"> · c. {citation.volumeNumber}</span>
+            )}
             {page !== null && (
               <span className="text-[#6b5a45]"> · s. {page}</span>
             )}
@@ -160,7 +169,7 @@ export default function CitationVerifyPanel({
                 Kaynak metni {page ? `· s. ${page}` : ""}
               </h3>
             </div>
-            {bib?.hasPdf && entryId && page && (
+            {data?.entry.hasPdf && entryId && page && (
               <button
                 type="button"
                 onClick={() => setShowPdf((v) => !v)}
@@ -216,7 +225,7 @@ export default function CitationVerifyPanel({
                 Orijinal sayfa
               </h3>
             </div>
-            <PdfPageViewer entryId={entryId} page={page} />
+            <PdfPageViewer entryId={entryId} page={page} volumeId={volumeId} />
           </section>
         )}
       </div>

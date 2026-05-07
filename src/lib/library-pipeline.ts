@@ -287,6 +287,21 @@ async function setStatus(
   })
 }
 
+/**
+ * Volume-aware status update — used by the multi-volume pipeline so a
+ * stuck volume doesn't drag the whole entry's status down with it.
+ */
+async function setVolumeStatus(
+  volumeId: string,
+  pdfStatus: string,
+  patch: { pdfError?: string | null; totalPages?: number | null } = {}
+): Promise<void> {
+  await prisma.libraryEntryVolume.update({
+    where: { id: volumeId },
+    data: { pdfStatus, ...patch },
+  })
+}
+
 async function embedBatch(texts: string[]): Promise<number[][] | null> {
   try {
     const res = await fetch(`${PYTHON_SERVICE_URL}/embed`, {
@@ -306,8 +321,20 @@ async function embedBatch(texts: string[]): Promise<number[][] | null> {
   }
 }
 
-async function persistChunks(entryId: string, chunks: ProcessResponse['chunks']): Promise<void> {
-  await prisma.libraryChunk.deleteMany({ where: { libraryEntryId: entryId } })
+async function persistChunks(
+  entryId: string,
+  chunks: ProcessResponse['chunks'],
+  volumeId: string | null = null,
+): Promise<void> {
+  // Scope the delete-and-replace to the volume the new chunks belong
+  // to, so adding/replacing one volume's PDF doesn't wipe the others.
+  if (volumeId) {
+    await prisma.libraryChunk.deleteMany({ where: { volumeId } })
+  } else {
+    await prisma.libraryChunk.deleteMany({
+      where: { libraryEntryId: entryId, volumeId: null },
+    })
+  }
   if (chunks.length === 0) return
 
   // Defence-in-depth: strip NUL bytes (0x00) that Postgres refuses to store
@@ -329,6 +356,7 @@ async function persistChunks(entryId: string, chunks: ProcessResponse['chunks'])
   const created = await prisma.libraryChunk.createManyAndReturn({
     data: safeChunks.map((c) => ({
       libraryEntryId: entryId,
+      volumeId,
       pageNumber: c.pageNumber,
       chunkIndex: c.chunkIndex,
       content: c.content,
@@ -336,7 +364,11 @@ async function persistChunks(entryId: string, chunks: ProcessResponse['chunks'])
     select: { id: true, content: true },
   })
 
-  await setStatus(entryId, 'embedding')
+  if (volumeId) {
+    await setVolumeStatus(volumeId, 'embedding')
+  } else {
+    await setStatus(entryId, 'embedding')
+  }
 
   for (let i = 0; i < created.length; i += EMBED_BATCH_SIZE) {
     const batch = created.slice(i, i + EMBED_BATCH_SIZE)
@@ -492,6 +524,67 @@ export async function processLibraryPdfFromBytes(
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[library-pipeline] processFromBytes failed for ${entryId}:`, err)
     await setStatus(entryId, 'failed', { pdfError: message })
+  }
+}
+
+/**
+ * Volume-aware version of processLibraryPdfFromBytes for multi-volume
+ * works. The PDF belongs to a specific LibraryEntryVolume row; chunks
+ * are tagged with volumeId so a (entry, volume) pair can be retrieved
+ * independently. Status updates flow to the volume row, not the entry.
+ *
+ * Skips Haiku metadata enrichment — the entry's bibliographic fields
+ * are shared across volumes; only the parent entry's first volume (or
+ * a manual edit) should populate them.
+ */
+export async function processLibraryVolumePdfFromBytes(
+  entryId: string,
+  volumeId: string,
+  filename: string,
+  bytes: Buffer
+): Promise<void> {
+  try {
+    await setVolumeStatus(volumeId, 'extracting', { pdfError: null })
+
+    const form = new FormData()
+    form.append('sourceId', volumeId)
+    form.append(
+      'file',
+      new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }),
+      filename
+    )
+
+    const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
+      method: 'POST',
+      body: form,
+    })
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      const msg = `Python /process-bytes HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`
+      console.error('[library-pipeline]', msg)
+      await setVolumeStatus(volumeId, 'failed', { pdfError: msg })
+      return
+    }
+
+    const data = (await res.json()) as ProcessResponse
+
+    if (!data.chunks || data.chunks.length === 0) {
+      await setVolumeStatus(volumeId, 'failed', { pdfError: 'No text extracted' })
+      return
+    }
+
+    await prisma.libraryEntryVolume.update({
+      where: { id: volumeId },
+      data: { fileType: 'pdf', totalPages: data.totalPages },
+    })
+
+    await persistChunks(entryId, data.chunks, volumeId)
+    await setVolumeStatus(volumeId, 'ready')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[library-pipeline] volume processFromBytes failed for ${volumeId}:`, err)
+    await setVolumeStatus(volumeId, 'failed', { pdfError: message })
   }
 }
 

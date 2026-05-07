@@ -25,10 +25,13 @@ if (typeof window !== "undefined" && !pdfjs.GlobalWorkerOptions.workerSrc) {
 interface PdfPageViewerProps {
   entryId: string;
   page: number;
+  volumeId?: string | null;
 }
 
-export default function PdfPageViewer({ entryId, page }: PdfPageViewerProps) {
-  const fileUrl = `/api/library/${entryId}/pdf`;
+export default function PdfPageViewer({ entryId, page, volumeId }: PdfPageViewerProps) {
+  const fileUrl = volumeId
+    ? `/api/library/${entryId}/pdf?volume=${encodeURIComponent(volumeId)}`
+    : `/api/library/${entryId}/pdf`;
   const [error, setError] = useState<string | null>(null);
   const [width, setWidth] = useState<number>(640);
   const containerRef = useRef<HTMLDivElement>(null);

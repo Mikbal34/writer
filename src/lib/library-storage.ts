@@ -29,6 +29,12 @@ function entryPath(userId: string, entryId: string): string {
   return path.join(entryDir(userId), `${safeId}.pdf`)
 }
 
+function volumePath(userId: string, entryId: string, volumeId: string): string {
+  const safeEntry = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const safeVol = volumeId.replace(/[^a-zA-Z0-9_-]/g, '_')
+  return path.join(entryDir(userId), safeEntry, `${safeVol}.pdf`)
+}
+
 export async function savePdfBytes(
   userId: string,
   entryId: string,
@@ -37,6 +43,26 @@ export async function savePdfBytes(
   const dir = entryDir(userId)
   await fs.promises.mkdir(dir, { recursive: true })
   const dest = entryPath(userId, entryId)
+  await fs.promises.writeFile(dest, bytes)
+  return dest
+}
+
+/**
+ * Persist a PDF for a specific volume of a multi-volume entry.
+ * File lives in <STORAGE_ROOT>/<userId>/<entryId>/<volumeId>.pdf so
+ * it's grouped with its sibling volumes and easy to clean up when the
+ * parent entry is deleted.
+ */
+export async function saveVolumePdfBytes(
+  userId: string,
+  entryId: string,
+  volumeId: string,
+  bytes: Buffer,
+): Promise<string> {
+  const safeEntry = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const dir = path.join(entryDir(userId), safeEntry)
+  await fs.promises.mkdir(dir, { recursive: true })
+  const dest = volumePath(userId, entryId, volumeId)
   await fs.promises.writeFile(dest, bytes)
   return dest
 }
@@ -60,5 +86,26 @@ export async function deletePdf(filePath: string | null | undefined): Promise<vo
     await fs.promises.unlink(filePath)
   } catch {
     // already gone — fine
+  }
+}
+
+/**
+ * Cleanup hook for LibraryEntry deletion: removes the per-entry
+ * directory under <STORAGE_ROOT>/<userId>/<entryId> which holds all
+ * the volume PDFs for a multi-volume entry. The entry's primary
+ * filePath (single-volume legacy) is at the parent level and is
+ * unlinked separately by deletePdf().
+ */
+export async function deleteEntryVolumesDir(
+  userId: string,
+  entryId: string,
+): Promise<void> {
+  const safeUser = userId.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const safeEntry = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const dir = path.join(storageRoot(), safeUser, safeEntry)
+  try {
+    await fs.promises.rm(dir, { recursive: true, force: true })
+  } catch {
+    // best-effort cleanup
   }
 }

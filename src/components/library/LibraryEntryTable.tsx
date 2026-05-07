@@ -2,9 +2,10 @@
 
 import { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown, X, GraduationCap, Users, Link as LinkIcon, Globe } from "lucide-react";
+import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, BookCopy, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown, X, GraduationCap, Users, Link as LinkIcon, Globe } from "lucide-react";
 import { StaggerItem, FadeUpLarge } from "@/components/shared/Animations";
 import { toast } from "sonner";
+import VolumesDialog from "@/components/library/VolumesDialog";
 
 type SearchLink = {
  label: string;
@@ -87,7 +88,7 @@ export interface LibraryEntryRow {
  doi?: string | null;
  url?: string | null;
  tags: Array<{ tag: { id: string; name: string } }>;
- _count?: { bibliographies: number };
+ _count?: { bibliographies: number; volumes?: number };
 }
 
 interface LibraryEntryTableProps {
@@ -130,6 +131,7 @@ export default function LibraryEntryTable({
  const [pendingEntryId, setPendingEntryId] = useState<string | null>(null);
  const [findMenuOpenId, setFindMenuOpenId] = useState<string | null>(null);
  const [portalReady, setPortalReady] = useState(false);
+ const [volumesEntry, setVolumesEntry] = useState<LibraryEntryRow | null>(null);
 
  useEffect(() => {
   setPortalReady(true);
@@ -207,6 +209,7 @@ export default function LibraryEntryTable({
 
  if (viewMode === "card") {
   return (
+   <>
    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
     {entries.map((entry, i) => {
      const colorScheme = ENTRY_TYPE_COLORS[entry.entryType] ?? { color: "#5C4A32", accent: "#7a6a52", spine: "#3d3222" };
@@ -342,11 +345,22 @@ export default function LibraryEntryTable({
      );
     })}
    </div>
+   {volumesEntry && (
+    <VolumesDialog
+     open={!!volumesEntry}
+     onOpenChange={(o) => !o && setVolumesEntry(null)}
+     entryId={volumesEntry.id}
+     entryTitle={volumesEntry.title}
+     onChange={() => onPdfAttached?.(volumesEntry.id)}
+    />
+   )}
+   </>
   );
  }
 
  // List view (default)
  return (
+  <>
   <div>
    {entries.map((entry, i) => {
     const colorScheme = ENTRY_TYPE_COLORS[entry.entryType] ?? { color: "#5C4A32", accent: "#7a6a52", spine: "#3d3222" };
@@ -539,6 +553,38 @@ export default function LibraryEntryTable({
         <ExternalLink className="h-3.5 w-3.5 text-[#5C4A32]" />
        </div>
       )}
+
+      {/* Volumes — for multi-volume works (Tabari Tafsir, Hadis
+          Külliyatı, ansiklopedi). The button always appears so the
+          user can convert any single-PDF entry into a multi-volume
+          one by adding extra ciltler. The badge shows current count. */}
+      <div
+       role="button"
+       tabIndex={0}
+       title={
+        (entry._count?.volumes ?? 0) > 0
+         ? `${entry._count?.volumes} cilt — yönetmek için aç`
+         : "Cilt cilt yapılı eserler için cilt ekle"
+       }
+       onClick={(e) => {
+        e.stopPropagation();
+        setVolumesEntry(entry);
+       }}
+       onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+         e.stopPropagation();
+         setVolumesEntry(entry);
+        }
+       }}
+       className="flex items-center gap-1 px-1.5 py-0.5 shrink-0 rounded-sm hover:bg-[#C9A84C]/15 cursor-pointer transition-colors"
+      >
+       <BookCopy className="h-3.5 w-3.5 text-[#5C4A32]" />
+       {(entry._count?.volumes ?? 0) > 0 && (
+        <span className="font-ui text-[10px] text-[#5C4A32]">
+         {entry._count?.volumes}
+        </span>
+       )}
+      </div>
 
       {/* Delete */}
       <div
@@ -804,5 +850,15 @@ export default function LibraryEntryTable({
     document.body,
    )}
   </div>
+  {volumesEntry && (
+   <VolumesDialog
+    open={!!volumesEntry}
+    onOpenChange={(o) => !o && setVolumesEntry(null)}
+    entryId={volumesEntry.id}
+    entryTitle={volumesEntry.title}
+    onChange={() => onPdfAttached?.(volumesEntry.id)}
+   />
+  )}
+  </>
  );
 }

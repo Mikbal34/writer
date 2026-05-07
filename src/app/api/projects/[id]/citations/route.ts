@@ -23,6 +23,10 @@ interface ParsedMarker {
   quote: string | null
   label: string
   contextSnippet: string
+  // Multi-volume sources carry the (volumeId, volumeNumber) pair so
+  // the verify panel can scope chunks/PDF to the right cilt.
+  volumeId: string | null
+  volumeNumber: number | null
 }
 
 const SPAN_RE =
@@ -56,6 +60,9 @@ function extractMarkers(content: string): ParsedMarker[] {
     const pageStr = attr(fullSpan, 'data-page')
     const page = pageStr ? parseInt(pageStr, 10) : null
     const quote = attr(fullSpan, 'data-quote')
+    const volumeId = attr(fullSpan, 'data-volume-id')
+    const volumeStr = attr(fullSpan, 'data-volume')
+    const volumeNumber = volumeStr ? parseInt(volumeStr, 10) : null
 
     // Pull a short context window (~120 chars) on either side of the
     // span so the verification list shows what the writer was saying
@@ -72,6 +79,10 @@ function extractMarkers(content: string): ParsedMarker[] {
       quote: quote || null,
       label: innerLabel,
       contextSnippet,
+      volumeId: volumeId || null,
+      volumeNumber: Number.isFinite(volumeNumber as number)
+        ? (volumeNumber as number)
+        : null,
     })
   }
   return out
@@ -166,6 +177,8 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
           subsectionTitle: m.subsectionTitle,
           chapterTitle: m.chapterTitle,
           chapterNumber: m.chapterNumber,
+          volumeId: m.volumeId,
+          volumeNumber: m.volumeNumber,
           bibliography: bib
             ? {
                 id: bib.id,

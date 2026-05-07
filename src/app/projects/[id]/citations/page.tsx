@@ -153,6 +153,10 @@ export default function CitationsPage() {
                   const year = c.bibliography?.year
                     ? `, ${c.bibliography.year}`
                     : "";
+                  const volumeStr =
+                    c.volumeNumber !== null && c.volumeNumber !== undefined
+                      ? ` · c. ${c.volumeNumber}`
+                      : "";
                   const pageStr =
                     c.page !== null && c.page !== undefined ? ` · s. ${c.page}` : "";
                   return (
@@ -173,7 +177,7 @@ export default function CitationsPage() {
                           <div className="font-body text-sm text-[#2D1F0E] truncate">
                             {author}
                             {year}
-                            <span className="text-[#6b5a45]">{pageStr}</span>
+                            <span className="text-[#6b5a45]">{volumeStr}{pageStr}</span>
                           </div>
                           <div className="font-ui text-[11px] text-[#8a7a65] truncate">
                             {c.chapterNumber}. {c.chapterTitle} ·{" "}

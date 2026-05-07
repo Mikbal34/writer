@@ -30,6 +30,14 @@ interface BibEntry {
   libraryEntry?: { id: string; filePath: string | null; pdfStatus: string } | null;
 }
 
+interface VolumeOption {
+  id: string;
+  volumeNumber: number;
+  label: string | null;
+  pdfStatus: string;
+  hasPdf: boolean;
+}
+
 interface CitationPickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -39,6 +47,8 @@ interface CitationPickerProps {
     page: number | null;
     quote: string | null;
     label: string;
+    volumeId: string | null;
+    volumeNumber: number | null;
   }) => void;
 }
 
@@ -66,6 +76,26 @@ export default function CitationPicker({
   const [selected, setSelected] = useState<BibEntry | null>(null);
   const [page, setPage] = useState<string>("");
   const [quote, setQuote] = useState<string>("");
+  const [volumes, setVolumes] = useState<VolumeOption[]>([]);
+  const [volumeId, setVolumeId] = useState<string>("");
+  const [loadingVolumes, setLoadingVolumes] = useState(false);
+
+  // Whenever the user picks a different bibliography entry, refetch
+  // the linked LibraryEntry's volumes (if any) so the cilt dropdown
+  // can render. Single-volume entries get an empty list and the UI
+  // hides the dropdown entirely.
+  useEffect(() => {
+    setVolumes([]);
+    setVolumeId("");
+    const linkedId = selected?.libraryEntryId;
+    if (!linkedId) return;
+    setLoadingVolumes(true);
+    fetch(`/api/library/${linkedId}/volumes`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error())))
+      .then((data: { volumes: VolumeOption[] }) => setVolumes(data.volumes ?? []))
+      .catch(() => setVolumes([]))
+      .finally(() => setLoadingVolumes(false));
+  }, [selected]);
 
   useEffect(() => {
     if (!open) {
@@ -73,6 +103,8 @@ export default function CitationPicker({
       setPage("");
       setQuote("");
       setSearch("");
+      setVolumes([]);
+      setVolumeId("");
       return;
     }
     setLoading(true);
@@ -102,16 +134,29 @@ export default function CitationPicker({
       toast.error("Sayfa numarası geçersiz");
       return;
     }
+    if (volumes.length > 0 && !volumeId) {
+      toast.error("Bu kaynağın ciltleri var — bir cilt seçmelisin");
+      return;
+    }
+
+    const chosenVolume = volumeId
+      ? volumes.find((v) => v.id === volumeId) ?? null
+      : null;
+
     const surname = selected.authorSurname || "Unknown";
     const year = selected.year ? `, ${selected.year}` : "";
+    const volumeStr = chosenVolume ? `, c. ${chosenVolume.volumeNumber}` : "";
     const pageStr =
       pageNum !== null && pageNum !== undefined ? `, s. ${pageNum}` : "";
-    const label = `(${surname}${year}${pageStr})`;
+    const label = `(${surname}${year}${volumeStr}${pageStr})`;
+
     onPick({
       bibId: selected.id,
       page: pageNum,
       quote: quote.trim() || null,
       label,
+      volumeId: chosenVolume?.id ?? null,
+      volumeNumber: chosenVolume?.volumeNumber ?? null,
     });
     onOpenChange(false);
   }
@@ -202,6 +247,29 @@ export default function CitationPicker({
             </ul>
           )}
         </div>
+
+        {/* Volume picker — only for multi-volume entries */}
+        {selected && (volumes.length > 0 || loadingVolumes) && (
+          <div>
+            <label className="block font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] mb-1.5">
+              Cilt
+            </label>
+            <select
+              value={volumeId}
+              onChange={(e) => setVolumeId(e.target.value)}
+              className="w-full px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+            >
+              <option value="">Cilt seç...</option>
+              {volumes.map((v) => (
+                <option key={v.id} value={v.id}>
+                  Cilt {v.volumeNumber}
+                  {v.label ? ` — ${v.label}` : ""}
+                  {v.pdfStatus !== "ready" ? " (işleniyor)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Page + quote inputs */}
         <div className="grid grid-cols-2 gap-2">

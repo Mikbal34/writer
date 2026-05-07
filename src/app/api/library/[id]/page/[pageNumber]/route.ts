@@ -16,10 +16,12 @@ export const dynamic = 'force-dynamic'
 
 type RouteContext = { params: Promise<{ id: string; pageNumber: string }> }
 
-export async function GET(_req: NextRequest, ctx: RouteContext) {
+export async function GET(req: NextRequest, ctx: RouteContext) {
   try {
     const session = await requireAuth()
     const { id, pageNumber } = await ctx.params
+    const url = new URL(req.url)
+    const volumeId = url.searchParams.get('volume')
 
     const page = parseInt(pageNumber, 10)
     if (!Number.isFinite(page) || page < 1) {
@@ -34,8 +36,37 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
+    // Volume scoping: when the citation targets a specific volume,
+    // pull only that volume's chunks. Otherwise default to the
+    // entry's "primary" chunks (volumeId IS NULL — legacy single-PDF
+    // mode) so existing entries keep working.
+    let volumeMeta: { volumeNumber: number; label: string | null; hasPdf: boolean } | null = null
+    let chunksWhere: {
+      libraryEntryId: string
+      pageNumber: number
+      volumeId?: string | null
+    } = { libraryEntryId: id, pageNumber: page }
+
+    if (volumeId) {
+      const volume = await prisma.libraryEntryVolume.findFirst({
+        where: { id: volumeId, libraryEntryId: id },
+        select: { id: true, volumeNumber: true, label: true, filePath: true },
+      })
+      if (!volume) {
+        return NextResponse.json({ error: 'Volume not found' }, { status: 404 })
+      }
+      volumeMeta = {
+        volumeNumber: volume.volumeNumber,
+        label: volume.label,
+        hasPdf: Boolean(volume.filePath),
+      }
+      chunksWhere = { libraryEntryId: id, pageNumber: page, volumeId: volume.id }
+    } else {
+      chunksWhere = { libraryEntryId: id, pageNumber: page, volumeId: null }
+    }
+
     const chunks = await prisma.libraryChunk.findMany({
-      where: { libraryEntryId: id, pageNumber: page },
+      where: chunksWhere,
       orderBy: { chunkIndex: 'asc' },
       select: { content: true, chunkIndex: true },
     })
@@ -47,8 +78,9 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         authorSurname: entry.authorSurname,
         authorName: entry.authorName,
         year: entry.year,
-        hasPdf: Boolean(entry.filePath),
+        hasPdf: volumeMeta ? volumeMeta.hasPdf : Boolean(entry.filePath),
       },
+      volume: volumeMeta,
       pageNumber: page,
       content: chunks.map((c) => c.content).join('\n\n'),
       chunkCount: chunks.length,

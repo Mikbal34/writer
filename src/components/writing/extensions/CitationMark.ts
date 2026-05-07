@@ -23,6 +23,10 @@ export interface CitationAttrs {
   page: number | null
   quote: string | null
   label: string
+  // For multi-volume works (Tabari Tafsir, Hadis Külliyatı). Null
+  // for single-volume entries — picker omits the volume input then.
+  volumeId: string | null
+  volumeNumber: number | null
 }
 
 declare module '@tiptap/core' {
@@ -66,6 +70,25 @@ export const CitationMark = Node.create({
         parseHTML: (el) => el.getAttribute('data-quote') || null,
         renderHTML: (attrs) =>
           attrs.quote ? { 'data-quote': attrs.quote } : {},
+      },
+      volumeId: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-volume-id') || null,
+        renderHTML: (attrs) =>
+          attrs.volumeId ? { 'data-volume-id': attrs.volumeId } : {},
+      },
+      volumeNumber: {
+        default: null,
+        parseHTML: (el) => {
+          const v = el.getAttribute('data-volume')
+          if (!v) return null
+          const n = parseInt(v, 10)
+          return Number.isFinite(n) ? n : null
+        },
+        renderHTML: (attrs) =>
+          attrs.volumeNumber === null || attrs.volumeNumber === undefined
+            ? {}
+            : { 'data-volume': String(attrs.volumeNumber) },
       },
       label: {
         default: '(atıf)',

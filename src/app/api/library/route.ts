@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
         where,
         include: {
           tags: { include: { tag: true } },
-          _count: { select: { bibliographies: true } },
+          _count: { select: { bibliographies: true, volumes: true } },
         },
         orderBy: { updatedAt: 'desc' },
         skip,

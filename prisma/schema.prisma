@@ -514,10 +514,11 @@ model LibraryEntry {
   pdfStatus      String   @default("none") // "none" | "pending" | "downloading" | "extracting" | "embedding" | "ready" | "failed"
   pdfError       String?
 
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   bibliographies Bibliography[]
   tags           LibraryEntryTag[]
   chunks         LibraryChunk[]
+  volumes        LibraryEntryVolume[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -527,18 +528,50 @@ model LibraryEntry {
   @@index([userId, pdfStatus])
 }
 
+// A multi-volume work (Tabari Tafsir, hadith külliyatı, ansiklopedi)
+// is a single bibliographic entry with N physical volumes. Each volume
+// gets its own PDF and chunks; citations target a (entry, volume, page)
+// tuple. Single-volume entries skip this table entirely and use
+// LibraryEntry.filePath / chunks directly — fully backward-compatible.
+model LibraryEntryVolume {
+  id             String   @id @default(cuid())
+  libraryEntryId String
+  volumeNumber   Int // 1, 2, 3, ... — what the user types after "c."
+  label          String? // optional title, e.g. "Hicret Öncesi"
+  filePath       String? // PDF on the durable volume mount
+  fileType       String? @default("pdf")
+  pdfStatus      String  @default("none")
+  pdfError       String?
+  totalPages     Int?
+
+  libraryEntry LibraryEntry   @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
+  chunks       LibraryChunk[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([libraryEntryId, volumeNumber])
+  @@index([libraryEntryId])
+}
+
 model LibraryChunk {
   id             String                      @id @default(cuid())
   libraryEntryId String
+  // When the entry is a multi-volume work, every chunk is tagged with
+  // the volume it came from. NULL means "the entry's primary PDF" —
+  // single-volume legacy entries leave this empty.
+  volumeId       String?
   pageNumber     Int?
   chunkIndex     Int
   content        String                      @db.Text
   embedding      Unsupported("vector(768)")?
   metadata       Json?
 
-  libraryEntry LibraryEntry @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
+  libraryEntry LibraryEntry         @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
+  volume       LibraryEntryVolume?  @relation(fields: [volumeId], references: [id], onDelete: Cascade)
 
   @@index([libraryEntryId])
+  @@index([volumeId])
 }
 
 // "Chat with your PDFs" feature — turns the user's library into a
