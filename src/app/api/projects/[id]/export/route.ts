@@ -668,6 +668,7 @@ function buildDocx(
     }
     children.push(...buildTableOfContents(format, tocEntries))
   } else {
+    // Title page
     children.push(
       new Paragraph({
         children: [new TextRun({ text: projectTitle, bold: true, size: 36, font: 'Times New Roman' })],
@@ -676,6 +677,52 @@ function buildDocx(
       })
     )
     children.push(new Paragraph({ children: [new PageBreak()] }))
+
+    // Creative TOC — just chapter titles. Academic projects already get
+    // a richer TOC via buildTableOfContents above.
+    const creativeChapters: Array<{ number: number; title: string }> = []
+    const seen = new Set<string>()
+    for (const sub of subsections) {
+      const key = `${sub.chapterNumber}::${sub.chapterTitle}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      creativeChapters.push({
+        number: sub.chapterNumber,
+        title: sub.chapterTitle,
+      })
+    }
+    if (creativeChapters.length > 0) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: 'İçindekiler',
+              bold: true,
+              size: 32,
+              font: 'Times New Roman',
+            }),
+          ],
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        })
+      )
+      for (const ch of creativeChapters) {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${ch.number}. ${ch.title}`,
+                size: 24,
+                font: 'Times New Roman',
+              }),
+            ],
+            spacing: { after: 120 },
+          })
+        )
+      }
+      children.push(new Paragraph({ children: [new PageBreak()] }))
+    }
   }
 
   // Anything pushed to `children` BEFORE the first chapter is front
@@ -1570,6 +1617,31 @@ function buildPdf(
       doc.font(fonts.bold).fontSize(24)
       doc.text(projectTitle, { align: 'center' })
       doc.addPage()
+
+      // Creative TOC — chapter titles only. Academic projects get a
+      // richer TOC via renderTableOfContents above.
+      const creativeChapters: Array<{ number: number; title: string }> = []
+      const seen = new Set<string>()
+      for (const sub of subsections) {
+        const key = `${sub.chapterNumber}::${sub.chapterTitle}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        creativeChapters.push({
+          number: sub.chapterNumber,
+          title: sub.chapterTitle,
+        })
+      }
+      if (creativeChapters.length > 0) {
+        doc.font(fonts.bold).fontSize(20)
+        doc.text('İçindekiler', { align: 'center' })
+        doc.moveDown(1.5)
+        doc.font(fonts.regular).fontSize(BODY_SIZE)
+        for (const ch of creativeChapters) {
+          doc.text(`${ch.number}. ${ch.title}`)
+          doc.moveDown(0.4)
+        }
+        doc.addPage()
+      }
     }
 
     // Flip the page-numbering mode to "body" so the per-page header /
