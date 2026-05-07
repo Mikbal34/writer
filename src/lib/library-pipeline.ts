@@ -322,18 +322,19 @@ async function persistChunks(entryId: string, chunks: ProcessResponse['chunks'])
 
   if (safeChunks.length === 0) return
 
-  const created = await prisma.$transaction(
-    safeChunks.map((c) =>
-      prisma.libraryChunk.create({
-        data: {
-          libraryEntryId: entryId,
-          pageNumber: c.pageNumber,
-          chunkIndex: c.chunkIndex,
-          content: c.content,
-        },
-      })
-    )
-  )
+  // Books with hundreds of chunks blow past Prisma's default 5s
+  // interactive-transaction window. Use createManyAndReturn (Prisma 7+)
+  // for a single bulk INSERT that also gives us the generated ids
+  // back so the embedding update loop can target them.
+  const created = await prisma.libraryChunk.createManyAndReturn({
+    data: safeChunks.map((c) => ({
+      libraryEntryId: entryId,
+      pageNumber: c.pageNumber,
+      chunkIndex: c.chunkIndex,
+      content: c.content,
+    })),
+    select: { id: true, content: true },
+  })
 
   await setStatus(entryId, 'embedding')
 
