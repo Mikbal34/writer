@@ -89,6 +89,166 @@ export default async function HomePage() {
     orderBy: { updatedAt: "desc" },
   });
 
+  // Pull the user's series so we can group multi-volume works together.
+  // Series with no projects are still listed (they may be newly created
+  // and waiting for their first volume).
+  const seriesList = await prisma.series.findMany({
+    where: { userId: session.user.id as string },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, name: true, description: true },
+  });
+
+  const standaloneProjects = projects.filter((p) => !p.seriesId);
+  const projectsBySeries = new Map<string, typeof projects>();
+  for (const p of projects) {
+    if (!p.seriesId) continue;
+    const arr = projectsBySeries.get(p.seriesId) ?? [];
+    arr.push(p);
+    projectsBySeries.set(p.seriesId, arr);
+  }
+  // Sort each series' volumes by seriesOrder asc (cilt 1, 2, 3...)
+  for (const [, arr] of projectsBySeries) {
+    arr.sort((a, b) => (a.seriesOrder ?? 0) - (b.seriesOrder ?? 0));
+  }
+
+  // Render one project card. Pulled out so the JSX can be reused both
+  // for series volumes and standalone projects without duplicating ~80
+  // lines of layout. `volumeNumber` becomes a small "Cilt N" badge in
+  // the corner of the cover when present.
+  function renderProjectCard(
+    project: (typeof projects)[number],
+    index: number,
+    volumeNumber: number | null,
+  ) {
+    const colorScheme = BOOK_COLORS[index % BOOK_COLORS.length];
+    const allSubsections = project.chapters.flatMap((c) =>
+      c.sections.flatMap((s) => s.subsections),
+    );
+    const completedSubsections = allSubsections.filter(
+      (s) => s.status === "completed",
+    ).length;
+    const totalWordCount = allSubsections.reduce((acc, s) => acc + s.wordCount, 0);
+    const chapterCount = project.chapters.length;
+    const completionPct =
+      allSubsections.length > 0
+        ? Math.round((completedSubsections / allSubsections.length) * 100)
+        : getStatusProgress(project.status);
+    const completedChapters = project.chapters.filter((c) =>
+      c.sections.every((s) =>
+        s.subsections.every((sub) => sub.status === "completed"),
+      ),
+    ).length;
+
+    return (
+      <FadeUpLarge key={project.id} delay={index * 0.08}>
+        <Link
+          href={`/projects/${project.id}`}
+          className="group block"
+          style={{ perspective: "800px" }}
+          aria-label={`Go to ${project.title}`}
+        >
+          <article className="book-card relative overflow-hidden rounded-sm">
+            {/* Spine */}
+            <div
+              className="absolute left-0 top-0 bottom-0 w-5 z-10"
+              style={{
+                background: `linear-gradient(to right, ${colorScheme.spine}, ${colorScheme.color})`,
+              }}
+            >
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 w-2.5 h-px" style={{ backgroundColor: "#C9A84C" }} />
+              <div className="absolute top-5 left-1/2 -translate-x-1/2 w-1.5 h-px" style={{ backgroundColor: "rgba(201,168,76,0.6)" }} />
+              <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-1.5 h-px" style={{ backgroundColor: "rgba(201,168,76,0.6)" }} />
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-2.5 h-px" style={{ backgroundColor: "#C9A84C" }} />
+            </div>
+
+            {/* Cover */}
+            <div
+              className="relative pl-5 flex flex-col min-h-[220px]"
+              style={{
+                background: `linear-gradient(160deg, ${colorScheme.color} 0%, ${colorScheme.accent} 100%)`,
+              }}
+            >
+              {/* Volume badge — top-left when part of a series */}
+              {volumeNumber !== null && (
+                <div
+                  className="absolute top-2.5 left-7 px-1.5 py-0.5 rounded-sm text-[10px] font-ui font-medium z-10"
+                  style={{
+                    backgroundColor: "rgba(201,168,76,0.85)",
+                    color: "#1A0F05",
+                  }}
+                >
+                  Cilt {volumeNumber}
+                </div>
+              )}
+              {/* Completion badge */}
+              <div
+                className="absolute top-2.5 right-2.5 px-1.5 py-0.5 rounded-sm text-[10px] font-ui font-medium z-10"
+                style={{
+                  backgroundColor: "rgba(0,0,0,0.35)",
+                  color: "rgba(250,247,240,0.85)",
+                  backdropFilter: "blur(4px)",
+                }}
+              >
+                {completedChapters}/{chapterCount}
+              </div>
+
+              <div className="flex-1 flex items-center px-4 py-6">
+                <h2
+                  className="font-display text-lg font-bold leading-snug line-clamp-3"
+                  style={{
+                    color: "rgba(250,247,240,0.95)",
+                    textShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                  }}
+                >
+                  {project.title}
+                </h2>
+              </div>
+
+              <div
+                className="px-4 py-2.5"
+                style={{
+                  backgroundColor: "rgba(250,240,220,0.12)",
+                  borderTop: "1px solid rgba(201,168,76,0.20)",
+                }}
+              >
+                <div className="mb-2">
+                  <div
+                    className="h-[3px] rounded-full overflow-hidden"
+                    style={{ backgroundColor: "rgba(250,247,240,0.12)" }}
+                  >
+                    <AnimatedBar
+                      percentage={completionPct}
+                      delay={0.4 + index * 0.08}
+                      className="h-full rounded-full"
+                      style={{
+                        background: `linear-gradient(to right, #C9A84C, #e8c96a)`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-ui text-[10px]" style={{ color: "rgba(250,247,240,0.55)" }}>
+                    <Layers className="inline h-2.5 w-2.5 mr-0.5" />
+                    {chapterCount} ch.
+                  </span>
+                  <span className="font-ui text-[10px]" style={{ color: "rgba(250,247,240,0.55)" }}>
+                    <Feather className="inline h-2.5 w-2.5 mr-0.5" />
+                    {totalWordCount > 999
+                      ? `${(totalWordCount / 1000).toFixed(1)}k`
+                      : totalWordCount}
+                  </span>
+                  <span className="font-ui text-[10px]" style={{ color: "rgba(250,247,240,0.40)" }}>
+                    {completionPct}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </article>
+        </Link>
+      </FadeUpLarge>
+    );
+  }
+
   const totalWords = projects.reduce((acc, project) => {
     const words = project.chapters
       .flatMap((c) => c.sections.flatMap((s) => s.subsections))
@@ -219,148 +379,65 @@ export default async function HomePage() {
           />
         </div>
 
-        {/* Books grid */}
-        {projects.length === 0 ? (
+        {/* Books grid — series groups first, then standalone */}
+        {projects.length === 0 && seriesList.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {projects.map((project, index) => {
-              const colorScheme = BOOK_COLORS[index % BOOK_COLORS.length];
-              const allSubsections = project.chapters.flatMap((c) =>
-                c.sections.flatMap((s) => s.subsections)
-              );
-              const completedSubsections = allSubsections.filter(
-                (s) => s.status === "completed"
-              ).length;
-              const totalWordCount = allSubsections.reduce(
-                (acc, s) => acc + s.wordCount,
-                0
-              );
-              const chapterCount = project.chapters.length;
-              const completionPct =
-                allSubsections.length > 0
-                  ? Math.round(
-                      (completedSubsections / allSubsections.length) * 100
-                    )
-                  : getStatusProgress(project.status);
-              const completedChapters = project.chapters.filter((c) =>
-                c.sections.every((s) =>
-                  s.subsections.every((sub) => sub.status === "completed")
-                )
-              ).length;
-
+          <div className="space-y-10">
+            {/* Series groups */}
+            {seriesList.map((series) => {
+              const volumes = projectsBySeries.get(series.id) ?? [];
               return (
-                <FadeUpLarge key={project.id} delay={index * 0.08}>
-                <Link
-                  href={`/projects/${project.id}`}
-                  className="group block"
-                  style={{ perspective: "800px" }}
-                  aria-label={`Go to ${project.title}`}
-                >
-                  <article className="book-card relative overflow-hidden rounded-sm">
-                    {/* Spine */}
-                    <div
-                      className="absolute left-0 top-0 bottom-0 w-5 z-10"
-                      style={{
-                        background: `linear-gradient(to right, ${colorScheme.spine}, ${colorScheme.color})`,
-                      }}
-                    >
-                      {/* Gold decorative lines on spine */}
-                      <div className="absolute top-3 left-1/2 -translate-x-1/2 w-2.5 h-px" style={{ backgroundColor: "#C9A84C" }} />
-                      <div className="absolute top-5 left-1/2 -translate-x-1/2 w-1.5 h-px" style={{ backgroundColor: "rgba(201,168,76,0.6)" }} />
-                      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-1.5 h-px" style={{ backgroundColor: "rgba(201,168,76,0.6)" }} />
-                      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-2.5 h-px" style={{ backgroundColor: "#C9A84C" }} />
+                <section key={series.id}>
+                  <div className="flex items-baseline justify-between mb-4">
+                    <div>
+                      <h2 className="font-display text-xl font-semibold text-[#2D1F0E]">
+                        {series.name}
+                      </h2>
+                      <p className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] mt-0.5">
+                        Seri · {volumes.length} cilt
+                      </p>
                     </div>
-
-                    {/* Cover */}
-                    <div
-                      className="relative pl-5 flex flex-col min-h-[220px]"
-                      style={{
-                        background: `linear-gradient(160deg, ${colorScheme.color} 0%, ${colorScheme.accent} 100%)`,
-                      }}
-                    >
-                      {/* Completion badge */}
-                      <div
-                        className="absolute top-2.5 right-2.5 px-1.5 py-0.5 rounded-sm text-[10px] font-ui font-medium z-10"
-                        style={{
-                          backgroundColor: "rgba(0,0,0,0.35)",
-                          color: "rgba(250,247,240,0.85)",
-                          backdropFilter: "blur(4px)",
-                        }}
-                      >
-                        {completedChapters}/{chapterCount}
-                      </div>
-
-                      {/* Title area */}
-                      <div className="flex-1 flex items-center px-4 py-6">
-                        <h2
-                          className="font-display text-lg font-bold leading-snug line-clamp-3"
-                          style={{
-                            color: "rgba(250,247,240,0.95)",
-                            textShadow: "0 1px 3px rgba(0,0,0,0.3)",
-                          }}
-                        >
-                          {project.title}
-                        </h2>
-                      </div>
-
-                      {/* Bottom strip — parchment tone */}
-                      <div
-                        className="px-4 py-2.5"
-                        style={{
-                          backgroundColor: "rgba(250,240,220,0.12)",
-                          borderTop: "1px solid rgba(201,168,76,0.20)",
-                        }}
-                      >
-                        {/* Progress bar */}
-                        <div className="mb-2">
-                          <div
-                            className="h-[3px] rounded-full overflow-hidden"
-                            style={{ backgroundColor: "rgba(250,247,240,0.12)" }}
-                          >
-                            <AnimatedBar
-                              percentage={completionPct}
-                              delay={0.4 + index * 0.08}
-                              className="h-full rounded-full"
-                              style={{
-                                background: `linear-gradient(to right, #C9A84C, #e8c96a)`,
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Stats row */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span
-                            className="font-ui text-[10px]"
-                            style={{ color: "rgba(250,247,240,0.55)" }}
-                          >
-                            <Layers className="inline h-2.5 w-2.5 mr-0.5" />
-                            {chapterCount} ch.
-                          </span>
-                          <span
-                            className="font-ui text-[10px]"
-                            style={{ color: "rgba(250,247,240,0.55)" }}
-                          >
-                            <Feather className="inline h-2.5 w-2.5 mr-0.5" />
-                            {totalWordCount > 999
-                              ? `${(totalWordCount / 1000).toFixed(1)}k`
-                              : totalWordCount}
-                          </span>
-                          <span
-                            className="font-ui text-[10px]"
-                            style={{ color: "rgba(250,247,240,0.40)" }}
-                          >
-                            {completionPct}%
-                          </span>
-                        </div>
-                      </div>
+                  </div>
+                  {volumes.length === 0 ? (
+                    <div className="rounded-sm border border-dashed border-[#d4c9b5] bg-[#FAF7F0]/40 px-4 py-6 text-center">
+                      <p className="font-body text-xs text-[#8a7a65]">
+                        Henüz bu seride cilt yok. Yeni proje oluştururken bu seriyi seçebilirsin.
+                      </p>
                     </div>
-                  </article>
-                </Link>
-                </FadeUpLarge>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                      {volumes.map((project, idx) =>
+                        renderProjectCard(project, idx, project.seriesOrder ?? null),
+                      )}
+                    </div>
+                  )}
+                </section>
               );
             })}
+
+            {/* Standalone projects */}
+            {standaloneProjects.length > 0 && (
+              <section>
+                {seriesList.length > 0 && (
+                  <div className="flex items-baseline justify-between mb-4">
+                    <div>
+                      <h2 className="font-display text-xl font-semibold text-[#2D1F0E]">
+                        Bağımsız projeler
+                      </h2>
+                      <p className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] mt-0.5">
+                        {standaloneProjects.length} kitap
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                  {standaloneProjects.map((project, idx) =>
+                    renderProjectCard(project, idx, null),
+                  )}
+                </div>
+              </section>
+            )}
           </div>
         )}
 

@@ -34,6 +34,11 @@ interface ProjectSidebarProps {
   projectStatus: string;
   projectType?: string;
   completionPct?: number;
+  // Set when this project is part of a multi-volume series; the
+  // sidebar header then shows a small "Seri Adı · Cilt N" line above
+  // the title.
+  seriesName?: string | null;
+  seriesOrder?: number | null;
 }
 
 const STATUS_ORDER = ["roadmap", "sources", "writing", "completed"];
@@ -56,6 +61,8 @@ export default function ProjectSidebar({
   projectStatus,
   projectType = "ACADEMIC",
   completionPct = 0,
+  seriesName = null,
+  seriesOrder = null,
 }: ProjectSidebarProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -150,7 +157,15 @@ export default function ProjectSidebar({
         </Link>
         <div className="mt-3 flex items-center gap-2.5">
           <img src="/images/quilpen-icon.png" alt="Quilpen" className="w-9 h-9 rounded-lg" />
-          <div>
+          <div className="min-w-0 flex-1">
+            {seriesName && (
+              <p className="font-ui text-[10px] text-[#8a5a1a] uppercase tracking-wider mb-0.5 truncate">
+                {seriesName}
+                {seriesOrder !== null && seriesOrder !== undefined && (
+                  <span className="text-muted-foreground"> · Cilt {seriesOrder}</span>
+                )}
+              </p>
+            )}
             <p className="font-display text-sm font-semibold text-ink leading-tight line-clamp-2">
               {projectTitle}
             </p>

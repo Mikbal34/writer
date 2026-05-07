@@ -52,6 +52,9 @@ export async function POST(req: NextRequest) {
       language,
       projectType,
       styleProfileId,
+      seriesId,
+      seriesOrder,
+      newSeriesName,
     } = body as {
       title: string
       description?: string
@@ -62,6 +65,9 @@ export async function POST(req: NextRequest) {
       language?: string
       projectType?: ProjectType
       styleProfileId?: string
+      seriesId?: string | null
+      seriesOrder?: number | null
+      newSeriesName?: string | null
     }
 
     if (!title || typeof title !== 'string' || title.trim() === '') {
@@ -97,6 +103,58 @@ export async function POST(req: NextRequest) {
     }
     const resolvedType = projectType && validTypes.includes(projectType) ? projectType : 'ACADEMIC'
 
+    // Series resolution. Three accepted shapes:
+    //   - newSeriesName set       → create the series, this becomes Cilt 1
+    //   - seriesId set            → join an existing (user-owned) series
+    //   - both null/undefined     → standalone project (default)
+    let resolvedSeriesId: string | null = null
+    let resolvedSeriesOrder: number | null = null
+    const trimmedNewSeries = newSeriesName?.trim() || null
+
+    if (trimmedNewSeries) {
+      try {
+        const series = await prisma.series.create({
+          data: { userId, name: trimmedNewSeries },
+          select: { id: true },
+        })
+        resolvedSeriesId = series.id
+        resolvedSeriesOrder = 1
+      } catch (err) {
+        if (
+          typeof err === 'object' &&
+          err &&
+          'code' in err &&
+          (err as { code: string }).code === 'P2002'
+        ) {
+          return NextResponse.json(
+            { error: 'Bu isimde bir seri zaten var' },
+            { status: 409 },
+          )
+        }
+        throw err
+      }
+    } else if (seriesId) {
+      const series = await prisma.series.findFirst({
+        where: { id: seriesId, userId },
+        select: { id: true },
+      })
+      if (!series) {
+        return NextResponse.json({ error: 'Series not found' }, { status: 404 })
+      }
+      resolvedSeriesId = series.id
+      // Auto-assign the next free volume order if the caller didn't pick one.
+      if (typeof seriesOrder === 'number' && Number.isFinite(seriesOrder) && seriesOrder > 0) {
+        resolvedSeriesOrder = Math.floor(seriesOrder)
+      } else {
+        const tail = await prisma.project.findFirst({
+          where: { seriesId: series.id },
+          orderBy: { seriesOrder: 'desc' },
+          select: { seriesOrder: true },
+        })
+        resolvedSeriesOrder = (tail?.seriesOrder ?? 0) + 1
+      }
+    }
+
     const project = await prisma.project.create({
       data: {
         userId,
@@ -110,6 +168,10 @@ export async function POST(req: NextRequest) {
         language: language ?? 'en',
         status: 'roadmap',
         ...(verifiedStyleProfileId && { styleProfileId: verifiedStyleProfileId }),
+        ...(resolvedSeriesId && {
+          seriesId: resolvedSeriesId,
+          seriesOrder: resolvedSeriesOrder,
+        }),
       },
     })
 

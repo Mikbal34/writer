@@ -34,6 +34,9 @@ export default async function ProjectLayout({
       title: true,
       status: true,
       projectType: true,
+      seriesId: true,
+      seriesOrder: true,
+      series: { select: { id: true, name: true } },
     },
   });
 
@@ -79,6 +82,8 @@ export default async function ProjectLayout({
                 projectStatus={project.status}
                 projectType={project.projectType}
                 completionPct={completionPct}
+                seriesName={project.series?.name ?? null}
+                seriesOrder={project.seriesOrder ?? null}
               />
               <main className="flex-1 flex flex-col overflow-y-auto min-h-0">
                 <div className="md:hidden h-16" />{/* spacer for mobile menu button */}

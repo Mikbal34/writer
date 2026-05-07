@@ -132,6 +132,15 @@ interface StyleProfileOption {
   profile: unknown;
 }
 
+interface SeriesOption {
+  id: string;
+  name: string;
+  projects: Array<{ id: string }>;
+}
+
+const SERIES_NONE = "none";
+const SERIES_NEW = "__new__";
+
 export default function NewProjectDialog({ variant = "default" }: NewProjectDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -141,6 +150,11 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
   const [citationFormat, setCitationFormat] = useState<CitationFormat>("ISNAD");
   const [styleProfileId, setStyleProfileId] = useState("none");
   const [styleProfiles, setStyleProfiles] = useState<StyleProfileOption[]>([]);
+  // Series picker state — SERIES_NONE = standalone, SERIES_NEW = create
+  // a new series (shows text input), otherwise the chosen series' id.
+  const [seriesId, setSeriesId] = useState<string>(SERIES_NONE);
+  const [newSeriesName, setNewSeriesName] = useState("");
+  const [seriesList, setSeriesList] = useState<SeriesOption[]>([]);
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
@@ -152,6 +166,10 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
         setStyleProfiles(withProfile);
       })
       .catch(() => setStyleProfiles([]));
+    fetch("/api/series")
+      .then((r) => (r.ok ? r.json() : { series: [] }))
+      .then((data: { series: SeriesOption[] }) => setSeriesList(data.series ?? []))
+      .catch(() => setSeriesList([]));
   }, [open]);
 
   const needsSources = projectType === "ACADEMIC";
@@ -162,6 +180,8 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
     setLanguage("en");
     setCitationFormat("ISNAD");
     setStyleProfileId("none");
+    setSeriesId(SERIES_NONE);
+    setNewSeriesName("");
   }
 
   async function handleCreate() {
@@ -169,6 +189,20 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
       toast.error("Book title is required.");
       return;
     }
+    if (seriesId === SERIES_NEW && !newSeriesName.trim()) {
+      toast.error("Yeni seri için isim girmelisin.");
+      return;
+    }
+
+    // Translate the picker state into the wire format the project POST
+    // endpoint expects: newSeriesName for "create + attach as cilt 1",
+    // seriesId for "attach to existing", neither for standalone.
+    const seriesPayload =
+      seriesId === SERIES_NEW
+        ? { newSeriesName: newSeriesName.trim() }
+        : seriesId !== SERIES_NONE
+          ? { seriesId }
+          : {};
 
     setIsCreating(true);
     try {
@@ -181,6 +215,7 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
           projectType,
           ...(needsSources && { citationFormat }),
           ...(styleProfileId !== "none" && { styleProfileId }),
+          ...seriesPayload,
         }),
       });
 
@@ -324,6 +359,44 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
                     </SelectContent>
                   </Select>
                 </div>
+              )}
+            </div>
+
+            {/* Series picker — for multi-volume works (külliyat etc.) */}
+            <div className="space-y-2">
+              <Label>Seri</Label>
+              <Select value={seriesId} onValueChange={(v) => v && setSeriesId(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {seriesId === SERIES_NONE
+                      ? "Bağımsız"
+                      : seriesId === SERIES_NEW
+                        ? "Yeni seri başlat..."
+                        : (seriesList.find((s) => s.id === seriesId)?.name ?? "Seri seç")}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SERIES_NONE}>Bağımsız</SelectItem>
+                  {seriesList.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name} ({s.projects.length} cilt)
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={SERIES_NEW}>+ Yeni seri başlat...</SelectItem>
+                </SelectContent>
+              </Select>
+              {seriesId === SERIES_NEW && (
+                <Input
+                  value={newSeriesName}
+                  onChange={(e) => setNewSeriesName(e.target.value)}
+                  placeholder="Seri adı (örn: Hadis Külliyatı)"
+                  autoFocus
+                />
+              )}
+              {seriesId !== SERIES_NONE && seriesId !== SERIES_NEW && (
+                <p className="font-body text-[11px] text-muted-foreground">
+                  Cilt numarası otomatik atanır (sıradaki numara).
+                </p>
               )}
             </div>
 

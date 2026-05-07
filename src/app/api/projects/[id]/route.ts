@@ -105,6 +105,8 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       acknowledgments,
       dedication,
       blindReview,
+      seriesId,
+      seriesOrder,
     } = body as {
       title?: string
       description?: string
@@ -128,6 +130,11 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       acknowledgments?: string | null
       dedication?: string | null
       blindReview?: boolean
+      // Series rebinding: pass null/undefined to detach, a valid
+      // (user-owned) series id to move the project under that series,
+      // or just seriesOrder to reposition within the current series.
+      seriesId?: string | null
+      seriesOrder?: number | null
     }
 
     const validFormats: CitationFormat[] = ['ISNAD', 'APA', 'CHICAGO', 'MLA', 'HARVARD', 'VANCOUVER', 'IEEE', 'AMA', 'TURABIAN']
@@ -138,6 +145,18 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     const validStatuses: ProjectStatus[] = ['roadmap', 'sources', 'writing', 'completed']
     if (status && !validStatuses.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+    }
+
+    // Series rebinding: validate ownership when caller passes a non-null
+    // seriesId. Null detaches; undefined leaves the link untouched.
+    if (seriesId !== undefined && seriesId !== null) {
+      const series = await prisma.series.findFirst({
+        where: { id: seriesId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!series) {
+        return NextResponse.json({ error: 'Series not found' }, { status: 404 })
+      }
     }
 
     const updated = await prisma.project.update({
@@ -168,6 +187,12 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         ...(acknowledgments !== undefined && { acknowledgments }),
         ...(dedication !== undefined && { dedication }),
         ...(blindReview !== undefined && { blindReview }),
+        ...(seriesId !== undefined && {
+          seriesId,
+          // Detaching from a series wipes the order too.
+          ...(seriesId === null && { seriesOrder: null }),
+        }),
+        ...(seriesOrder !== undefined && { seriesOrder }),
       },
     })
 
