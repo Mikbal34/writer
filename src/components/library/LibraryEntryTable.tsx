@@ -290,7 +290,7 @@ export default function LibraryEntryTable({
             {entry.year ?? "—"}
            </span>
            <div className="flex items-center gap-2">
-            {entry.filePath && (
+            {entry.filePath && entry.fileType === 'pdf' && (
              <div
               role="button"
               tabIndex={0}
@@ -531,9 +531,10 @@ export default function LibraryEntryTable({
       )}
 
       {/* Open PDF in browser tab — only when the file is actually
-          persisted on the volume. Older entries with filePath:null
-          (uploaded before durable storage was wired up) hide this. */}
-      {entry.filePath && (
+          persisted AND it's a PDF (browsers render PDF natively but
+          not EPUB/DOCX). Older entries with filePath:null or non-PDF
+          types hide this button. */}
+      {entry.filePath && entry.fileType === 'pdf' && (
        <div
         role="button"
         tabIndex={0}

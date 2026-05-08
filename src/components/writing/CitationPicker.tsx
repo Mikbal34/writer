@@ -27,7 +27,20 @@ interface BibEntry {
   title: string;
   year: string | null;
   libraryEntryId: string | null;
-  libraryEntry?: { id: string; filePath: string | null; pdfStatus: string } | null;
+  libraryEntry?: {
+    id: string;
+    filePath: string | null;
+    pdfStatus: string;
+    fileType: string | null;
+  } | null;
+}
+
+/** Pick a position-marker abbreviation that matches the source format.
+ * "s." (sayfa) only really makes sense for PDFs; EPUB/DOCX don't have
+ * physical pages so we fall back to the more neutral "kn." (konum). */
+function positionLabel(fileType: string | null | undefined): string {
+  if (fileType === 'pdf') return 's.';
+  return 'kn.';
 }
 
 interface VolumeOption {
@@ -146,8 +159,9 @@ export default function CitationPicker({
     const surname = selected.authorSurname || "Unknown";
     const year = selected.year ? `, ${selected.year}` : "";
     const volumeStr = chosenVolume ? `, c. ${chosenVolume.volumeNumber}` : "";
+    const posPrefix = positionLabel(selected.libraryEntry?.fileType);
     const pageStr =
-      pageNum !== null && pageNum !== undefined ? `, s. ${pageNum}` : "";
+      pageNum !== null && pageNum !== undefined ? `, ${posPrefix} ${pageNum}` : "";
     const label = `(${surname}${year}${volumeStr}${pageStr})`;
 
     onPick({
@@ -276,7 +290,12 @@ export default function CitationPicker({
           <input
             type="number"
             min="1"
-            placeholder="Sayfa numarası"
+            placeholder={
+              selected?.libraryEntry?.fileType &&
+              selected.libraryEntry.fileType !== 'pdf'
+                ? "Konum (bölüm/¶)"
+                : "Sayfa numarası"
+            }
             value={page}
             onChange={(e) => setPage(e.target.value)}
             disabled={!selected}

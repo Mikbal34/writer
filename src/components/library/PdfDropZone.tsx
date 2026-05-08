@@ -8,8 +8,11 @@ interface PdfDropZoneProps {
   onUploaded: () => void;
 }
 
-const ACCEPT = ".pdf,application/pdf";
+const ACCEPT =
+  ".pdf,.epub,.docx,application/pdf,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MAX_BYTES = 50 * 1024 * 1024;
+
+const ALLOWED_EXTS = [".pdf", ".epub", ".docx"];
 
 export default function PdfDropZone({ onUploaded }: PdfDropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -21,10 +24,10 @@ export default function PdfDropZone({ onUploaded }: PdfDropZoneProps) {
       const files = Array.from(fileList);
       const valid: File[] = [];
       for (const f of files) {
-        const isPdf =
-          f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
-        if (!isPdf) {
-          toast.error(`${f.name}: Sadece PDF kabul edilir`);
+        const lower = f.name.toLowerCase();
+        const allowed = ALLOWED_EXTS.some((ext) => lower.endsWith(ext));
+        if (!allowed) {
+          toast.error(`${f.name}: Sadece PDF / EPUB / DOCX kabul edilir`);
           continue;
         }
         if (f.size > MAX_BYTES) {
@@ -40,7 +43,7 @@ export default function PdfDropZone({ onUploaded }: PdfDropZoneProps) {
       if (valid.length === 0) return;
 
       toast.success(
-        `${valid.length} PDF işleniyor… künye otomatik çıkarılıyor`,
+        `${valid.length} dosya işleniyor… künye otomatik çıkarılıyor`,
       );
       setUploading((n) => n + valid.length);
 
@@ -136,8 +139,8 @@ export default function PdfDropZone({ onUploaded }: PdfDropZoneProps) {
       <div className="flex-1 min-w-0">
         <div className="font-display text-base font-semibold text-[#2D1F0E]">
           {uploading > 0
-            ? `${uploading} PDF işleniyor…`
-            : "PDF'leri buraya sürükle ya da tıklayıp seç"}
+            ? `${uploading} dosya işleniyor…`
+            : "PDF / EPUB / DOCX sürükle ya da tıklayıp seç"}
         </div>
         <div className="font-body text-xs text-[#6b5a45] mt-0.5">
           Yazar, başlık, yıl ve özet otomatik çıkarılır · 50MB&apos;a kadar · birden fazla dosya

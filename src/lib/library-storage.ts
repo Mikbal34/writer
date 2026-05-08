@@ -24,32 +24,46 @@ function entryDir(userId: string): string {
   return path.join(storageRoot(), safe)
 }
 
-function entryPath(userId: string, entryId: string): string {
-  const safeId = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  return path.join(entryDir(userId), `${safeId}.pdf`)
+type DocFileType = 'pdf' | 'epub' | 'docx'
+
+function extFor(fileType: DocFileType | string | null | undefined): string {
+  if (fileType === 'epub') return '.epub'
+  if (fileType === 'docx') return '.docx'
+  return '.pdf'
 }
 
-function volumePath(userId: string, entryId: string, volumeId: string): string {
+function entryPath(userId: string, entryId: string, fileType: DocFileType | null = 'pdf'): string {
+  const safeId = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
+  return path.join(entryDir(userId), `${safeId}${extFor(fileType)}`)
+}
+
+function volumePath(
+  userId: string,
+  entryId: string,
+  volumeId: string,
+  fileType: DocFileType | null = 'pdf',
+): string {
   const safeEntry = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
   const safeVol = volumeId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  return path.join(entryDir(userId), safeEntry, `${safeVol}.pdf`)
+  return path.join(entryDir(userId), safeEntry, `${safeVol}${extFor(fileType)}`)
 }
 
 export async function savePdfBytes(
   userId: string,
   entryId: string,
   bytes: Buffer,
+  fileType: DocFileType = 'pdf',
 ): Promise<string> {
   const dir = entryDir(userId)
   await fs.promises.mkdir(dir, { recursive: true })
-  const dest = entryPath(userId, entryId)
+  const dest = entryPath(userId, entryId, fileType)
   await fs.promises.writeFile(dest, bytes)
   return dest
 }
 
 /**
- * Persist a PDF for a specific volume of a multi-volume entry.
- * File lives in <STORAGE_ROOT>/<userId>/<entryId>/<volumeId>.pdf so
+ * Persist a document for a specific volume of a multi-volume entry.
+ * File lives in <STORAGE_ROOT>/<userId>/<entryId>/<volumeId>.<ext> so
  * it's grouped with its sibling volumes and easy to clean up when the
  * parent entry is deleted.
  */
@@ -58,11 +72,12 @@ export async function saveVolumePdfBytes(
   entryId: string,
   volumeId: string,
   bytes: Buffer,
+  fileType: DocFileType = 'pdf',
 ): Promise<string> {
   const safeEntry = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
   const dir = path.join(entryDir(userId), safeEntry)
   await fs.promises.mkdir(dir, { recursive: true })
-  const dest = volumePath(userId, entryId, volumeId)
+  const dest = volumePath(userId, entryId, volumeId, fileType)
   await fs.promises.writeFile(dest, bytes)
   return dest
 }

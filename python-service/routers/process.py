@@ -21,6 +21,8 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, File, UploadFile,
 from pydantic import BaseModel
 
 from services.pdf_extractor import extract_text_by_page, is_scanned_pdf, get_total_pages
+from services.epub_extractor import extract_epub_pages
+from services.docx_extractor import extract_docx_pages
 from services.chunker import chunk_by_page
 
 
@@ -381,25 +383,101 @@ async def process_url(req: ProcessUrlRequest, background_tasks: BackgroundTasks)
                 pass
 
 
+def _detect_doc_type(filename: str, head: bytes) -> str:
+    """Pick a handler based on the filename extension first, falling
+    back to magic-byte sniffing. Returns one of 'pdf' | 'epub' | 'docx'.
+    """
+    name = (filename or "").lower()
+    if name.endswith(".pdf"):
+        return "pdf"
+    if name.endswith(".epub"):
+        return "epub"
+    if name.endswith(".docx"):
+        return "docx"
+    if head[:5].startswith(b"%PDF"):
+        return "pdf"
+    # Both EPUB and DOCX are zip-wrapped — too ambiguous to guess
+    # without inspecting more, so demand a recognisable extension.
+    return "unknown"
+
+
+def _process_doc_bytes(
+    source_id: str,
+    pages: list[dict],
+) -> ProcessResponse:
+    """Build a ProcessResponse for non-PDF formats. EPUB and DOCX
+    extract their full content cheaply (no OCR pipeline), so we always
+    return all chunks at once — no background OCR fallback needed."""
+    first_pages = pages[:_BIB_PAGES]
+    extracted_text = "\n\n---\n\n".join(
+        f"[Page {p['page_number']}]\n{p['content']}" for p in first_pages
+    )
+    raw_chunks = chunk_by_page(pages)
+    chunks = [
+        ChunkItem(
+            pageNumber=c["page_number"],
+            chunkIndex=c["chunk_index"],
+            content=c["content"],
+        )
+        for c in raw_chunks
+    ]
+    return ProcessResponse(
+        sourceId=source_id,
+        totalPages=len(pages),
+        extractedText=extracted_text,
+        chunks=chunks,
+        ocrPending=False,
+    )
+
+
 @router.post("/process-bytes", response_model=ProcessResponse)
 async def process_bytes(
     background_tasks: BackgroundTasks,
     sourceId: str = Form(...),
     file: UploadFile = File(...),
 ):
-    """Accept a multipart PDF upload, extract + chunk, return."""
-    pdf_bytes = await file.read()
-    if len(pdf_bytes) < 1024:
-        raise HTTPException(status_code=422, detail="PDF too small — likely invalid")
+    """Accept a multipart document upload (PDF / EPUB / DOCX), extract
+    text, chunk, return. For PDF we keep the existing temp-file path
+    (so OCR fallback works); EPUB and DOCX are handled in-memory."""
+    raw = await file.read()
+    if len(raw) < 1024:
+        raise HTTPException(status_code=422, detail="File too small — likely invalid")
 
-    if not pdf_bytes[:5].startswith(b"%PDF"):
+    doc_type = _detect_doc_type(file.filename or "", raw)
+
+    if doc_type == "epub":
+        try:
+            pages = extract_epub_pages(raw)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"EPUB parse failed: {e}")
+        if not pages:
+            raise HTTPException(status_code=422, detail="EPUB had no readable text")
+        return _process_doc_bytes(sourceId, pages)
+
+    if doc_type == "docx":
+        try:
+            pages = extract_docx_pages(raw)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"DOCX parse failed: {e}")
+        if not pages:
+            raise HTTPException(status_code=422, detail="DOCX had no readable text")
+        return _process_doc_bytes(sourceId, pages)
+
+    if doc_type != "pdf":
+        raise HTTPException(
+            status_code=422,
+            detail="Only PDF, EPUB, or DOCX uploads are supported.",
+        )
+
+    # PDF path retains the OCR / temp-file machinery.
+    if not raw[:5].startswith(b"%PDF"):
         raise HTTPException(
             status_code=422,
             detail="Uploaded file is not a valid PDF (missing %PDF header).",
         )
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf_bytes)
+        tmp.write(raw)
         tmp_path = tmp.name
 
     defer_cleanup = False

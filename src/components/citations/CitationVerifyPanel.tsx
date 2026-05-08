@@ -57,6 +57,7 @@ interface PageData {
     authorName: string | null;
     year: string | null;
     hasPdf: boolean;
+    fileType: string | null;
   };
   pageNumber: number;
   content: string;
@@ -120,6 +121,13 @@ export default function CitationVerifyPanel({
 
   const headerTitle = bib?.title ?? citation.label;
 
+  // PDFs use "s." (sayfa); EPUB/DOCX have no real pages so we say "kn."
+  // (konum). The actual integer is whatever the user typed in the picker.
+  const positionPrefix =
+    data?.entry.fileType && data.entry.fileType !== "pdf" ? "kn." : "s.";
+  const pdfRenderable =
+    Boolean(data?.entry.hasPdf) && data?.entry.fileType === "pdf";
+
   return (
     <div className="h-full overflow-y-auto bg-white">
       <div className="max-w-3xl mx-auto px-6 py-6">
@@ -138,7 +146,7 @@ export default function CitationVerifyPanel({
               <span className="text-[#6b5a45]"> · c. {citation.volumeNumber}</span>
             )}
             {page !== null && (
-              <span className="text-[#6b5a45]"> · s. {page}</span>
+              <span className="text-[#6b5a45]"> · {positionPrefix} {page}</span>
             )}
           </p>
         </div>
@@ -166,10 +174,10 @@ export default function CitationVerifyPanel({
             <div className="flex items-center gap-1.5">
               <BookOpen className="h-3.5 w-3.5 text-[#6b5a45]" />
               <h3 className="font-ui text-xs uppercase tracking-wider text-[#8a7a65]">
-                Kaynak metni {page ? `· s. ${page}` : ""}
+                Kaynak metni {page ? `· ${positionPrefix} ${page}` : ""}
               </h3>
             </div>
-            {data?.entry.hasPdf && entryId && page && (
+            {pdfRenderable && entryId && page && (
               <button
                 type="button"
                 onClick={() => setShowPdf((v) => !v)}

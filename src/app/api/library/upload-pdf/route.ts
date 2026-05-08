@@ -20,10 +20,20 @@ export const runtime = 'nodejs'
 
 const MAX_BYTES = 50 * 1024 * 1024 // 50 MB — matches attach-pdf
 
-/** Strip the .pdf extension and trim, fall back to a generic title. */
+const ACCEPTED_EXTS = ['.pdf', '.epub', '.docx'] as const
+
+function fileTypeFromName(filename: string): 'pdf' | 'epub' | 'docx' | null {
+  const lower = filename.toLowerCase()
+  if (lower.endsWith('.pdf')) return 'pdf'
+  if (lower.endsWith('.epub')) return 'epub'
+  if (lower.endsWith('.docx')) return 'docx'
+  return null
+}
+
+/** Strip the document extension and trim, fall back to a generic title. */
 function titleFromFilename(filename: string): string {
-  const base = filename.replace(/\.pdf$/i, '').trim()
-  return base.length > 0 ? base : 'Adlandırılmamış PDF'
+  const base = filename.replace(/\.(pdf|epub|docx)$/i, '').trim()
+  return base.length > 0 ? base : 'Adlandırılmamış'
 }
 
 export async function POST(req: NextRequest) {
@@ -41,13 +51,17 @@ export async function POST(req: NextRequest) {
     if (file.size > MAX_BYTES) {
       return NextResponse.json({ error: 'file larger than 50 MB' }, { status: 413 })
     }
-    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-      return NextResponse.json({ error: 'Only PDF files are supported' }, { status: 400 })
+    const fileType = fileTypeFromName(file.name)
+    if (!fileType) {
+      return NextResponse.json(
+        { error: `Sadece ${ACCEPTED_EXTS.join(' / ')} kabul edilir` },
+        { status: 400 },
+      )
     }
 
     const bytes = Buffer.from(await file.arrayBuffer())
     if (bytes.length < 1024) {
-      return NextResponse.json({ error: 'PDF too small to be valid' }, { status: 400 })
+      return NextResponse.json({ error: 'Dosya geçerli görünmüyor (çok küçük)' }, { status: 400 })
     }
 
     // Create a stub entry. authorSurname is required + part of the
@@ -68,7 +82,7 @@ export async function POST(req: NextRequest) {
         authorSurname: placeholderSurname,
         importSource: 'pdf-upload',
         pdfStatus: 'extracting',
-        fileType: 'pdf',
+        fileType,
         keywords: [],
       },
       select: { id: true, title: true, pdfStatus: true },
@@ -78,7 +92,7 @@ export async function POST(req: NextRequest) {
     // flow can render the original page later. Failures are non-fatal:
     // the chat / chunk pipeline still works without the original file.
     try {
-      const filePath = await savePdfBytes(session.user.id, entry.id, bytes)
+      const filePath = await savePdfBytes(session.user.id, entry.id, bytes, fileType)
       await prisma.libraryEntry.update({
         where: { id: entry.id },
         data: { filePath },

@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
         // Include the library-entry side so the citation picker can
         // tell at a glance whether a source has its original PDF
         // available (filePath set) for the verification panel.
-        libraryEntry: { select: { id: true, filePath: true, pdfStatus: true } },
+        libraryEntry: { select: { id: true, filePath: true, pdfStatus: true, fileType: true } },
         _count: { select: { sourceMappings: true } },
       },
     })

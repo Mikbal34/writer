@@ -38,6 +38,7 @@ interface VolumeRow {
   pdfError?: string | null;
   totalPages: number | null;
   hasPdf: boolean;
+  fileType: string | null;
   createdAt: string;
 }
 
@@ -94,8 +95,9 @@ export default function VolumesDialog({
 
   async function handleUpload(file: File) {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
-      toast.error("Sadece PDF kabul edilir");
+    const lower = file.name.toLowerCase();
+    if (!/\.(pdf|epub|docx)$/.test(lower)) {
+      toast.error("Sadece PDF / EPUB / DOCX kabul edilir");
       return;
     }
     if (file.size > 50 * 1024 * 1024) {
@@ -221,7 +223,7 @@ export default function VolumesDialog({
                     )}
                     <div className="mt-0.5">{statusBadge(v)}</div>
                   </div>
-                  {v.hasPdf && (
+                  {v.hasPdf && v.fileType === "pdf" && (
                     <button
                       type="button"
                       title="PDF'i yeni sekmede aç"
@@ -236,6 +238,11 @@ export default function VolumesDialog({
                     >
                       <ExternalLink className="h-3.5 w-3.5 text-[#5C4A32]" />
                     </button>
+                  )}
+                  {v.fileType && v.fileType !== "pdf" && (
+                    <span className="font-ui text-[10px] uppercase tracking-wider text-[#8a7a65] px-1.5 py-0.5 rounded-sm bg-[#FAF7F0]">
+                      {v.fileType}
+                    </span>
                   )}
                   <button
                     type="button"
@@ -266,7 +273,7 @@ export default function VolumesDialog({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,application/pdf"
+            accept=".pdf,.epub,.docx"
             className="sr-only"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -288,7 +295,7 @@ export default function VolumesDialog({
             ) : (
               <>
                 <Upload className="h-4 w-4 text-[#C9A84C]" />
-                PDF seç ve yeni cilt olarak ekle
+                PDF / EPUB / DOCX seç ve yeni cilt olarak ekle
               </>
             )}
           </button>

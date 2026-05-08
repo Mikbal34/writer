@@ -30,7 +30,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
 
     const entry = await prisma.libraryEntry.findFirst({
       where: { id, userId: session.user.id },
-      select: { id: true, title: true, authorSurname: true, authorName: true, year: true, filePath: true },
+      select: { id: true, title: true, authorSurname: true, authorName: true, year: true, filePath: true, fileType: true },
     })
     if (!entry) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -40,7 +40,12 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     // pull only that volume's chunks. Otherwise default to the
     // entry's "primary" chunks (volumeId IS NULL — legacy single-PDF
     // mode) so existing entries keep working.
-    let volumeMeta: { volumeNumber: number; label: string | null; hasPdf: boolean } | null = null
+    let volumeMeta: {
+      volumeNumber: number
+      label: string | null
+      hasPdf: boolean
+      fileType: string | null
+    } | null = null
     let chunksWhere: {
       libraryEntryId: string
       pageNumber: number
@@ -50,7 +55,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     if (volumeId) {
       const volume = await prisma.libraryEntryVolume.findFirst({
         where: { id: volumeId, libraryEntryId: id },
-        select: { id: true, volumeNumber: true, label: true, filePath: true },
+        select: { id: true, volumeNumber: true, label: true, filePath: true, fileType: true },
       })
       if (!volume) {
         return NextResponse.json({ error: 'Volume not found' }, { status: 404 })
@@ -59,6 +64,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
         volumeNumber: volume.volumeNumber,
         label: volume.label,
         hasPdf: Boolean(volume.filePath),
+        fileType: volume.fileType,
       }
       chunksWhere = { libraryEntryId: id, pageNumber: page, volumeId: volume.id }
     } else {
@@ -79,6 +85,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
         authorName: entry.authorName,
         year: entry.year,
         hasPdf: volumeMeta ? volumeMeta.hasPdf : Boolean(entry.filePath),
+        fileType: volumeMeta?.fileType ?? entry.fileType,
       },
       volume: volumeMeta,
       pageNumber: page,

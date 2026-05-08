@@ -48,6 +48,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         pdfError: true,
         totalPages: true,
         filePath: true,
+        fileType: true,
         createdAt: true,
       },
     })
@@ -61,6 +62,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         pdfError: v.pdfError,
         totalPages: v.totalPages,
         hasPdf: Boolean(v.filePath),
+        fileType: v.fileType,
         createdAt: v.createdAt,
       })),
     })
@@ -100,13 +102,21 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     if (file.size > MAX_BYTES) {
       return NextResponse.json({ error: 'file larger than 50 MB' }, { status: 413 })
     }
-    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-      return NextResponse.json({ error: 'Only PDF files are supported' }, { status: 400 })
+    const lowerName = file.name.toLowerCase()
+    let detectedType: 'pdf' | 'epub' | 'docx' | null = null
+    if (lowerName.endsWith('.pdf')) detectedType = 'pdf'
+    else if (lowerName.endsWith('.epub')) detectedType = 'epub'
+    else if (lowerName.endsWith('.docx')) detectedType = 'docx'
+    if (!detectedType) {
+      return NextResponse.json(
+        { error: 'Sadece .pdf / .epub / .docx kabul edilir' },
+        { status: 400 },
+      )
     }
 
     const bytes = Buffer.from(await file.arrayBuffer())
     if (bytes.length < 1024) {
-      return NextResponse.json({ error: 'PDF too small to be valid' }, { status: 400 })
+      return NextResponse.json({ error: 'Dosya geçerli görünmüyor (çok küçük)' }, { status: 400 })
     }
 
     // Auto-assign next-free volume number when caller omits it.
@@ -136,7 +146,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           volumeNumber,
           label,
           pdfStatus: 'extracting',
-          fileType: 'pdf',
+          fileType: detectedType,
         },
         select: { id: true, volumeNumber: true, label: true, pdfStatus: true },
       })
@@ -164,6 +174,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         id,
         volume.id,
         bytes,
+        detectedType,
       )
       await prisma.libraryEntryVolume.update({
         where: { id: volume.id },
