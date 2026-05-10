@@ -13,7 +13,7 @@ in isolated containers).
 import os
 import re
 import tempfile
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 import httpx
@@ -21,8 +21,8 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, File, UploadFile,
 from pydantic import BaseModel
 
 from services.pdf_extractor import extract_text_by_page, is_scanned_pdf, get_total_pages
-from services.epub_extractor import extract_epub_pages
-from services.docx_extractor import extract_docx_pages
+from services.epub_extractor import extract_epub_pages, extract_epub_metadata
+from services.docx_extractor import extract_docx_pages, extract_docx_metadata
 from services.chunker import chunk_by_page
 
 
@@ -128,6 +128,10 @@ class ProcessResponse(BaseModel):
     extractedText: str
     chunks: List[ChunkItem]
     ocrPending: bool = False
+    # Native bibliographic metadata when the source format exposes it
+    # (EPUB Dublin Core, DOCX core_properties). PDF responses leave
+    # this empty — the Node side falls back to Haiku enrichment there.
+    metadata: Optional[Dict[str, Any]] = None
 
 
 def _ocr_remaining_pages(source_id: str, file_path: str):
@@ -404,6 +408,7 @@ def _detect_doc_type(filename: str, head: bytes) -> str:
 def _process_doc_bytes(
     source_id: str,
     pages: list[dict],
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> ProcessResponse:
     """Build a ProcessResponse for non-PDF formats. EPUB and DOCX
     extract their full content cheaply (no OCR pipeline), so we always
@@ -427,6 +432,7 @@ def _process_doc_bytes(
         extractedText=extracted_text,
         chunks=chunks,
         ocrPending=False,
+        metadata=metadata if metadata else None,
     )
 
 
@@ -452,7 +458,13 @@ async def process_bytes(
             raise HTTPException(status_code=500, detail=f"EPUB parse failed: {e}")
         if not pages:
             raise HTTPException(status_code=422, detail="EPUB had no readable text")
-        return _process_doc_bytes(sourceId, pages)
+        # Native DC metadata is best-effort — a missing OPF shouldn't
+        # block the upload, the Node side will fall back to Haiku.
+        try:
+            meta = extract_epub_metadata(raw)
+        except Exception:
+            meta = {}
+        return _process_doc_bytes(sourceId, pages, metadata=meta)
 
     if doc_type == "docx":
         try:
@@ -461,7 +473,11 @@ async def process_bytes(
             raise HTTPException(status_code=500, detail=f"DOCX parse failed: {e}")
         if not pages:
             raise HTTPException(status_code=422, detail="DOCX had no readable text")
-        return _process_doc_bytes(sourceId, pages)
+        try:
+            meta = extract_docx_metadata(raw)
+        except Exception:
+            meta = {}
+        return _process_doc_bytes(sourceId, pages, metadata=meta)
 
     if doc_type != "pdf":
         raise HTTPException(

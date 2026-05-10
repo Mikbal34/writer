@@ -274,6 +274,116 @@ interface ProcessResponse {
   extractedText: string
   chunks: Array<{ pageNumber: number; chunkIndex: number; content: string }>
   ocrPending: boolean
+  // Native bibliographic fields when the source format exposes them
+  // (EPUB Dublin Core, DOCX core_properties). Empty/null for PDFs.
+  metadata?: NativeDocMetadata | null
+}
+
+interface NativeDocMetadata {
+  title?: string
+  author?: string
+  year?: string
+  abstract?: string
+  publisher?: string
+  language?: string
+  keywords?: string[]
+}
+
+/**
+ * Apply native metadata pulled from EPUB/DOCX file headers. For
+ * pdf-upload entries we override the placeholder author/title that
+ * the upload route stamps in (otherwise the "filename as title" stays
+ * forever); for other entries we only fill blank fields so manual
+ * bibliography edits aren't clobbered.
+ *
+ * Mirrors the `isUpload` carve-out in enrichLibraryEntryFromPdfText
+ * so both code paths behave consistently.
+ */
+async function applyNativeMetadata(
+  entryId: string,
+  metadata: NativeDocMetadata,
+): Promise<void> {
+  const entry = await prisma.libraryEntry.findUnique({
+    where: { id: entryId },
+    select: {
+      authorSurname: true,
+      authorName: true,
+      title: true,
+      year: true,
+      abstract: true,
+      publisher: true,
+      keywords: true,
+      importSource: true,
+    },
+  })
+  if (!entry) return
+  const isUpload = entry.importSource === 'pdf-upload'
+
+  const data: Record<string, unknown> = {}
+
+  // Split "Firstname Middle Lastname" into (authorName, authorSurname).
+  // EPUB DC creator values are usually plain strings; if the publisher
+  // happens to write "Last, First" we flip the halves around.
+  if (metadata.author) {
+    let surname = ''
+    let givenNames: string | null = null
+    if (metadata.author.includes(',')) {
+      const [last, ...rest] = metadata.author.split(',')
+      surname = last.trim()
+      givenNames = rest.join(',').trim() || null
+    } else {
+      const parts = metadata.author.trim().split(/\s+/)
+      if (parts.length === 1) {
+        surname = parts[0]
+      } else {
+        surname = parts[parts.length - 1]
+        givenNames = parts.slice(0, -1).join(' ')
+      }
+    }
+    const shouldFillSurname =
+      isUpload || !entry.authorSurname.trim() ||
+      entry.authorSurname.startsWith('(Yükleme')
+    if (surname && shouldFillSurname) {
+      data.authorSurname = surname
+    }
+    const shouldFillGiven =
+      isUpload || !entry.authorName || entry.authorName.trim().length === 0
+    if (givenNames && shouldFillGiven) {
+      data.authorName = givenNames
+    }
+  }
+
+  const maybeFill = <K extends keyof typeof entry>(
+    key: K,
+    candidate: string | null | undefined,
+  ) => {
+    if (!candidate) return
+    if (!isUpload) {
+      const existing = entry[key]
+      if (existing && String(existing).trim().length > 0) return
+    }
+    data[key as string] = candidate
+  }
+
+  maybeFill('title', metadata.title)
+  maybeFill('year', metadata.year)
+  maybeFill('abstract', metadata.abstract)
+  maybeFill('publisher', metadata.publisher)
+
+  if (
+    Array.isArray(metadata.keywords) &&
+    metadata.keywords.length > 0 &&
+    (isUpload || !entry.keywords || entry.keywords.length === 0)
+  ) {
+    data.keywords = metadata.keywords.slice(0, 12)
+  }
+
+  if (Object.keys(data).length > 0) {
+    await prisma.libraryEntry.update({
+      where: { id: entryId },
+      data,
+    })
+  }
 }
 
 async function setStatus(
@@ -512,10 +622,17 @@ export async function processLibraryPdfFromBytes(
       return
     }
 
-    await prisma.libraryEntry.update({
-      where: { id: entryId },
-      data: { fileType: 'pdf' },
-    })
+    // Native metadata (EPUB DC / DOCX core_properties) — apply first so
+    // the placeholder author/title set by the upload route is replaced
+    // before any UI poll snapshots it. PDF responses leave metadata
+    // empty and fall through to the Haiku enrichment below.
+    if (data.metadata && Object.keys(data.metadata).length > 0) {
+      try {
+        await applyNativeMetadata(entryId, data.metadata)
+      } catch (err) {
+        console.error(`[library-pipeline] applyNativeMetadata failed for ${entryId}:`, err)
+      }
+    }
 
     await enrichLibraryEntryFromPdfText(entryId, data.extractedText)
     await persistChunks(entryId, data.chunks)
@@ -574,9 +691,12 @@ export async function processLibraryVolumePdfFromBytes(
       return
     }
 
+    // Don't clobber fileType — the volume upload route already
+    // recorded the real value ('pdf' | 'epub' | 'docx'). Just persist
+    // the page count we now know.
     await prisma.libraryEntryVolume.update({
       where: { id: volumeId },
-      data: { fileType: 'pdf', totalPages: data.totalPages },
+      data: { totalPages: data.totalPages },
     })
 
     await persistChunks(entryId, data.chunks, volumeId)
