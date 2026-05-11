@@ -474,6 +474,7 @@ export default function BulkUploadDialog({
 
             <div className="grid grid-cols-2 gap-2">
               <input
+                dir="auto"
                 placeholder="Yazar soyadı *"
                 value={groupFormState.authorSurname}
                 onChange={(e) =>
@@ -485,6 +486,7 @@ export default function BulkUploadDialog({
                 className="px-2 py-1.5 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
               />
               <input
+                dir="auto"
                 placeholder="Yazar adı"
                 value={groupFormState.authorName}
                 onChange={(e) =>
@@ -497,6 +499,7 @@ export default function BulkUploadDialog({
               />
             </div>
             <input
+              dir="auto"
               placeholder="Ana eser başlığı * (örn: et-Tahrir ve't-Tenvir)"
               value={groupFormState.title}
               onChange={(e) =>
@@ -506,6 +509,7 @@ export default function BulkUploadDialog({
             />
             <div className="grid grid-cols-2 gap-2">
               <input
+                dir="auto"
                 placeholder="Yıl"
                 value={groupFormState.year}
                 onChange={(e) =>
@@ -514,6 +518,7 @@ export default function BulkUploadDialog({
                 className="px-2 py-1.5 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
               />
               <input
+                dir="auto"
                 placeholder="Yayınevi"
                 value={groupFormState.publisher}
                 onChange={(e) =>
@@ -558,10 +563,14 @@ export default function BulkUploadDialog({
                         }
                         className="w-14 px-1.5 py-0.5 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/60 font-body text-xs text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
                       />
-                      <span className="font-body text-xs text-[#2D1F0E] flex-1 truncate">
+                      <span
+                        dir="auto"
+                        className="font-body text-xs text-[#2D1F0E] flex-1 truncate"
+                      >
                         {pf.file.name}
                       </span>
                       <input
+                        dir="auto"
                         placeholder="etiket"
                         value={groupFormLabels[fid] ?? ""}
                         onChange={(e) =>
@@ -653,10 +662,16 @@ export default function BulkUploadDialog({
                 >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <div className="min-w-0 flex-1">
-                      <div className="font-display text-sm font-semibold text-[#2D1F0E] truncate">
+                      <div
+                        dir="auto"
+                        className="font-display text-sm font-semibold text-[#2D1F0E] truncate"
+                      >
                         📚 {g.form.title || "(başlıksız)"}
                       </div>
-                      <div className="font-ui text-[11px] text-[#6b5a45] truncate">
+                      <div
+                        dir="auto"
+                        className="font-ui text-[11px] text-[#6b5a45] truncate"
+                      >
                         {g.form.authorSurname}
                         {g.form.authorName ? `, ${g.form.authorName}` : ""}
                         {g.form.year ? ` · ${g.form.year}` : ""}
@@ -695,11 +710,17 @@ export default function BulkUploadDialog({
                           <span className="font-display text-[11px] font-semibold text-[#2D1F0E] w-12 shrink-0">
                             Cilt {volNum}
                           </span>
-                          <span className="font-body text-[11px] text-[#2D1F0E] flex-1 truncate">
+                          <span
+                            dir="auto"
+                            className="font-body text-[11px] text-[#2D1F0E] flex-1 truncate"
+                          >
                             {pf.file.name}
                           </span>
                           {g.labels[fid] && (
-                            <span className="font-ui text-[10px] text-[#8a5a1a] italic">
+                            <span
+                              dir="auto"
+                              className="font-ui text-[10px] text-[#8a5a1a] italic"
+                            >
                               {g.labels[fid]}
                             </span>
                           )}
@@ -743,7 +764,10 @@ export default function BulkUploadDialog({
                             onChange={() => toggleSelect(pf.id)}
                             className="h-3 w-3 accent-[#C9A84C]"
                           />
-                          <span className="font-body text-xs text-[#2D1F0E] flex-1 truncate">
+                          <span
+                            dir="auto"
+                            className="font-body text-xs text-[#2D1F0E] flex-1 truncate"
+                          >
                             {pf.file.name}
                           </span>
                           <button

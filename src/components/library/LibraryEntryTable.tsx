@@ -266,6 +266,7 @@ export default function LibraryEntryTable({
          {/* Title + Author area */}
          <div className="flex-1 flex flex-col justify-center px-4 py-5">
           <h3
+           dir="auto"
            className="font-display text-base font-bold leading-snug line-clamp-3 mb-2"
            style={{
             color: "rgba(250,247,240,0.95)",
@@ -275,6 +276,7 @@ export default function LibraryEntryTable({
            {entry.title}
           </h3>
           <p
+           dir="auto"
            className="font-body text-xs line-clamp-1"
            style={{ color: "rgba(250,247,240,0.60)" }}
           >
@@ -420,12 +422,18 @@ export default function LibraryEntryTable({
       {/* Author + Title + Tags */}
       <div className="min-w-0 flex-1">
        <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="font-body text-sm font-semibold text-[#2D1F0E]">
+        <span
+         dir="auto"
+         className="font-body text-sm font-semibold text-[#2D1F0E]"
+        >
          {entry.authorSurname}
          {entry.authorName ? `, ${entry.authorName}` : ""}
         </span>
         <span className="text-[#a89880]">—</span>
-        <span className="font-body text-sm italic text-[#6b5a45] truncate">
+        <span
+         dir="auto"
+         className="font-body text-sm italic text-[#6b5a45] truncate"
+        >
          {entry.title}
         </span>
        </div>
