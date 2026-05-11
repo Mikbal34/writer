@@ -10,6 +10,14 @@
  * parent entry (POST /api/library) + N volume rows
  * (POST /api/library/[parentId]/volumes). All requests fire in
  * parallel; the dialog reports per-file success/failure on close.
+ *
+ * Grouping flow:
+ *   1. User ticks 2+ files → "Grupla"
+ *   2. Frontend posts the first ticked file to /extract-metadata so
+ *      Haiku / DC / core_properties prefill the group form
+ *   3. User reviews + sets per-cilt volume numbers manually (5, 12, …
+ *      are valid — sequential is not assumed)
+ *   4. "Grup oluştur" pushes it onto the group list
  */
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -23,10 +31,9 @@ import {
   Plus,
   X,
   BookCopy,
-  ChevronUp,
-  ChevronDown,
   Loader2,
   ArrowLeft,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -56,8 +63,10 @@ interface GroupForm {
 interface Group {
   id: string;
   form: GroupForm;
-  fileIds: string[]; // in cilt order
-  labels: Record<string, string>; // optional label per fileId
+  /** fileId → cilt numarası (kullanıcı yazdığı sayı). */
+  volumeNumbers: Record<string, string>;
+  fileIds: string[];
+  labels: Record<string, string>;
 }
 
 const ALLOWED_EXTS = [".pdf", ".epub", ".docx"];
@@ -101,10 +110,15 @@ export default function BulkUploadDialog({
   // ---- "Grupla" mini-form overlay ----
   const [groupFormOpen, setGroupFormOpen] = useState(false);
   const [groupFormState, setGroupFormState] = useState<GroupForm>(emptyForm);
-  // Files queued for the new/edited group, in cilt order. Editing an
-  // existing group lets the user re-order without losing the form.
   const [groupFormFileIds, setGroupFormFileIds] = useState<string[]>([]);
+  const [groupFormVolumes, setGroupFormVolumes] = useState<Record<string, string>>(
+    {},
+  );
+  const [groupFormLabels, setGroupFormLabels] = useState<Record<string, string>>(
+    {},
+  );
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [extractingMeta, setExtractingMeta] = useState(false);
 
   // ---- Submit state ----
   const [submitting, setSubmitting] = useState(false);
@@ -115,15 +129,12 @@ export default function BulkUploadDialog({
     return m;
   }, [files]);
 
-  // Files that are NOT in any group yet — these are the "standalone"
-  // singles plus available candidates for new groups.
   const ungroupedFiles = useMemo(() => {
     const taken = new Set<string>();
     for (const g of groups) for (const fid of g.fileIds) taken.add(fid);
     return files.filter((f) => !taken.has(f.id));
   }, [files, groups]);
 
-  // ---- File handlers ----
   function appendFiles(incoming: FileList | File[]) {
     const list = Array.from(incoming);
     const additions: PendingFile[] = [];
@@ -151,7 +162,6 @@ export default function BulkUploadDialog({
       next.delete(id);
       return next;
     });
-    // Also pull it out of any group.
     setGroups((prev) =>
       prev
         .map((g) => ({
@@ -171,8 +181,7 @@ export default function BulkUploadDialog({
     });
   }
 
-  // ---- Group operations ----
-  function openGroupFormForSelection() {
+  async function openGroupFormForSelection() {
     const ids = ungroupedFiles
       .filter((f) => selectedIds.has(f.id))
       .map((f) => f.id);
@@ -183,13 +192,59 @@ export default function BulkUploadDialog({
     setEditingGroupId(null);
     setGroupFormState(emptyForm());
     setGroupFormFileIds(ids);
+    // Default volume numbers: 1, 2, 3 in pick order. User can edit.
+    const vols: Record<string, string> = {};
+    ids.forEach((fid, idx) => {
+      vols[fid] = String(idx + 1);
+    });
+    setGroupFormVolumes(vols);
+    setGroupFormLabels({});
     setGroupFormOpen(true);
+
+    // Fire-and-forget metadata extraction from the first selected
+    // file. If it succeeds the form pre-fills; if not, user types.
+    const firstFile = fileById.get(ids[0])?.file;
+    if (firstFile) {
+      setExtractingMeta(true);
+      try {
+        const fd = new FormData();
+        fd.append("file", firstFile);
+        const res = await fetch("/api/library/extract-metadata", {
+          method: "POST",
+          body: fd,
+        });
+        if (res.ok) {
+          const meta = (await res.json()) as {
+            authorSurname: string | null;
+            authorName: string | null;
+            title: string | null;
+            year: string | null;
+            publisher: string | null;
+          };
+          // Only fill empty fields — don't clobber whatever the user
+          // might have typed during the ~10s extraction window.
+          setGroupFormState((s) => ({
+            authorSurname: s.authorSurname || meta.authorSurname || "",
+            authorName: s.authorName || meta.authorName || "",
+            title: s.title || meta.title || "",
+            year: s.year || meta.year || "",
+            publisher: s.publisher || meta.publisher || "",
+          }));
+        }
+      } catch (err) {
+        console.error("[bulk-upload] metadata extraction failed:", err);
+      } finally {
+        setExtractingMeta(false);
+      }
+    }
   }
 
   function openGroupFormForEdit(group: Group) {
     setEditingGroupId(group.id);
     setGroupFormState({ ...group.form });
     setGroupFormFileIds([...group.fileIds]);
+    setGroupFormVolumes({ ...group.volumeNumbers });
+    setGroupFormLabels({ ...group.labels });
     setGroupFormOpen(true);
   }
 
@@ -206,6 +261,23 @@ export default function BulkUploadDialog({
       toast.error("Grupta en az 2 cilt olmalı");
       return;
     }
+    // Validate every file has a numeric cilt and no duplicates.
+    const seen = new Set<number>();
+    for (const fid of groupFormFileIds) {
+      const raw = groupFormVolumes[fid];
+      const n = parseInt(raw ?? "", 10);
+      if (!Number.isFinite(n) || n < 1) {
+        toast.error(
+          `Cilt numarası geçersiz: ${fileById.get(fid)?.file.name ?? "?"}`,
+        );
+        return;
+      }
+      if (seen.has(n)) {
+        toast.error(`Aynı cilt numarası iki kez kullanıldı: Cilt ${n}`);
+        return;
+      }
+      seen.add(n);
+    }
 
     if (editingGroupId) {
       setGroups((prev) =>
@@ -215,6 +287,8 @@ export default function BulkUploadDialog({
                 ...g,
                 form: { ...groupFormState },
                 fileIds: [...groupFormFileIds],
+                volumeNumbers: { ...groupFormVolumes },
+                labels: { ...groupFormLabels },
               }
             : g,
         ),
@@ -226,10 +300,10 @@ export default function BulkUploadDialog({
           id: nextId(),
           form: { ...groupFormState },
           fileIds: [...groupFormFileIds],
-          labels: {},
+          volumeNumbers: { ...groupFormVolumes },
+          labels: { ...groupFormLabels },
         },
       ]);
-      // Pulled-in files are no longer selectable individually.
       setSelectedIds((prev) => {
         const next = new Set(prev);
         for (const fid of groupFormFileIds) next.delete(fid);
@@ -241,41 +315,12 @@ export default function BulkUploadDialog({
     setEditingGroupId(null);
     setGroupFormState(emptyForm());
     setGroupFormFileIds([]);
+    setGroupFormVolumes({});
+    setGroupFormLabels({});
   }
 
   function dissolveGroup(groupId: string) {
     setGroups((prev) => prev.filter((g) => g.id !== groupId));
-  }
-
-  function moveInGroup(groupId: string, idx: number, dir: -1 | 1) {
-    setGroups((prev) =>
-      prev.map((g) => {
-        if (g.id !== groupId) return g;
-        const next = [...g.fileIds];
-        const j = idx + dir;
-        if (j < 0 || j >= next.length) return g;
-        [next[idx], next[j]] = [next[j], next[idx]];
-        return { ...g, fileIds: next };
-      }),
-    );
-  }
-
-  function moveInForm(idx: number, dir: -1 | 1) {
-    setGroupFormFileIds((prev) => {
-      const next = [...prev];
-      const j = idx + dir;
-      if (j < 0 || j >= next.length) return prev;
-      [next[idx], next[j]] = [next[j], next[idx]];
-      return next;
-    });
-  }
-
-  function setGroupLabel(groupId: string, fileId: string, label: string) {
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.id === groupId ? { ...g, labels: { ...g.labels, [fileId]: label } } : g,
-      ),
-    );
   }
 
   // ---- Submit ----
@@ -292,7 +337,6 @@ export default function BulkUploadDialog({
     setSubmitting(true);
     const errors: string[] = [];
 
-    // Standalone files in parallel
     const standaloneUploads = ungroupedFiles.map(async (pf) => {
       const fd = new FormData();
       fd.append("file", pf.file);
@@ -306,7 +350,6 @@ export default function BulkUploadDialog({
       }
     });
 
-    // Each group: create parent then attach volumes in parallel
     const groupUploads = groups.map(async (g) => {
       const parentRes = await fetch("/api/library", {
         method: "POST",
@@ -328,13 +371,11 @@ export default function BulkUploadDialog({
       }
       const parent = (await parentRes.json()) as { id: string };
 
-      // Volume uploads in parallel, numbered 1..N in the order the
-      // user arranged.
       await Promise.all(
-        g.fileIds.map(async (fid, idx) => {
+        g.fileIds.map(async (fid) => {
           const pf = fileById.get(fid);
           if (!pf) return;
-          const volNumber = idx + 1;
+          const volNumber = parseInt(g.volumeNumbers[fid] ?? "1", 10);
           const label = g.labels[fid]?.trim();
           const fd = new FormData();
           fd.append("file", pf.file);
@@ -360,7 +401,9 @@ export default function BulkUploadDialog({
     ]);
     for (const r of results) {
       if (r.status === "rejected") {
-        errors.push(r.reason instanceof Error ? r.reason.message : String(r.reason));
+        errors.push(
+          r.reason instanceof Error ? r.reason.message : String(r.reason),
+        );
       }
     }
 
@@ -374,7 +417,6 @@ export default function BulkUploadDialog({
       if (groupCount > 0)
         parts.push(`${groupCount} multi-volume eser (${volumeCount} cilt)`);
       toast.success(`Yüklendi: ${parts.join(" + ")}`);
-      // Reset
       setFiles([]);
       setSelectedIds(new Set());
       setGroups([]);
@@ -382,11 +424,10 @@ export default function BulkUploadDialog({
       onUploaded();
     } else {
       toast.error(`${errors.length} hata: ${errors[0].slice(0, 120)}`);
-      onUploaded(); // still refresh — some succeeded
+      onUploaded();
     }
   }
 
-  // ---- Render ----
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col bg-[#FAF7F0] border-[#d4c9b5]">
@@ -395,16 +436,13 @@ export default function BulkUploadDialog({
             <Upload className="h-4 w-4 text-[#C9A84C]" />
             Yeni kaynak ekle
           </DialogTitle>
-          <p className="font-body text-xs text-[#6b5a45]">
-            Tek kitap ya da çok ciltli eser — birden fazla dosyayı tek
-            seferde yükleyebilirsin.
-          </p>
         </DialogHeader>
-        <div className="h-px bg-[#d4c9b5]/50" />
 
-        {/* Group form overlay */}
-        {groupFormOpen && (
-          <div className="space-y-3 border border-[#C9A84C]/40 bg-[#C9A84C]/8 rounded-sm p-3">
+        {/* ====================================================== */}
+        {/* Group form overlay                                      */}
+        {/* ====================================================== */}
+        {groupFormOpen ? (
+          <div className="space-y-3 border border-[#C9A84C]/40 bg-[#C9A84C]/8 rounded-sm p-4">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -419,9 +457,20 @@ export default function BulkUploadDialog({
               <h3 className="font-display text-sm font-semibold text-[#2D1F0E]">
                 {editingGroupId
                   ? "Çok ciltli eseri düzenle"
-                  : "Yeni çok ciltli eser"}
+                  : "Bu dosyalar bir multi-volume eserin parçası"}
               </h3>
+              {extractingMeta && (
+                <span className="ml-auto inline-flex items-center gap-1.5 font-ui text-[10px] text-[#8a5a1a]">
+                  <Sparkles className="h-3 w-3" />
+                  Künye çıkarılıyor…
+                </span>
+              )}
             </div>
+
+            <p className="font-body text-[11px] text-[#6b5a45] leading-snug">
+              Ana esere ait künye bilgilerini gir. Yüklediğin ilk dosyadan
+              otomatik çıkarmayı denedik; eksikleri tamamla, yanlışları düzelt.
+            </p>
 
             <div className="grid grid-cols-2 gap-2">
               <input
@@ -448,7 +497,7 @@ export default function BulkUploadDialog({
               />
             </div>
             <input
-              placeholder="Ana eser başlığı *"
+              placeholder="Ana eser başlığı * (örn: et-Tahrir ve't-Tenvir)"
               value={groupFormState.title}
               onChange={(e) =>
                 setGroupFormState((s) => ({ ...s, title: e.target.value }))
@@ -477,44 +526,57 @@ export default function BulkUploadDialog({
               />
             </div>
 
-            <div className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] pt-1">
-              Cilt sırası
+            <div>
+              <div className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] pt-1 pb-1">
+                Hangi dosya hangi cilt?
+              </div>
+              <p className="font-body text-[11px] text-[#6b5a45] mb-2 leading-snug">
+                Her dosya için cilt numarasını sen yaz — sıralı olmak
+                zorunda değil. Örnek: elinde Cilt 5 ve Cilt 12 olabilir.
+              </p>
+              <ul className="space-y-1">
+                {groupFormFileIds.map((fid) => {
+                  const pf = fileById.get(fid);
+                  if (!pf) return null;
+                  return (
+                    <li
+                      key={fid}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-sm bg-white border border-[#d4c9b5]/40"
+                    >
+                      <span className="font-ui text-[10px] uppercase tracking-wider text-[#8a7a65] shrink-0">
+                        Cilt
+                      </span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={groupFormVolumes[fid] ?? ""}
+                        onChange={(e) =>
+                          setGroupFormVolumes((v) => ({
+                            ...v,
+                            [fid]: e.target.value,
+                          }))
+                        }
+                        className="w-14 px-1.5 py-0.5 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/60 font-body text-xs text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+                      />
+                      <span className="font-body text-xs text-[#2D1F0E] flex-1 truncate">
+                        {pf.file.name}
+                      </span>
+                      <input
+                        placeholder="etiket"
+                        value={groupFormLabels[fid] ?? ""}
+                        onChange={(e) =>
+                          setGroupFormLabels((l) => ({
+                            ...l,
+                            [fid]: e.target.value,
+                          }))
+                        }
+                        className="w-20 px-1.5 py-0.5 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/60 font-body text-[10px] text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-            <ul className="space-y-1">
-              {groupFormFileIds.map((fid, idx) => {
-                const pf = fileById.get(fid);
-                if (!pf) return null;
-                return (
-                  <li
-                    key={fid}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-sm bg-white border border-[#d4c9b5]/40"
-                  >
-                    <span className="font-display text-xs font-semibold text-[#2D1F0E] w-12 shrink-0">
-                      Cilt {idx + 1}
-                    </span>
-                    <span className="font-body text-xs text-[#2D1F0E] flex-1 truncate">
-                      {pf.file.name}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => moveInForm(idx, -1)}
-                      disabled={idx === 0}
-                      className="text-[#5C4A32] hover:text-[#2D1F0E] disabled:opacity-30"
-                    >
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveInForm(idx, 1)}
-                      disabled={idx === groupFormFileIds.length - 1}
-                      className="text-[#5C4A32] hover:text-[#2D1F0E] disabled:opacity-30"
-                    >
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
 
             <div className="flex justify-end gap-2 pt-1">
               <button
@@ -532,16 +594,23 @@ export default function BulkUploadDialog({
                 onClick={commitGroupForm}
                 className="px-3 py-1.5 rounded-sm bg-[#2D1F0E] text-[#FAF7F0] font-ui text-xs hover:opacity-90"
               >
-                {editingGroupId ? "Değişiklikleri kaydet" : "Grup oluştur"}
+                {editingGroupId ? "Değişiklikleri kaydet" : "Grubu oluştur"}
               </button>
             </div>
           </div>
-        )}
-
-        {/* Main: file list + groups */}
-        {!groupFormOpen && (
+        ) : (
+          /* ==================================================== */
+          /* Main: file list + groups                              */
+          /* ==================================================== */
           <>
-            {/* Add files affordance */}
+            {/* Helper paragraph */}
+            <p className="font-body text-xs text-[#6b5a45] leading-snug">
+              Tek kitapları olduğu gibi yükle — birden fazla cilt aynı eserin
+              parçasıysa <strong>seç + Grupla</strong> diyerek tek bir
+              multi-volume kaynağa dönüştür.
+            </p>
+
+            {/* Toolbar: add files + grupla */}
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
@@ -559,7 +628,7 @@ export default function BulkUploadDialog({
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-[#C9A84C] text-[#1A0F05] font-ui text-xs font-semibold hover:bg-[#d4b85a] disabled:opacity-40"
                 >
                   <BookCopy className="h-3.5 w-3.5" />
-                  Seçilenleri grupla ({selectedIds.size})
+                  Seçili {selectedIds.size > 0 ? `${selectedIds.size} ` : ""}dosyayı grupla
                 </button>
               )}
             </div>
@@ -575,8 +644,8 @@ export default function BulkUploadDialog({
               }}
             />
 
-            {/* Existing groups */}
-            <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+            {/* Existing groups + ungrouped */}
+            <div className="space-y-2 max-h-[44vh] overflow-y-auto pr-1">
               {groups.map((g) => (
                 <div
                   key={g.id}
@@ -614,44 +683,26 @@ export default function BulkUploadDialog({
                   </div>
 
                   <ul className="space-y-1">
-                    {g.fileIds.map((fid, idx) => {
+                    {g.fileIds.map((fid) => {
                       const pf = fileById.get(fid);
                       if (!pf) return null;
+                      const volNum = g.volumeNumbers[fid] ?? "?";
                       return (
                         <li
                           key={fid}
                           className="flex items-center gap-2 px-2 py-1 rounded-sm bg-white border border-[#d4c9b5]/40"
                         >
                           <span className="font-display text-[11px] font-semibold text-[#2D1F0E] w-12 shrink-0">
-                            Cilt {idx + 1}
+                            Cilt {volNum}
                           </span>
                           <span className="font-body text-[11px] text-[#2D1F0E] flex-1 truncate">
                             {pf.file.name}
                           </span>
-                          <input
-                            placeholder="etiket"
-                            value={g.labels[fid] ?? ""}
-                            onChange={(e) =>
-                              setGroupLabel(g.id, fid, e.target.value)
-                            }
-                            className="w-20 px-1.5 py-0.5 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/60 font-body text-[10px] text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => moveInGroup(g.id, idx, -1)}
-                            disabled={idx === 0}
-                            className="text-[#5C4A32] hover:text-[#2D1F0E] disabled:opacity-30"
-                          >
-                            <ChevronUp className="h-3 w-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveInGroup(g.id, idx, 1)}
-                            disabled={idx === g.fileIds.length - 1}
-                            className="text-[#5C4A32] hover:text-[#2D1F0E] disabled:opacity-30"
-                          >
-                            <ChevronDown className="h-3 w-3" />
-                          </button>
+                          {g.labels[fid] && (
+                            <span className="font-ui text-[10px] text-[#8a5a1a] italic">
+                              {g.labels[fid]}
+                            </span>
+                          )}
                           <button
                             type="button"
                             onClick={() => removeFile(fid)}
@@ -666,11 +717,17 @@ export default function BulkUploadDialog({
                 </div>
               ))}
 
-              {/* Ungrouped files */}
               {ungroupedFiles.length > 0 && (
                 <div className="rounded-sm border border-[#d4c9b5]/40 bg-white">
-                  <div className="px-2.5 py-1.5 border-b border-[#d4c9b5]/40 font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
-                    Tek kitap olarak yüklenecek ({ungroupedFiles.length})
+                  <div className="px-2.5 py-1.5 border-b border-[#d4c9b5]/40 flex items-center justify-between">
+                    <span className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+                      Tek kitap olarak yüklenecek ({ungroupedFiles.length})
+                    </span>
+                    {selectedIds.size > 0 && (
+                      <span className="font-ui text-[10px] text-[#8a5a1a]">
+                        {selectedIds.size} seçili — Grupla'ya basabilirsin
+                      </span>
+                    )}
                   </div>
                   <ul>
                     {ungroupedFiles.map((pf) => {
@@ -704,18 +761,25 @@ export default function BulkUploadDialog({
               )}
 
               {files.length === 0 && (
-                <div className="rounded-sm border border-dashed border-[#d4c9b5] bg-[#FAF7F0]/40 px-4 py-8 text-center font-body text-sm text-[#8a7a65]">
-                  Yukarıdaki <strong>Dosya ekle</strong> butonundan ya da bu
-                  diyaloğu açan drop zone&apos;a sürükleyerek dosya seç.
+                <div className="rounded-sm border border-dashed border-[#d4c9b5] bg-[#FAF7F0]/40 px-4 py-8 text-center">
+                  <p className="font-body text-sm text-[#8a7a65] mb-1">
+                    Henüz dosya yok.
+                  </p>
+                  <p className="font-ui text-[11px] text-[#a89a82]">
+                    Yukarıdaki <strong>Dosya ekle</strong>&apos;ye bas ya da
+                    bu kutuyu kapatıp drop zone&apos;a sürükle.
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* Footer */}
-            <div className="flex items-center justify-between gap-2 pt-1">
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#d4c9b5]/40 mt-2">
               <span className="font-body text-[11px] text-[#8a7a65]">
-                {ungroupedFiles.length + groups.reduce((a, g) => a + g.fileIds.length, 0)} dosya
-                {groups.length > 0 && ` · ${groups.length} grup`}
+                Toplam:{" "}
+                {ungroupedFiles.length +
+                  groups.reduce((a, g) => a + g.fileIds.length, 0)}{" "}
+                dosya
+                {groups.length > 0 && ` · ${groups.length} multi-volume eser`}
               </span>
               <div className="flex gap-2">
                 <button

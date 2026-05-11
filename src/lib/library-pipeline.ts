@@ -27,7 +27,7 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8
 const EMBED_BATCH_SIZE = 100
 const VALID_ENTRY_TYPES = new Set(Object.values(EntryType))
 
-interface PdfMetadataExtraction {
+export interface PdfMetadataExtraction {
   entryType: string | null
   authorSurname: string | null
   authorName: string | null
@@ -53,6 +53,68 @@ interface PdfMetadataExtraction {
   volumeNumber: number | null
   parentWork: string | null
   volumeLabel: string | null
+}
+
+/**
+ * Standalone Haiku metadata pass — no DB, no side effects. Used by
+ * the bulk-upload preview ("Grupla → otomatik künye") to prefill a
+ * group form without committing anything. Caller decides what to do
+ * with the result.
+ */
+export async function extractMetadataFromText(
+  text: string,
+): Promise<{
+  data: PdfMetadataExtraction
+  inputTokens: number
+  outputTokens: number
+}> {
+  const result = await generateJSONWithUsage<PdfMetadataExtraction>(
+    `Analyze the text extracted from the first pages of the following document and return bibliography metadata plus an abstract as JSON.
+
+Text:
+---
+${text.slice(0, 8000)}
+---
+
+Return in this JSON format:
+{
+  "entryType": "kitap" | "makale" | "nesir" | "ceviri" | "tez" | "ansiklopedi" | "web",
+  "authorSurname": "Author's surname",
+  "authorName": "Author's first name or null",
+  "title": "Full title of the work",
+  "editor": "Editor or null",
+  "translator": "Translator or null",
+  "publisher": "Publisher or null",
+  "publishPlace": "Place of publication or null",
+  "year": "Publication year or null",
+  "volume": "Volume or null",
+  "edition": "Edition or null",
+  "journalName": "Journal name or null",
+  "journalVolume": "Journal volume or null",
+  "journalIssue": "Journal issue or null",
+  "pageRange": "Page range or null",
+  "doi": "DOI or null",
+  "url": "URL or null",
+  "abstract": null,
+  "keywords": null,
+  "volumeNumber": integer (1, 2, 3, ...) IF this document is one volume of a multi-volume work; otherwise null,
+  "parentWork": "Title of the parent multi-volume work — ONLY when volumeNumber is set",
+  "volumeLabel": "Subtitle of this specific volume — ONLY when volumeNumber is set"
+}
+
+Rules:
+- Leave fields you cannot extract as null. Use null for abstract/keywords (preview mode skips them).
+- Determine entryType from the document style.
+- If no clear author is found, use "Unknown".
+- Return ONLY the JSON, no commentary.`,
+    'You are a bibliography extraction assistant. Respond with valid JSON only.',
+    { model: HAIKU }
+  )
+  return {
+    data: result.data,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+  }
 }
 
 /**
