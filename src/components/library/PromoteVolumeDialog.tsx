@@ -32,7 +32,9 @@ interface PromoteVolumeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   entryId: string;
+  /** Haiku's detected parent-work title (empty for manual launches). */
   parentWork: string;
+  /** Haiku's detected volume number (defaults to 1 for manual launches). */
   volumeNumber: number;
   volumeLabel: string | null;
   /** Excluded from the existing-parent picker. */
@@ -182,14 +184,24 @@ export default function PromoteVolumeDialog({
             Cilt olarak ekle
           </DialogTitle>
           <p className="font-body text-xs text-[#6b5a45]">
-            <span className="text-[#8a5a1a] font-semibold">
-              &ldquo;{parentWork}&rdquo;
-            </span>{" "}
-            eserinin{" "}
-            <span className="text-[#8a5a1a] font-semibold">
-              Cilt {initialVolumeNumber}
-            </span>{" "}
-            olarak tespit edildi.
+            {parentWork ? (
+              <>
+                <span className="text-[#8a5a1a] font-semibold">
+                  &ldquo;{parentWork}&rdquo;
+                </span>{" "}
+                eserinin{" "}
+                <span className="text-[#8a5a1a] font-semibold">
+                  Cilt {initialVolumeNumber}
+                </span>{" "}
+                olarak tespit edildi.
+              </>
+            ) : (
+              <>
+                Bu kaynağı çok ciltli bir eserin parçası olarak işaretle.
+                Mevcut bir ana esere ekleyebilir ya da yeni bir eser
+                başlatabilirsin.
+              </>
+            )}
           </p>
         </DialogHeader>
         <div className="h-px bg-[#d4c9b5]/50" />
