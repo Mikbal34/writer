@@ -2,11 +2,10 @@
 
 import { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, BookCopy, Combine, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown, X, GraduationCap, Users, Link as LinkIcon, Globe } from "lucide-react";
+import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, BookCopy, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown, X, GraduationCap, Users, Link as LinkIcon, Globe } from "lucide-react";
 import { StaggerItem, FadeUpLarge } from "@/components/shared/Animations";
 import { toast } from "sonner";
 import VolumesDialog from "@/components/library/VolumesDialog";
-import PromoteVolumeDialog from "@/components/library/PromoteVolumeDialog";
 
 type SearchLink = {
  label: string;
@@ -142,7 +141,6 @@ export default function LibraryEntryTable({
  const [findMenuOpenId, setFindMenuOpenId] = useState<string | null>(null);
  const [portalReady, setPortalReady] = useState(false);
  const [volumesEntry, setVolumesEntry] = useState<LibraryEntryRow | null>(null);
- const [promoteEntry, setPromoteEntry] = useState<LibraryEntryRow | null>(null);
 
  useEffect(() => {
   setPortalReady(true);
@@ -363,21 +361,6 @@ export default function LibraryEntryTable({
      entryId={volumesEntry.id}
      entryTitle={volumesEntry.title}
      onChange={() => onPdfAttached?.(volumesEntry.id)}
-    />
-   )}
-   {promoteEntry && (
-    <PromoteVolumeDialog
-     open={!!promoteEntry}
-     onOpenChange={(o) => !o && setPromoteEntry(null)}
-     entryId={promoteEntry.id}
-     parentWork={promoteEntry.metadata?.volumeHint?.parentWork ?? ""}
-     volumeNumber={promoteEntry.metadata?.volumeHint?.volumeNumber ?? 1}
-     volumeLabel={promoteEntry.metadata?.volumeHint?.volumeLabel ?? null}
-     onResolved={() => {
-      const id = promoteEntry.id;
-      setPromoteEntry(null);
-      onPdfAttached?.(id);
-     }}
     />
    )}
    </>
@@ -612,31 +595,6 @@ export default function LibraryEntryTable({
         </span>
        )}
       </div>
-
-      {/* Promote-to-volume — only for entries that aren't already
-          multi-volume parents themselves. Lets the user fold a one-off
-          upload into another entry's volume list manually, in case
-          Haiku didn't surface a volumeHint on its own. */}
-      {(entry._count?.volumes ?? 0) === 0 && (
-       <div
-        role="button"
-        tabIndex={0}
-        title="Bu kaynağı başka bir multi-volume eserin cildi yap"
-        onClick={(e) => {
-         e.stopPropagation();
-         setPromoteEntry(entry);
-        }}
-        onKeyDown={(e) => {
-         if (e.key === "Enter" || e.key === " ") {
-          e.stopPropagation();
-          setPromoteEntry(entry);
-         }
-        }}
-        className="flex items-center justify-center h-6 w-6 shrink-0 rounded-sm hover:bg-[#C9A84C]/15 cursor-pointer transition-colors"
-       >
-        <Combine className="h-3.5 w-3.5 text-[#5C4A32]" />
-       </div>
-      )}
 
       {/* Delete */}
       <div
