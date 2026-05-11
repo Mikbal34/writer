@@ -95,6 +95,37 @@ export function openPdfStream(filePath: string): fs.ReadStream {
   return fs.createReadStream(filePath)
 }
 
+/**
+ * Move an entry-level file to a volume-shaped path under a (possibly
+ * different) parent entry. Used by the promote-to-volume flow which
+ * grafts a one-off upload into a multi-volume entry without
+ * re-uploading the bytes.
+ */
+export async function moveToVolumePath(
+  userId: string,
+  oldFilePath: string,
+  newParentEntryId: string,
+  volumeId: string,
+  fileType: DocFileType = 'pdf',
+): Promise<string> {
+  const safeEntry = newParentEntryId.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const dir = path.join(entryDir(userId), safeEntry)
+  await fs.promises.mkdir(dir, { recursive: true })
+  const dest = volumePath(userId, newParentEntryId, volumeId, fileType)
+  try {
+    await fs.promises.rename(oldFilePath, dest)
+  } catch {
+    // Cross-device rename can fail; fall back to copy + delete.
+    await fs.promises.copyFile(oldFilePath, dest)
+    try {
+      await fs.promises.unlink(oldFilePath)
+    } catch {
+      /* ignore */
+    }
+  }
+  return dest
+}
+
 export async function deletePdf(filePath: string | null | undefined): Promise<void> {
   if (!filePath) return
   try {

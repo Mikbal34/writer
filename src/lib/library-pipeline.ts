@@ -21,7 +21,7 @@ import { prisma } from '@/lib/db'
 import { findPdf } from '@/lib/pdf-finder'
 import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
 import { deductCredits } from '@/lib/credits'
-import { EntryType } from '@prisma/client'
+import { EntryType, Prisma } from '@prisma/client'
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
 const EMBED_BATCH_SIZE = 100
@@ -47,6 +47,12 @@ interface PdfMetadataExtraction {
   url: string | null
   abstract: string | null
   keywords: string[] | null
+  // Multi-volume detection: when a PDF is one volume of a larger
+  // work (Tafsir, hadis külliyatı, encyclopedia) Haiku sets these
+  // and the library page surfaces a "ciltlere ayır" suggestion.
+  volumeNumber: number | null
+  parentWork: string | null
+  volumeLabel: string | null
 }
 
 /**
@@ -125,13 +131,17 @@ Return in this JSON format:
   "doi": "DOI or null",
   "url": "URL or null",
   "abstract": "Concise abstract / summary of the work (around 150-300 words). If a formal abstract section is present, use it verbatim. Otherwise summarize the first pages.",
-  "keywords": ["up to 6 subject keywords derived from the text"] or null
+  "keywords": ["up to 6 subject keywords derived from the text"] or null,
+  "volumeNumber": integer (1, 2, 3, ...) IF this PDF is one volume of a multi-volume work — look for explicit markers like "Cilt 2", "Volume II", "الجزء الثاني", "Tome 2", "Bd. 3" on the cover or title page; otherwise null,
+  "parentWork": "Title of the parent multi-volume work (e.g. 'et-Tahrir ve't-Tenvir', 'Encyclopaedia of Islam') ONLY when volumeNumber is also set; otherwise null",
+  "volumeLabel": "Subtitle of this specific volume (e.g. 'Sûre el-Bakara', 'A-D entries') ONLY when volumeNumber is also set; otherwise null"
 }
 
 Rules:
 - Leave fields you cannot extract as null.
 - Determine entryType from the document style (academic article → "makale", book → "kitap").
 - If no clear author is found, use "Unknown".
+- Be CONSERVATIVE about volumeNumber/parentWork — only set them when the text shows an explicit multi-volume marker. A simple "Volume 2 Issue 3" of a journal is NOT a parent-work volume; that's journalVolume.
 - Abstract must be in the document's original language.
 - Return ONLY the JSON, no commentary.`,
       'You are a bibliography + abstract extraction assistant. Respond with valid JSON only.',
@@ -200,6 +210,29 @@ Rules:
       if (entry.entryType === 'kitap' || !entry.entryType) {
         data.entryType = extracted.entryType
       }
+    }
+
+    // Multi-volume hint — when Haiku detects "Cilt 2 / Volume II / الجزء"
+    // markers we write the signal to metadata so the library page can
+    // show a banner: "Bu cilt görünüyor — mevcut esere ekle / yeni
+    // multi-volume entry oluştur". We don't auto-restructure anything;
+    // the user resolves the suggestion.
+    if (
+      extracted.volumeNumber &&
+      typeof extracted.volumeNumber === 'number' &&
+      extracted.volumeNumber > 0 &&
+      extracted.parentWork &&
+      String(extracted.parentWork).trim().length > 0
+    ) {
+      data.metadata = {
+        volumeHint: {
+          volumeNumber: Math.floor(extracted.volumeNumber),
+          parentWork: String(extracted.parentWork).trim(),
+          volumeLabel: extracted.volumeLabel
+            ? String(extracted.volumeLabel).trim()
+            : null,
+        },
+      } as Prisma.InputJsonValue
     }
 
     if (Object.keys(data).length > 0) {

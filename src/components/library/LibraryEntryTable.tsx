@@ -89,6 +89,15 @@ export interface LibraryEntryRow {
  url?: string | null;
  tags: Array<{ tag: { id: string; name: string } }>;
  _count?: { bibliographies: number; volumes?: number };
+ /** Multi-volume hint from Haiku enrichment + dismissal flag. */
+ metadata?: {
+  volumeHint?: {
+   volumeNumber: number;
+   parentWork: string;
+   volumeLabel?: string | null;
+  };
+  volumeHintDismissed?: boolean;
+ } | null;
 }
 
 interface LibraryEntryTableProps {

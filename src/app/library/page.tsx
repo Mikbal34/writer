@@ -27,6 +27,7 @@ import LibraryEntryForm from "@/components/library/LibraryEntryForm";
 import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
 import PdfDropZone from "@/components/library/PdfDropZone";
+import VolumeHintBanner from "@/components/library/VolumeHintBanner";
 import { Ornament } from "@/components/shared/BookElements";
 import { FadeUp, FadeIn } from "@/components/shared/Animations";
 import WorkspaceShell from "@/components/shared/WorkspaceShell";
@@ -255,6 +256,10 @@ export default function LibraryPage() {
 
         {/* Ornament divider */}
         <Ornament className="w-32 mx-auto text-[#c9bfad] mb-5" />
+
+        {/* Haiku-detected multi-volume suggestions for recently
+            uploaded entries. Renders nothing when there's no hint. */}
+        <VolumeHintBanner entries={entries} onChanged={fetchEntries} />
 
         {/* Content */}
         <div className={viewMode === "list" ? "border border-[#d4c9b5]/50 rounded-sm bg-[#FAF7F0]/80 overflow-hidden" : ""}>
