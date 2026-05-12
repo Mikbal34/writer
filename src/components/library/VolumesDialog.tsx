@@ -62,6 +62,7 @@ export default function VolumesDialog({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [label, setLabel] = useState("");
+  const [volumeNumberInput, setVolumeNumberInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchVolumes = useCallback(async () => {
@@ -106,9 +107,26 @@ export default function VolumesDialog({
       return;
     }
 
+    // Manual cilt-number wins; empty falls back to backend's
+    // next-free (max+1). Catches the gap case where the user has
+    // cilts 1+8+30 and wants to add cilt 2.
+    const volNumRaw = volumeNumberInput.trim();
+    if (volNumRaw) {
+      const parsed = parseInt(volNumRaw, 10);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        toast.error("Cilt numarası 1 veya daha büyük olmalı");
+        return;
+      }
+      if (volumes.some((v) => v.volumeNumber === parsed)) {
+        toast.error(`Cilt ${parsed} zaten var`);
+        return;
+      }
+    }
+
     const fd = new FormData();
     fd.append("file", file);
     if (label.trim()) fd.append("label", label.trim());
+    if (volNumRaw) fd.append("volumeNumber", volNumRaw);
 
     setUploading(true);
     try {
@@ -122,6 +140,7 @@ export default function VolumesDialog({
       }
       toast.success("Cilt eklendi, metin çıkarılıyor…");
       setLabel("");
+      setVolumeNumberInput("");
       await fetchVolumes();
       onChange?.();
     } catch (err) {
@@ -294,13 +313,24 @@ export default function VolumesDialog({
           <div className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65]">
             Yeni cilt
           </div>
-          <input
-            type="text"
-            placeholder="Etiket (opsiyonel) — örn: Hicret Öncesi"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            className="w-full px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] placeholder:text-[#a89a82] focus:outline-none focus:border-[#C9A84C]/60"
-          />
+          <div className="flex gap-2">
+            <input
+              type="number"
+              min="1"
+              placeholder="Cilt #"
+              value={volumeNumberInput}
+              onChange={(e) => setVolumeNumberInput(e.target.value)}
+              title="Boş bırakırsan otomatik sıradaki numara atanır"
+              className="w-20 px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] placeholder:text-[#a89a82] focus:outline-none focus:border-[#C9A84C]/60"
+            />
+            <input
+              type="text"
+              placeholder="Etiket (opsiyonel) — örn: Hicret Öncesi"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              className="flex-1 px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] placeholder:text-[#a89a82] focus:outline-none focus:border-[#C9A84C]/60"
+            />
+          </div>
           <input
             ref={fileInputRef}
             type="file"
