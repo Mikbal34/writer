@@ -89,6 +89,9 @@ export interface LibraryEntryRow {
  url?: string | null;
  tags: Array<{ tag: { id: string; name: string } }>;
  _count?: { bibliographies: number; volumes?: number };
+ /** Per-volume statuses — used to render an aggregate badge on
+  *  multi-volume parents (which carry no pdfStatus of their own). */
+ volumes?: Array<{ pdfStatus: string }>;
  /** Multi-volume hint from Haiku enrichment + dismissal flag. */
  metadata?: {
   volumeHint?: {
@@ -469,8 +472,55 @@ export default function LibraryEntryTable({
        </span>
       )}
 
-      {/* PDF status */}
-      {entry.pdfStatus === "ready" ? (
+      {/* PDF status.
+          Multi-volume parents short-circuit: they have no PDF of
+          their own — files live on the cilt rows. We derive an
+          aggregate badge from `entry.volumes[].pdfStatus` instead
+          of showing the misleading "PDF yükle" upload button. */}
+      {(entry._count?.volumes ?? 0) > 0 ? (
+       (() => {
+        const vols = entry.volumes ?? [];
+        const total = vols.length || (entry._count?.volumes ?? 0);
+        const failed = vols.filter((v) => v.pdfStatus === "failed").length;
+        const inProgress = vols.filter((v) =>
+         ["pending", "downloading", "extracting", "embedding"].includes(v.pdfStatus),
+        ).length;
+        const ready = vols.filter((v) => v.pdfStatus === "ready").length;
+        if (failed > 0) {
+         return (
+          <span
+           title={`${failed}/${total} cilt başarısız — ciltler dialog'undan yeniden işle`}
+           className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#c44] bg-[#c44]/10 font-ui text-[10px]"
+          >
+           <AlertTriangle className="h-3 w-3" />
+           {failed}/{total}
+          </span>
+         );
+        }
+        if (inProgress > 0) {
+         return (
+          <span
+           title={`${inProgress}/${total} cilt işleniyor`}
+           className="shrink-0 inline-flex items-center gap-1 text-[#8a7a65] font-ui text-[10px]"
+          >
+           <Loader2 className="h-3 w-3 animate-spin" />
+           {ready}/{total}
+          </span>
+         );
+        }
+        if (ready === total && total > 0) {
+         return (
+          <span
+           title={`${total} cilt hazır`}
+           className="shrink-0 text-[#2D8B4E]"
+          >
+           <FileCheck className="h-3.5 w-3.5" />
+          </span>
+         );
+        }
+        return null;
+       })()
+      ) : entry.pdfStatus === "ready" ? (
        <span title="RAG için hazır" className="shrink-0 text-[#2D8B4E]">
         <FileCheck className="h-3.5 w-3.5" />
        </span>

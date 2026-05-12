@@ -39,6 +39,9 @@ export async function GET(req: NextRequest) {
         include: {
           tags: { include: { tag: true } },
           _count: { select: { bibliographies: true, volumes: true } },
+          // pdfStatus per volume powers the aggregate badge on
+          // multi-volume parent rows (no per-row `pdfStatus` of its own).
+          volumes: { select: { pdfStatus: true } },
         },
         orderBy: { updatedAt: 'desc' },
         skip,

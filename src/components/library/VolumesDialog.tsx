@@ -27,6 +27,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   BookCopy,
+  RotateCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -130,6 +131,23 @@ export default function VolumesDialog({
     }
   }
 
+  async function handleReprocess(vol: VolumeRow) {
+    try {
+      const res = await fetch(
+        `/api/library/${entryId}/volumes/${vol.id}/reprocess`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      toast.success(`Cilt ${vol.volumeNumber} yeniden işleniyor…`);
+      await fetchVolumes();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Yeniden işlenemedi");
+    }
+  }
+
   async function handleDelete(vol: VolumeRow) {
     const ok = window.confirm(
       `Cilt ${vol.volumeNumber}${vol.label ? ` — ${vol.label}` : ""} silinsin mi?`,
@@ -164,11 +182,14 @@ export default function VolumesDialog({
     if (v.pdfStatus === "failed") {
       return (
         <span
-          className="inline-flex items-center gap-1 text-[#c44] font-ui text-[10px]"
+          className="inline-flex items-center gap-1 text-[#c44] font-ui text-[10px] max-w-full"
           title={v.pdfError ?? undefined}
         >
-          <AlertTriangle className="h-3 w-3" />
-          Başarısız
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          <span className="truncate">
+            Başarısız
+            {v.pdfError ? ` · ${v.pdfError}` : ""}
+          </span>
         </span>
       );
     }
@@ -243,6 +264,16 @@ export default function VolumesDialog({
                     <span className="font-ui text-[10px] uppercase tracking-wider text-[#8a7a65] px-1.5 py-0.5 rounded-sm bg-[#FAF7F0]">
                       {v.fileType}
                     </span>
+                  )}
+                  {v.pdfStatus === "failed" && v.hasPdf && (
+                    <button
+                      type="button"
+                      title="Yeniden işle (dosya diskte duruyor)"
+                      onClick={() => handleReprocess(v)}
+                      className="flex items-center justify-center h-7 w-7 rounded-sm hover:bg-[#C9A84C]/15"
+                    >
+                      <RotateCw className="h-3.5 w-3.5 text-[#5C4A32]" />
+                    </button>
                   )}
                   <button
                     type="button"

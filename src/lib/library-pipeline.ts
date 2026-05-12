@@ -17,6 +17,8 @@
  * want synchronous behaviour (e.g. in tests).
  */
 
+import fs from 'node:fs'
+import path from 'node:path'
 import { prisma } from '@/lib/db'
 import { findPdf } from '@/lib/pdf-finder'
 import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
@@ -515,7 +517,10 @@ async function embedBatch(texts: string[]): Promise<number[][] | null> {
       body: JSON.stringify({ texts }),
     })
     if (!res.ok) {
-      console.error(`[library-pipeline] Python /embed returned ${res.status}`)
+      const body = await res.text().catch(() => '')
+      console.error(
+        `[library-pipeline] Python /embed HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`,
+      )
       return null
     }
     const data = (await res.json()) as { embeddings: number[][] }
@@ -575,6 +580,7 @@ async function persistChunks(
     await setStatus(entryId, 'embedding')
   }
 
+  let embeddedChunks = 0
   for (let i = 0; i < created.length; i += EMBED_BATCH_SIZE) {
     const batch = created.slice(i, i + EMBED_BATCH_SIZE)
     const vectors = await embedBatch(batch.map((c) => c.content))
@@ -586,6 +592,15 @@ async function persistChunks(
         batch[j].id
       )
     }
+    embeddedChunks += batch.length
+  }
+
+  // If /embed silently failed for every batch we'd otherwise mark the
+  // volume "ready" with zero embeddings — the row looks fine in the UI
+  // but contributes nothing to RAG. Bubble up so the caller flips the
+  // status to "failed" with a real error message.
+  if (created.length > 0 && embeddedChunks === 0) {
+    throw new Error('Embedding başarısız: /embed her batch için hata döndü')
   }
 }
 
@@ -801,6 +816,34 @@ export async function processLibraryVolumePdfFromBytes(
     console.error(`[library-pipeline] volume processFromBytes failed for ${volumeId}:`, err)
     await setVolumeStatus(volumeId, 'failed', { pdfError: message })
   }
+}
+
+/**
+ * Re-runs the volume pipeline against the file already persisted at
+ * `volume.filePath`. Used by /api/library/[id]/volumes/[volumeId]/reprocess
+ * to recover ciltler that failed once (Python downtime, embed errors)
+ * without forcing the user to delete + re-upload.
+ */
+export async function reprocessLibraryVolume(
+  entryId: string,
+  volumeId: string,
+): Promise<void> {
+  const volume = await prisma.libraryEntryVolume.findUnique({
+    where: { id: volumeId },
+    select: { libraryEntryId: true, filePath: true, volumeNumber: true },
+  })
+  if (!volume) throw new Error('Cilt bulunamadı')
+  if (volume.libraryEntryId !== entryId) throw new Error('Cilt bu esere ait değil')
+  if (!volume.filePath) {
+    throw new Error('Cilt için kayıtlı dosya yok — silip yeniden yüklemen gerek')
+  }
+  const bytes = await fs.promises.readFile(volume.filePath)
+  await processLibraryVolumePdfFromBytes(
+    entryId,
+    volumeId,
+    path.basename(volume.filePath),
+    bytes,
+  )
 }
 
 /**
