@@ -3,27 +3,31 @@
  *
  * Walks `WORKS_ROOT` (default: /Users/ikbalkoc/Desktop/klasik_eserler),
  * matches each numbered folder against the canonical Arabic metadata
- * table below, then uploads via the production API as the logged-in
- * user identified by NEXTAUTH_COOKIE.
+ * table below, then uploads via the admin bulk-import endpoints.
  *
- *   - 1 PDF, no `_cXX` suffix → standalone book (/api/library/upload-pdf)
- *   - 1+ PDFs with `_cXX` suffix → multi-volume work: POST /api/library
- *     to create the parent, then POST /api/library/[id]/volumes per cilt
- *     with the explicit volumeNumber parsed from the filename.
+ * Every work becomes a multi-volume LibraryEntry:
+ *   - POST /api/admin/bulk-import/entry  → get/create parent (idempotent)
+ *   - POST /api/admin/bulk-import/cilt   → upload each PDF as a cilt
  *
- * Idempotent-ish: GET /api/library is consulted once at startup to skip
- * works already present (matched by authorSurname + title).
+ * Cilt number is parsed from filename `_cXX`; a single-PDF folder
+ * without `_cXX` becomes cilt 1.
  *
- * Files >50MB are skipped and reported at the end so the user can
- * upload them manually (after compressing) — that's the route limit.
+ * Idempotent: re-running picks up where it left off (entry endpoint
+ * returns existing id; cilt endpoint replaces bytes if (entry, cilt)
+ * already exists).
+ *
+ * Auth: X-Admin-Token header matched against the ADMIN_BULK_IMPORT_TOKEN
+ * env var set on the Railway service. Set it once with
+ *   railway variables --service writer-agent --set ADMIN_BULK_IMPORT_TOKEN=<value>
+ * then redeploy. Rotate / unset after the import is done.
  *
  * Usage:
- *   NEXTAUTH_COOKIE="<cookie-value>" \
+ *   ADMIN_TOKEN="<value>" \
+ *   TARGET_USER_ID="cmn1ulqtk00030purt66j5ow6" \
  *     npx tsx scripts/admin/bulk-import-classical.ts
  *
- * Cookie source: Chrome devtools → Application → Cookies → quilpen.com
- *   → "__Secure-next-auth.session-token" (or "next-auth.session-token"
- *   in non-HTTPS contexts). Copy the whole value.
+ * Optional env: BASE_URL (default https://quilpen.com), WORKS_ROOT,
+ * DELAY_MS (between cilt uploads, default 5000).
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -294,20 +298,21 @@ const WORKS: Record<string, WorkMeta> = {
 }
 
 const BASE_URL = process.env.BASE_URL ?? 'https://quilpen.com'
-const COOKIE = process.env.NEXTAUTH_COOKIE ?? ''
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? ''
+const TARGET_USER_ID = process.env.TARGET_USER_ID ?? ''
 const WORKS_ROOT = process.env.WORKS_ROOT ?? '/Users/ikbalkoc/Desktop/klasik_eserler'
-const MAX_BYTES = 50 * 1024 * 1024
+// Aligns with /api/admin/bulk-import/cilt route's 200MB cap.
+const MAX_BYTES = 200 * 1024 * 1024
 const DELAY_MS = parseInt(process.env.DELAY_MS ?? '5000', 10)
 
-if (!COOKIE) {
-  console.error('NEXTAUTH_COOKIE env var gerekli — Chrome devtools → Application → Cookies → quilpen.com → __Secure-next-auth.session-token değerini ver.')
+if (!ADMIN_TOKEN) {
+  console.error('ADMIN_TOKEN env var gerekli (Railway\'de ADMIN_BULK_IMPORT_TOKEN ile aynı değer)')
   process.exit(1)
 }
-
-// Accept either bare token or "name=value" form.
-const cookieHeader = COOKIE.includes('=')
-  ? COOKIE
-  : `__Secure-next-auth.session-token=${COOKIE}`
+if (!TARGET_USER_ID) {
+  console.error('TARGET_USER_ID env var gerekli (örn. Berat: cmn1ulqtk00030purt66j5ow6)')
+  process.exit(1)
+}
 
 interface FileMeta {
   path: string
@@ -339,48 +344,18 @@ async function api(p: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${BASE_URL}${p}`, {
     ...init,
     headers: {
-      cookie: cookieHeader,
+      'x-admin-token': ADMIN_TOKEN,
       ...(init.headers ?? {}),
     },
   })
 }
 
-async function loadExisting(): Promise<Set<string>> {
-  // Pages of 50, walk until empty.
-  const keys = new Set<string>()
-  for (let page = 1; page < 100; page++) {
-    const res = await api(`/api/library?page=${page}&limit=50`)
-    if (!res.ok) {
-      throw new Error(`GET /api/library page ${page} → ${res.status}`)
-    }
-    const data = (await res.json()) as {
-      entries: Array<{ authorSurname: string; title: string }>
-    }
-    if (!data.entries.length) break
-    for (const e of data.entries) {
-      keys.add(`${e.authorSurname}|${e.title}`)
-    }
-    if (data.entries.length < 50) break
-  }
-  return keys
-}
-
-async function uploadSingle(file: FileMeta): Promise<void> {
-  const buf = fs.readFileSync(file.path)
-  const fd = new FormData()
-  fd.set('file', new Blob([buf], { type: 'application/pdf' }), path.basename(file.path))
-  const res = await api('/api/library/upload-pdf', { method: 'POST', body: fd })
-  if (!res.ok) {
-    const err = await res.text().catch(() => '')
-    throw new Error(`upload-pdf ${res.status}: ${err.slice(0, 200)}`)
-  }
-}
-
-async function createParent(meta: WorkMeta): Promise<string> {
-  const res = await api('/api/library', {
+async function getOrCreateEntry(meta: WorkMeta): Promise<{ id: string; alreadyExists: boolean }> {
+  const res = await api('/api/admin/bulk-import/entry', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      userId: TARGET_USER_ID,
       authorSurname: meta.authorSurname,
       authorName: meta.authorName,
       title: meta.title,
@@ -390,36 +365,33 @@ async function createParent(meta: WorkMeta): Promise<string> {
   })
   if (!res.ok) {
     const err = await res.text().catch(() => '')
-    throw new Error(`POST /api/library ${res.status}: ${err.slice(0, 200)}`)
+    throw new Error(`admin/entry ${res.status}: ${err.slice(0, 200)}`)
   }
-  const data = (await res.json()) as { id: string }
-  return data.id
+  return (await res.json()) as { id: string; alreadyExists: boolean }
 }
 
-async function uploadVolume(
-  parentId: string,
+async function uploadCilt(
+  entryId: string,
   file: FileMeta,
   fallbackCilt: number,
 ): Promise<void> {
   const buf = fs.readFileSync(file.path)
   const fd = new FormData()
   fd.set('file', new Blob([buf], { type: 'application/pdf' }), path.basename(file.path))
+  fd.set('entryId', entryId)
   fd.set('volumeNumber', String(file.volumeNumber ?? fallbackCilt))
-  const res = await api(`/api/library/${parentId}/volumes`, { method: 'POST', body: fd })
+  const res = await api('/api/admin/bulk-import/cilt', { method: 'POST', body: fd })
   if (!res.ok) {
     const err = await res.text().catch(() => '')
-    throw new Error(`volumes POST ${res.status}: ${err.slice(0, 200)}`)
+    throw new Error(`admin/cilt ${res.status}: ${err.slice(0, 200)}`)
   }
 }
 
 async function main() {
   console.log(`Base: ${BASE_URL}`)
+  console.log(`Target user: ${TARGET_USER_ID}`)
   console.log(`Works root: ${WORKS_ROOT}`)
   console.log(`Delay between cilt uploads: ${DELAY_MS}ms\n`)
-
-  console.log('Mevcut kütüphane okunuyor…')
-  const existing = await loadExisting()
-  console.log(`  → ${existing.size} mevcut entry bulundu\n`)
 
   const folders = fs
     .readdirSync(WORKS_ROOT)
@@ -429,19 +401,12 @@ async function main() {
   const skipped: string[] = []
   const failed: string[] = []
   const done: string[] = []
-  const already: string[] = []
+  const reused: string[] = []
 
   for (const folder of folders) {
     const meta = WORKS[folder]
     if (!meta) {
       console.warn(`[?] ${folder}: metadata yok, atlandı`)
-      continue
-    }
-
-    const key = `${meta.authorSurname}|${meta.title}`
-    if (existing.has(key)) {
-      already.push(folder)
-      console.log(`[=] ${folder}: zaten mevcut, atlandı`)
       continue
     }
 
@@ -461,31 +426,26 @@ async function main() {
     })
 
     if (usable.length === 0) {
-      console.log(`[~] ${folder}: tüm dosyalar >50MB, atlandı`)
+      console.log(`[~] ${folder}: tüm dosyalar limiti aştı, atlandı`)
       continue
     }
 
     try {
       console.log(`\n[+] ${folder} — ${meta.title} (${usable.length} dosya)`)
-
-      // Standalone book: single PDF without cilt suffix.
-      if (usable.length === 1 && usable[0].volumeNumber === null) {
-        console.log(`    tek kitap olarak yükleniyor…`)
-        await uploadSingle(usable[0])
-        done.push(folder)
-        continue
+      const { id: entryId, alreadyExists } = await getOrCreateEntry(meta)
+      if (alreadyExists) {
+        console.log(`    parent zaten mevcut (${entryId}) — eksik ciltler yüklenecek`)
+        reused.push(folder)
+      } else {
+        console.log(`    parent oluşturuldu: ${entryId}`)
       }
-
-      // Multi-volume path (also covers 1-cilt-with-suffix).
-      console.log(`    parent oluşturuluyor…`)
-      const parentId = await createParent(meta)
 
       for (let i = 0; i < usable.length; i++) {
         const f = usable[i]
         const cilt = f.volumeNumber ?? i + 1
         const sizeMb = (f.size / 1024 / 1024).toFixed(1)
         console.log(`    cilt ${cilt} (${sizeMb}MB) → ${path.basename(f.path)}`)
-        await uploadVolume(parentId, f, i + 1)
+        await uploadCilt(entryId, f, i + 1)
         if (i < usable.length - 1) {
           await new Promise((r) => setTimeout(r, DELAY_MS))
         }
@@ -500,11 +460,11 @@ async function main() {
 
   console.log('\n=== Özet ===')
   console.log(`✓ Tamamlanan eser: ${done.length}`)
-  console.log(`= Zaten mevcut: ${already.length}`)
+  console.log(`↻ Mevcut parent'a eklenen: ${reused.length}`)
   console.log(`✗ Başarısız: ${failed.length}`)
-  console.log(`⊘ >50MB skip: ${skipped.length}`)
+  console.log(`⊘ Boyut skip: ${skipped.length}`)
   if (skipped.length) {
-    console.log('\nManuel yüklenecek (>50MB — sıkıştırıp tekrar dene):')
+    console.log('\nAtlandı (limiti aşan):')
     for (const s of skipped) console.log(`  - ${s}`)
   }
   if (failed.length) {
