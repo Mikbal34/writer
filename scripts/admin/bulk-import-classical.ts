@@ -6,8 +6,8 @@
  * table below, then uploads via the admin bulk-import endpoints.
  *
  * Every work becomes a multi-volume LibraryEntry:
- *   - POST /api/admin/bulk-import/entry  → get/create parent (idempotent)
- *   - POST /api/admin/bulk-import/cilt   → upload each PDF as a cilt
+ *   - POST /api/bulk-import/entry  → get/create parent (idempotent)
+ *   - POST /api/bulk-import/cilt   → upload each PDF as a cilt
  *
  * Cilt number is parsed from filename `_cXX`; a single-PDF folder
  * without `_cXX` becomes cilt 1.
@@ -301,7 +301,7 @@ const BASE_URL = process.env.BASE_URL ?? 'https://quilpen.com'
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? ''
 const TARGET_USER_ID = process.env.TARGET_USER_ID ?? ''
 const WORKS_ROOT = process.env.WORKS_ROOT ?? '/Users/ikbalkoc/Desktop/klasik_eserler'
-// Aligns with /api/admin/bulk-import/cilt route's 200MB cap.
+// Aligns with /api/bulk-import/cilt route's 200MB cap.
 const MAX_BYTES = 200 * 1024 * 1024
 const DELAY_MS = parseInt(process.env.DELAY_MS ?? '5000', 10)
 
@@ -351,7 +351,7 @@ async function api(p: string, init: RequestInit = {}): Promise<Response> {
 }
 
 async function getOrCreateEntry(meta: WorkMeta): Promise<{ id: string; alreadyExists: boolean }> {
-  const res = await api('/api/admin/bulk-import/entry', {
+  const res = await api('/api/bulk-import/entry', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -380,7 +380,7 @@ async function uploadCilt(
   fd.set('file', new Blob([buf], { type: 'application/pdf' }), path.basename(file.path))
   fd.set('entryId', entryId)
   fd.set('volumeNumber', String(file.volumeNumber ?? fallbackCilt))
-  const res = await api('/api/admin/bulk-import/cilt', { method: 'POST', body: fd })
+  const res = await api('/api/bulk-import/cilt', { method: 'POST', body: fd })
   if (!res.ok) {
     const err = await res.text().catch(() => '')
     throw new Error(`admin/cilt ${res.status}: ${err.slice(0, 200)}`)

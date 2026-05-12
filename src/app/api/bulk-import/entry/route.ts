@@ -1,16 +1,18 @@
 /**
- * POST /api/admin/bulk-import/entry
+ * POST /api/bulk-import/entry
  *
- * Admin-token-gated counterpart of POST /api/library used by the
- * one-shot bulk-import script (scripts/admin/bulk-import-classical.ts).
+ * Static-token counterpart of POST /api/library used by the one-shot
+ * bulk-import script (scripts/admin/bulk-import-classical.ts).
  *
- * Authenticates via X-Admin-Token header matched against the
- * ADMIN_BULK_IMPORT_TOKEN env var. Idempotent: returns the existing
- * entry when (userId, authorSurname, title) already match, so re-runs
- * after a partial failure pick up where they left off.
+ * Lives outside /api/admin/* on purpose — proxy.ts gates that whole
+ * subtree behind the admin SESSION cookie, which the script can't
+ * carry. This endpoint authenticates via the static X-Admin-Token
+ * header matched against ADMIN_BULK_IMPORT_TOKEN.
  *
- * No session needed — the import target user is set explicitly in the
- * request body. Keep the env-var secret; rotate after the import run.
+ * Idempotent: returns the existing entry when (userId, authorSurname,
+ * title) already match, so re-runs after a partial failure pick up
+ * where they left off. Keep the env-var secret; rotate / unset after
+ * the import run.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'

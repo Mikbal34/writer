@@ -1,12 +1,13 @@
 /**
- * POST /api/admin/bulk-import/cilt
+ * POST /api/bulk-import/cilt
  *
- * Admin-token-gated counterpart of POST /api/library/[id]/volumes used
- * by scripts/admin/bulk-import-classical.ts. Accepts a multipart form
+ * Static-token counterpart of POST /api/library/[id]/volumes used by
+ * scripts/admin/bulk-import-classical.ts. Accepts a multipart form
  * with file + entryId + volumeNumber + optional label, persists the
  * bytes via saveVolumePdfBytes, then fires the volume pipeline.
  *
- * Differences from the public volumes route:
+ * Lives outside /api/admin/* (proxy.ts session gate). Differences
+ * from the public volumes route:
  *   - X-Admin-Token header instead of session auth.
  *   - 200 MB byte limit (vs. 50 MB) so >50 MB classical works don't
  *     need to be pre-compressed.
