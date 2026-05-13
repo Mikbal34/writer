@@ -19,6 +19,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { Agent } from 'undici'
 import { prisma } from '@/lib/db'
 import { findPdf } from '@/lib/pdf-finder'
 import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
@@ -28,6 +29,16 @@ import { EntryType, Prisma } from '@prisma/client'
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
 const EMBED_BATCH_SIZE = 100
 const VALID_ENTRY_TYPES = new Set(Object.values(EntryType))
+
+// Default undici fetch caps headersTimeout at 5 min — large
+// classical-work PDFs (50–65 MB) take longer to chunk on the Python
+// side and surface as "fetch failed → HeadersTimeoutError" upstream.
+// Bumped to 15 min for both headers and body. Used as the dispatcher
+// on every Python service call below.
+const pythonFetchAgent = new Agent({
+  headersTimeout: 15 * 60 * 1000,
+  bodyTimeout: 15 * 60 * 1000,
+})
 
 export interface PdfMetadataExtraction {
   entryType: string | null
@@ -515,6 +526,8 @@ async function embedBatch(texts: string[]): Promise<number[][] | null> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ texts }),
+      // @ts-expect-error: undici dispatcher option is valid in Node fetch
+      dispatcher: pythonFetchAgent,
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -613,6 +626,8 @@ async function tryProcessUrl(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sourceId: entryId, url }),
+      // @ts-expect-error: undici dispatcher option is valid in Node fetch
+      dispatcher: pythonFetchAgent,
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -715,6 +730,8 @@ export async function processLibraryPdfFromBytes(
     const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
       method: 'POST',
       body: form,
+      // @ts-expect-error: undici dispatcher option is valid in Node fetch
+      dispatcher: pythonFetchAgent,
     })
 
     if (!res.ok) {
@@ -784,6 +801,8 @@ export async function processLibraryVolumePdfFromBytes(
     const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
       method: 'POST',
       body: form,
+      // @ts-expect-error: undici dispatcher option is valid in Node fetch
+      dispatcher: pythonFetchAgent,
     })
 
     if (!res.ok) {
