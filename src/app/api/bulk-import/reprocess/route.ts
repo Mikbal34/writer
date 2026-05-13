@@ -123,6 +123,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(v)
     }
 
+    if (action === 'inflight') {
+      // Per-user count of ciltler still going through the pipeline.
+      // The retry script blocks until this returns 0 so we don't kick
+      // a new cilt while Python is still chewing the last one.
+      if (!userId) {
+        return NextResponse.json({ error: 'userId gerekli' }, { status: 400 })
+      }
+      const count = await prisma.libraryEntryVolume.count({
+        where: {
+          libraryEntry: { userId },
+          pdfStatus: { in: ['pending', 'downloading', 'extracting', 'embedding'] },
+        },
+      })
+      return NextResponse.json({ inflight: count })
+    }
+
     return NextResponse.json(
       { error: 'action=list-failed veya action=status gerekli' },
       { status: 400 },

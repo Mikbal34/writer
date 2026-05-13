@@ -20,7 +20,13 @@ const BASE_URL = process.env.BASE_URL ?? 'https://quilpen.com'
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? ''
 const TARGET_USER_ID = process.env.TARGET_USER_ID ?? ''
 const POLL_INTERVAL_MS = 5000
-const POLL_TIMEOUT_MS = 5 * 60 * 1000
+// 20 min cap per cilt — İhya / Tarih are 60 MB and chunk + embed
+// pretty slowly on the shared Python service.
+const POLL_TIMEOUT_MS = 20 * 60 * 1000
+// Wait for the user to have NO in-flight ciltler before kicking the
+// next reprocess. Same budget as POLL_TIMEOUT_MS — if a single cilt
+// truly hangs we'll bail and skip rather than block the run.
+const IDLE_WAIT_TIMEOUT_MS = 20 * 60 * 1000
 
 if (!ADMIN_TOKEN || !TARGET_USER_ID) {
   console.error('ADMIN_TOKEN ve TARGET_USER_ID env-vars gerekli')
@@ -70,6 +76,21 @@ async function kickReprocess(volumeId: string): Promise<void> {
   }
 }
 
+async function waitForIdle(): Promise<boolean> {
+  const start = Date.now()
+  while (Date.now() - start < IDLE_WAIT_TIMEOUT_MS) {
+    const res = await api(
+      `/api/bulk-import/reprocess?action=inflight&userId=${encodeURIComponent(TARGET_USER_ID)}`,
+    )
+    if (res.ok) {
+      const data = (await res.json()) as { inflight: number }
+      if (data.inflight === 0) return true
+    }
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+  }
+  return false
+}
+
 async function pollStatus(volumeId: string): Promise<{ status: string; error: string | null }> {
   const start = Date.now()
   while (Date.now() - start < POLL_TIMEOUT_MS) {
@@ -105,6 +126,15 @@ async function main() {
     const tag = `[${i + 1}/${failed.length}] ${v.authorSurname} — ${v.title} · cilt ${v.volumeNumber}`
     console.log(tag)
     try {
+      // Block until Python has nothing else of ours in flight. Earlier
+      // 'specific cilt' polling let timeouts pile up ciltler in the
+      // pipeline — global-idle is the safer serialization point.
+      const idle = await waitForIdle()
+      if (!idle) {
+        console.log(`    ⏱ idle-wait timeout, atlandı`)
+        timedOut.push(v.id)
+        continue
+      }
       await kickReprocess(v.id)
       const result = await pollStatus(v.id)
       if (result.status === 'ready') {
