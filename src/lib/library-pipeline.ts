@@ -29,6 +29,13 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8
 const EMBED_BATCH_SIZE = 100
 const VALID_ENTRY_TYPES = new Set(Object.values(EntryType))
 
+// undici's default headersTimeout is 5 min; intermittent TCP issues
+// to the Python service then waste 5 min per failed cilt during bulk
+// retries. AbortSignal.timeout fails the fetch faster without needing
+// a custom dispatcher (which breaks Next.js's bundled undici).
+const PROCESS_FETCH_TIMEOUT_MS = 3 * 60 * 1000
+const EMBED_FETCH_TIMEOUT_MS = 2 * 60 * 1000
+
 export interface PdfMetadataExtraction {
   entryType: string | null
   authorSurname: string | null
@@ -515,6 +522,7 @@ async function embedBatch(texts: string[]): Promise<number[][] | null> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ texts }),
+      signal: AbortSignal.timeout(EMBED_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -613,6 +621,7 @@ async function tryProcessUrl(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sourceId: entryId, url }),
+      signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -715,6 +724,7 @@ export async function processLibraryPdfFromBytes(
     const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
       method: 'POST',
       body: form,
+      signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
     })
 
     if (!res.ok) {
@@ -784,6 +794,7 @@ export async function processLibraryVolumePdfFromBytes(
     const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
       method: 'POST',
       body: form,
+      signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
     })
 
     if (!res.ok) {
