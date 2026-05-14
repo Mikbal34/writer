@@ -403,24 +403,43 @@ export default function LibraryEntryTable({
        style={{ backgroundColor: colorScheme.color }}
       />
 
-      {/* PDF status indicator — not interactive; visual only */}
-      {entry.filePath ? (
-       <div
-        className="w-5 h-5 rounded-sm bg-forest flex items-center justify-center shrink-0"
-        title="PDF yüklü — RAG için hazır"
-        aria-label="PDF yüklü"
-       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-         <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#F5EDE0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-       </div>
-      ) : (
-       <div
-        className="w-5 h-5 rounded-sm border-2 border-[#d4c9b5]/60 shrink-0"
-        title="PDF yok — yazımda bu kaynak kullanılamaz"
-        aria-label="PDF yok"
-       />
-      )}
+      {/* PDF status indicator — not interactive; visual only.
+          Multi-volume parents don't carry filePath themselves (files
+          live on cilt rows), so we derive "is this entry usable for
+          RAG?" from whether the volumes are ready instead of bare
+          filePath presence. */}
+      {(() => {
+       const totalVolumes = entry._count?.volumes ?? 0
+       const isMultiVolume = totalVolumes > 0
+       const readyVolumes = isMultiVolume
+        ? (entry.volumes ?? []).filter((v) => v.pdfStatus === "ready").length
+        : 0
+       const usable = isMultiVolume
+        ? readyVolumes > 0
+        : Boolean(entry.filePath)
+       const title = isMultiVolume
+        ? `${readyVolumes}/${totalVolumes} cilt hazır`
+        : usable
+         ? "PDF yüklü — RAG için hazır"
+         : "PDF yok — yazımda bu kaynak kullanılamaz"
+       return usable ? (
+        <div
+         className="w-5 h-5 rounded-sm bg-forest flex items-center justify-center shrink-0"
+         title={title}
+         aria-label={title}
+        >
+         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#F5EDE0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+         </svg>
+        </div>
+       ) : (
+        <div
+         className="w-5 h-5 rounded-sm border-2 border-[#d4c9b5]/60 shrink-0"
+         title={title}
+         aria-label={title}
+        />
+       )
+      })()}
 
       {/* Author + Title + Tags */}
       <div className="min-w-0 flex-1">
