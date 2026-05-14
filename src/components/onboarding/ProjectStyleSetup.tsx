@@ -15,7 +15,12 @@
  *
  * The component is stateless from the server's perspective — it owns
  * its own conversation history and just passes the final overrides to
- * its parent (NewProjectPage) via `onChange`.
+ * its parent (NewProjectPage / project-style page) via `onChange`.
+ *
+ * Styling follows the project pages' warm/forest theme (#2D1F0E ink,
+ * #C9A84C gold accent, #d4c9b5 borders, bg-forest for primary actions)
+ * so the same component drops into both the new-project wizard and
+ * /projects/[id]/style without theme drift.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -27,11 +32,8 @@ import {
   ChevronUp,
   Send,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -52,7 +54,7 @@ interface ProjectStyleSetupProps {
     topic?: string | null;
     citationFormat?: string | null;
   };
-  /** Current value held by the parent NewProjectPage. */
+  /** Current value held by the parent. */
   value: Partial<ProjectStyleOverrides> | null;
   /** Called whenever the user accepts defaults, finishes the chat, or
    *  edits the manual form. Null means "no overrides — use writing-twin
@@ -101,14 +103,11 @@ export default function ProjectStyleSetup({
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && data.defaults) setDefaults(data.defaults);
-        // The first response also kicks off the conversation with an
-        // assistant greeting — stash it so the chat panel is populated.
         if (!cancelled && data.reply && messages.length === 0) {
           setMessages([{ role: "assistant", content: data.reply }]);
         }
       } catch {
-        // Defaults are nice-to-have; if the call fails the user can
-        // still use the manual form.
+        /* defaults nice-to-have */
       }
     }
     loadDefaults();
@@ -186,80 +185,78 @@ export default function ProjectStyleSetup({
   return (
     <div className="space-y-5">
       {/* Smart defaults card */}
-      <Card className="border-indigo-200 bg-indigo-50/30">
-        <CardContent className="pt-5 pb-5 space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-indigo-900">
-                <Sparkles className="h-4 w-4" />
-                Önerilen proje stili
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {basics.projectType === "ACADEMIC"
-                  ? `${basics.language?.startsWith("tr") ? "Türkçe " : ""}akademik bir proje için tipik ayarlar.`
-                  : "Bu tür proje için tipik ayarlar."}
-                {" "}İstemiyorsan AI ile sohbet edip değiştir, ya da aşağıdan elle düzenle.
-              </p>
+      <div className="rounded-sm border border-[#C9A84C]/40 bg-[#C9A84C]/8 p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 font-display text-sm font-semibold text-ink">
+              <Sparkles className="h-4 w-4 text-[#C9A84C]" />
+              Önerilen proje stili
             </div>
-            <Button
-              onClick={acceptDefaults}
-              disabled={!defaults}
-              size="sm"
-              className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white gap-1"
-            >
-              <Check className="h-3.5 w-3.5" />
-              Bunu kullan
-            </Button>
+            <p className="font-body text-xs text-[#6b5a45] mt-1 leading-snug">
+              {basics.projectType === "ACADEMIC"
+                ? `${basics.language?.startsWith("tr") ? "Türkçe " : ""}akademik bir proje için tipik ayarlar.`
+                : "Bu tür proje için tipik ayarlar."}{" "}
+              İstemiyorsan AI ile sohbet edip değiştir, ya da aşağıdan elle düzenle.
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={acceptDefaults}
+            disabled={!defaults}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-forest text-[#F5EDE0] font-ui text-xs hover:bg-forest/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Check className="h-3.5 w-3.5" />
+            Bunu kullan
+          </button>
+        </div>
 
-          {defaults ? (
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-              {defaults.tone && <KV k="Ton" v={defaults.tone} />}
-              {typeof defaults.formality === "number" && (
-                <KV k="Resmiyet" v={`${defaults.formality}/10`} />
-              )}
-              {defaults.usesFirstPerson !== undefined && (
-                <KV
-                  k="1. tekil"
-                  v={defaults.usesFirstPerson ? "izinli" : "kapalı"}
-                />
-              )}
-              {defaults.voicePreference && (
-                <KV k="Etken/edilgen" v={defaults.voicePreference} />
-              )}
-              {defaults.terminologyDensity && (
-                <KV k="Terim yoğunluğu" v={defaults.terminologyDensity} />
-              )}
-              {defaults.citationDensity && (
-                <KV k="Atıf yoğunluğu" v={defaults.citationDensity} />
-              )}
-              {defaults.paragraphLength && (
-                <KV k="Paragraf uzunluğu" v={defaults.paragraphLength} />
-              )}
-              {defaults.usesBlockQuotes !== undefined && (
-                <KV
-                  k="Blok alıntı"
-                  v={defaults.usesBlockQuotes ? "açık" : "kapalı"}
-                />
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Öneriler hazırlanıyor...
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {defaults ? (
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 font-body text-xs">
+            {defaults.tone && <KV k="Ton" v={defaults.tone} />}
+            {typeof defaults.formality === "number" && (
+              <KV k="Resmiyet" v={`${defaults.formality}/10`} />
+            )}
+            {defaults.usesFirstPerson !== undefined && (
+              <KV
+                k="1. tekil"
+                v={defaults.usesFirstPerson ? "izinli" : "kapalı"}
+              />
+            )}
+            {defaults.voicePreference && (
+              <KV k="Etken/edilgen" v={defaults.voicePreference} />
+            )}
+            {defaults.terminologyDensity && (
+              <KV k="Terim yoğunluğu" v={defaults.terminologyDensity} />
+            )}
+            {defaults.citationDensity && (
+              <KV k="Atıf yoğunluğu" v={defaults.citationDensity} />
+            )}
+            {defaults.paragraphLength && (
+              <KV k="Paragraf uzunluğu" v={defaults.paragraphLength} />
+            )}
+            {defaults.usesBlockQuotes !== undefined && (
+              <KV
+                k="Blok alıntı"
+                v={defaults.usesBlockQuotes ? "açık" : "kapalı"}
+              />
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 font-ui text-xs text-[#8a7a65]">
+            <Loader2 className="h-3 w-3 animate-spin text-[#C9A84C]" />
+            Öneriler hazırlanıyor...
+          </div>
+        )}
+      </div>
 
       {/* AI chat panel */}
-      <div className="rounded-md border bg-card">
-        <div className="px-4 py-3 border-b">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Sparkles className="h-4 w-4 text-indigo-600" />
+      <div className="rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/40">
+        <div className="px-4 py-3 border-b border-[#d4c9b5]/60">
+          <div className="flex items-center gap-2 font-display text-sm font-semibold text-ink">
+            <Sparkles className="h-4 w-4 text-[#C9A84C]" />
             AI ile ince ayar
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="font-body text-[11px] text-[#6b5a45] mt-0.5">
             İstediğin alanları sohbetle değiştir. Boş bırakırsan varsayılanlar kullanılır.
           </p>
         </div>
@@ -268,7 +265,7 @@ export default function ProjectStyleSetup({
           className="px-4 py-3 max-h-60 overflow-y-auto space-y-3"
         >
           {messages.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic">
+            <p className="font-body text-xs text-[#8a7a65] italic">
               AI birazdan ilk soruyu yazacak...
             </p>
           ) : (
@@ -277,8 +274,8 @@ export default function ProjectStyleSetup({
                 key={i}
                 className={
                   m.role === "user"
-                    ? "text-sm bg-indigo-50 rounded-md px-3 py-2 ml-8"
-                    : "text-sm bg-muted rounded-md px-3 py-2 mr-8 whitespace-pre-wrap"
+                    ? "font-body text-sm bg-[#C9A84C]/12 text-ink rounded-sm px-3 py-2 ml-8 border border-[#C9A84C]/30"
+                    : "font-body text-sm bg-white/60 text-ink rounded-sm px-3 py-2 mr-8 whitespace-pre-wrap border border-[#d4c9b5]/40"
                 }
               >
                 {m.content}
@@ -286,13 +283,13 @@ export default function ProjectStyleSetup({
             ))
           )}
           {chatBusy && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
+            <div className="flex items-center gap-2 font-ui text-xs text-[#8a7a65]">
+              <Loader2 className="h-3 w-3 animate-spin text-[#C9A84C]" />
               AI yazıyor...
             </div>
           )}
         </div>
-        <div className="border-t px-4 py-3 flex items-end gap-2">
+        <div className="border-t border-[#d4c9b5]/60 px-4 py-3 flex items-end gap-2">
           <Textarea
             ref={inputRef}
             value={input}
@@ -305,16 +302,17 @@ export default function ProjectStyleSetup({
             }}
             placeholder="Örn: 'tonu biraz daha rahat olsun', 'birinci tekil olsun', 'sen karar ver'"
             rows={2}
-            className="resize-none"
+            className="resize-none bg-white/80 border-[#d4c9b5] focus-visible:ring-[#C9A84C]/30"
           />
-          <Button
-            size="icon"
+          <button
+            type="button"
             onClick={sendTurn}
             disabled={!input.trim() || chatBusy}
-            className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white"
+            className="shrink-0 h-9 w-9 flex items-center justify-center rounded-sm bg-forest text-[#F5EDE0] hover:bg-forest/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Gönder"
           >
             <Send className="h-4 w-4" />
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -322,14 +320,14 @@ export default function ProjectStyleSetup({
       <button
         type="button"
         onClick={() => setManualOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+        className="flex items-center gap-1.5 font-ui text-xs text-[#5C4A32] hover:text-ink transition-colors"
       >
         {manualOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         {manualOpen ? "Manuel düzenlemeyi gizle" : "Manuel düzenle"}
       </button>
 
       {manualOpen && (
-        <div className="rounded-md border bg-card p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/40 p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Ton">
             <Select
               value={formValue.tone ?? "formal"}
@@ -337,7 +335,7 @@ export default function ProjectStyleSetup({
                 patch("tone", v as ProjectStyleOverrides["tone"])
               }
             >
-              <SelectTrigger>
+              <SelectTrigger className="bg-white/80 border-[#d4c9b5]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -360,16 +358,17 @@ export default function ProjectStyleSetup({
                   patch("formality", Math.max(1, Math.min(10, n)));
                 }
               }}
+              className="bg-white/80 border-[#d4c9b5]"
             />
           </Field>
 
           <Field label="Birinci tekil">
-            <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-background">
+            <div className="flex items-center gap-2 h-9 px-3 rounded-sm border border-[#d4c9b5] bg-white/80">
               <Switch
                 checked={Boolean(formValue.usesFirstPerson)}
                 onCheckedChange={(v) => patch("usesFirstPerson", v)}
               />
-              <span className="text-sm">
+              <span className="font-body text-sm text-ink">
                 {formValue.usesFirstPerson ? "İzinli" : "Kapalı"}
               </span>
             </div>
@@ -382,7 +381,7 @@ export default function ProjectStyleSetup({
                 patch("voicePreference", v as ProjectStyleOverrides["voicePreference"])
               }
             >
-              <SelectTrigger>
+              <SelectTrigger className="bg-white/80 border-[#d4c9b5]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -400,7 +399,7 @@ export default function ProjectStyleSetup({
                 patch("terminologyDensity", v as ProjectStyleOverrides["terminologyDensity"])
               }
             >
-              <SelectTrigger>
+              <SelectTrigger className="bg-white/80 border-[#d4c9b5]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -418,7 +417,7 @@ export default function ProjectStyleSetup({
                 patch("citationDensity", v as ProjectStyleOverrides["citationDensity"])
               }
             >
-              <SelectTrigger>
+              <SelectTrigger className="bg-white/80 border-[#d4c9b5]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -436,7 +435,7 @@ export default function ProjectStyleSetup({
                 patch("paragraphLength", v as ProjectStyleOverrides["paragraphLength"])
               }
             >
-              <SelectTrigger>
+              <SelectTrigger className="bg-white/80 border-[#d4c9b5]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -448,12 +447,12 @@ export default function ProjectStyleSetup({
           </Field>
 
           <Field label="Blok alıntı (uzun alıntılar)">
-            <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-background">
+            <div className="flex items-center gap-2 h-9 px-3 rounded-sm border border-[#d4c9b5] bg-white/80">
               <Switch
                 checked={Boolean(formValue.usesBlockQuotes)}
                 onCheckedChange={(v) => patch("usesBlockQuotes", v)}
               />
-              <span className="text-sm">
+              <span className="font-body text-sm text-ink">
                 {formValue.usesBlockQuotes ? "Açık" : "Kapalı"}
               </span>
             </div>
@@ -464,6 +463,7 @@ export default function ProjectStyleSetup({
               value={formValue.notes ?? ""}
               onChange={(e) => patch("notes", e.target.value)}
               placeholder="AI'ya iletmek istediğin proje-özel notlar"
+              className="bg-white/80 border-[#d4c9b5]"
             />
           </Field>
         </div>
@@ -475,8 +475,10 @@ export default function ProjectStyleSetup({
 function KV({ k, v }: { k: string; v: string | number | boolean }) {
   return (
     <div className="flex items-baseline gap-1.5">
-      <span className="text-muted-foreground">{k}:</span>
-      <span className="font-medium text-foreground">{String(v)}</span>
+      <span className="font-ui text-[10px] uppercase tracking-wider text-[#8a7a65]">
+        {k}:
+      </span>
+      <span className="font-body text-xs text-ink">{String(v)}</span>
     </div>
   );
 }
@@ -492,7 +494,9 @@ function Field({
 }) {
   return (
     <div className={`space-y-1.5 ${className ?? ""}`}>
-      <Label className="text-xs">{label}</Label>
+      <span className="block font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+        {label}
+      </span>
       {children}
     </div>
   );

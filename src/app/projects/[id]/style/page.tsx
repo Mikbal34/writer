@@ -1,19 +1,21 @@
 "use client";
 
 /**
- * /projects/[id]/style — post-roadmap edit page for the project-scoped
- * style overrides (set initially during the new-project wizard's
- * Step 4). Reuses the same ProjectStyleSetup component so the AI chat,
- * smart defaults, and manual form are all available; adds a save bar
- * that PATCHes Project.writingGuidelines.styleOverrides.
+ * /projects/[id]/style — post-roadmap edit page for project-scoped
+ * style overrides set during the new-project wizard's Step 4. Reuses
+ * ProjectStyleSetup (smart defaults card + AI chat + manual form) and
+ * adds a save bar that PATCHes Project.writingGuidelines.styleOverrides.
+ *
+ * Theme matches the other project pages (/sources, /citations) —
+ * PageTitle header, forest CTAs, parchment background.
  */
 
 import { use, useEffect, useState } from "react";
 import { Loader2, Save } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import ProjectStyleSetup from "@/components/onboarding/ProjectStyleSetup";
+import { PageTitle } from "@/components/shared/BookElements";
+import { FadeUp } from "@/components/shared/Animations";
 import type { ProjectStyleOverrides } from "@/types/project";
 
 interface ProjectStylePageProps {
@@ -46,9 +48,6 @@ export default function ProjectStylePage({ params }: ProjectStylePageProps) {
         if (!res.ok) throw new Error("Proje yüklenemedi.");
         const data = await res.json();
         if (cancelled) return;
-        // The PATCH endpoint returns the project, but the GET returns
-        // a similar shape — `writingGuidelines` is a JSON column we
-        // need to dig into for styleOverrides.
         const guidelines =
           data?.writingGuidelines && typeof data.writingGuidelines === "object"
             ? (data.writingGuidelines as Record<string, unknown>)
@@ -83,9 +82,8 @@ export default function ProjectStylePage({ params }: ProjectStylePageProps) {
     if (!project) return;
     setSaving(true);
     try {
-      // Patch preserves the rest of writingGuidelines — fetch current
-      // value first so we don't clobber any non-style namespaces (e.g.
-      // creative artStyle written by the preview chat).
+      // Preserve other namespaces inside writingGuidelines (e.g. the
+      // creative pipeline's `artStyle`) by merging instead of overwriting.
       const currentRes = await fetch(`/api/projects/${id}`);
       const current = await currentRes.json();
       const existing =
@@ -114,58 +112,48 @@ export default function ProjectStylePage({ params }: ProjectStylePageProps) {
 
   if (loading || !project) {
     return (
-      <div className="min-h-[40vh] flex items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      <div className="max-w-3xl mx-auto px-6 py-8 flex items-center justify-center min-h-[40vh]">
+        <Loader2 className="h-5 w-5 animate-spin text-[#C9A84C]" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Proje Stili</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Bu projeye özel yazım kuralları. Yazma sırasında Writing Twin&apos;in
-          ilgili alanlarını override eder.
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Düzenle</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ProjectStyleSetup
-            basics={{
-              projectType: project.projectType,
-              language: project.language,
-              audience: project.audience,
-              topic: project.topic,
-              citationFormat: project.citationFormat,
-            }}
-            value={overrides}
-            onChange={(v) => {
-              setOverrides(v);
-              setDirty(true);
-            }}
-          />
-        </CardContent>
-      </Card>
-
-      <div className="flex justify-end gap-2 sticky bottom-4 bg-background/80 backdrop-blur rounded-md p-2">
-        <Button
+    <div className="max-w-3xl mx-auto px-6 py-8 overflow-y-auto flex-1 min-h-0">
+      <FadeUp className="flex items-start justify-between gap-4 flex-wrap mb-6">
+        <PageTitle
+          title="Proje Stili"
+          subtitle="Bu projeye özel yazım kuralları. Yazma sırasında Writing Twin'in ilgili alanlarını override eder."
+        />
+        <button
+          type="button"
           onClick={handleSave}
           disabled={!dirty || saving}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+          className="flex items-center gap-2 px-3 py-1.5 bg-forest text-[#F5EDE0] rounded-sm font-ui text-xs hover:bg-forest/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saving ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Save className="h-4 w-4" />
+            <Save className="h-3.5 w-3.5" />
           )}
           {saving ? "Kaydediliyor..." : "Kaydet"}
-        </Button>
-      </div>
+        </button>
+      </FadeUp>
+
+      <ProjectStyleSetup
+        basics={{
+          projectType: project.projectType,
+          language: project.language,
+          audience: project.audience,
+          topic: project.topic,
+          citationFormat: project.citationFormat,
+        }}
+        value={overrides}
+        onChange={(v) => {
+          setOverrides(v);
+          setDirty(true);
+        }}
+      />
     </div>
   );
 }
