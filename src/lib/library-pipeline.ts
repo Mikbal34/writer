@@ -33,7 +33,12 @@ const VALID_ENTRY_TYPES = new Set(Object.values(EntryType))
 // to the Python service then waste 5 min per failed cilt during bulk
 // retries. AbortSignal.timeout fails the fetch faster without needing
 // a custom dispatcher (which breaks Next.js's bundled undici).
-const PROCESS_FETCH_TIMEOUT_MS = 3 * 60 * 1000
+//
+// /process-bytes is 10 min — Arabic OCR'd PDFs from the classical
+// works corpus genuinely take 3-8 min to chunk, so the earlier 3-min
+// cap was producing false timeouts on healthy cilts. /embed is short
+// because batches are fast even on slow networks.
+const PROCESS_FETCH_TIMEOUT_MS = 10 * 60 * 1000
 const EMBED_FETCH_TIMEOUT_MS = 2 * 60 * 1000
 
 export interface PdfMetadataExtraction {
