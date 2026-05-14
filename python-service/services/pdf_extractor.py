@@ -14,7 +14,7 @@ the whole book under the 10-min HTTP budget for any reasonable size.
 import io
 import os
 import re
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import BrokenExecutor, ProcessPoolExecutor
 
 import fitz  # PyMuPDF
 
@@ -42,9 +42,10 @@ _OCR_LANGS = "eng+tur+ara"
 
 # Cap parallelism so we don't OOM Railway. Each worker holds one
 # 300-DPI page bitmap (≈30-60 MB for a typical academic page) plus a
-# tesseract process. With small Railway plans 4 is a safe ceiling;
-# override via OCR_WORKERS if the host has more headroom.
-_OCR_WORKERS = max(1, int(os.environ.get("OCR_WORKERS", "4")))
+# tesseract process. The default 2 fit comfortably on a small Railway
+# plan; bump via OCR_WORKERS when the host has more headroom. We saw a
+# 4-worker pool OOM on a 37 MB Arabic book — 2 is the safer floor.
+_OCR_WORKERS = max(1, int(os.environ.get("OCR_WORKERS", "2")))
 
 
 def _ocr_page_at_path(args: tuple[str, int]) -> tuple[int, str]:
@@ -71,17 +72,33 @@ def _ocr_page_at_path(args: tuple[str, int]) -> tuple[int, str]:
 
 
 def _parallel_ocr(file_path: str, page_nums: list[int]) -> dict[int, str]:
-    """OCR many pages in parallel; returns {page_num: text}."""
+    """OCR many pages in parallel; returns {page_num: text}.
+
+    Falls back to serial OCR if the worker pool dies mid-flight (the
+    common cause is a single OOM page taking down a worker, which
+    surfaces as BrokenProcessPool). Serial is slow but always finishes.
+    """
     if not page_nums or not HAS_OCR:
         return {}
     workers = min(len(page_nums), _OCR_WORKERS)
     results: dict[int, str] = {}
-    with ProcessPoolExecutor(max_workers=workers) as executor:
-        for page_num, text in executor.map(
-            _ocr_page_at_path,
-            [(file_path, p) for p in page_nums],
-        ):
-            results[page_num] = text
+    try:
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            for page_num, text in executor.map(
+                _ocr_page_at_path,
+                [(file_path, p) for p in page_nums],
+            ):
+                results[page_num] = text
+        return results
+    except BrokenExecutor:
+        # Pool exploded — fall back to serial so the whole extraction
+        # isn't lost. Anything we already collected stays in results.
+        pass
+
+    remaining = [p for p in page_nums if p not in results]
+    for page_num in remaining:
+        _, text = _ocr_page_at_path((file_path, page_num))
+        results[page_num] = text
     return results
 
 
