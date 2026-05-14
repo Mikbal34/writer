@@ -9,6 +9,7 @@ import type {
   PositionInfo,
   StyleProfile,
 } from '@/types/project'
+import { extractStyleOverrides, stringifyRemainingGuidelines } from '@/lib/prompts/session-context'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -37,7 +38,6 @@ ${isAcademic ? `- Terminology density: ${style.terminologyDensity ?? 'medium'}` 
 ${isAcademic ? `- Paragraph structure: ${style.paragraphStructure ?? 'topic-sentence-first'}` : ''}
 ${isAcademic ? `- Formality (1-10): ${style.formality ?? 7}` : ''}
 ${isAcademic ? `- Uses first person: ${style.usesFirstPerson ? 'yes' : 'no'}` : ''}
-${isAcademic ? `- Citation approach: ${style.citationApproach ?? (style as { citationStyle?: string }).citationStyle ?? 'inline-footnote'}` : ''}
 ${isAcademic ? `- Rhetorical approach: ${style.rhetoricalApproach ?? 'analytical'}` : ''}
 ${style.narrativePOV ? `- Point of view: ${style.narrativePOV.replace(/_/g, ' ')}` : ''}
 ${style.genre ? `- Genre: ${style.genre}` : ''}
@@ -49,6 +49,27 @@ ${style.narrativeStyle ? `- Narrative style: ${style.narrativeStyle}` : ''}
 ${style.additionalNotes ? `- Notes: ${style.additionalNotes}` : ''}
 `
     : ''
+
+  // Project-scoped overrides — hard rules. Block sits between the
+  // style-profile (personality) and the free-form guidelines so the model
+  // reads "twin habits → project rules that beat them → extra notes" in
+  // that order.
+  const overrides = ctx.styleOverrides
+  const overridesBlock =
+    overrides && Object.keys(overrides).length > 0
+      ? `
+PROJECT STYLE OVERRIDES (HARD RULES — override the style profile above):
+${overrides.tone ? `- Tone: ${overrides.tone}` : ''}
+${typeof overrides.formality === 'number' ? `- Formality: ${overrides.formality}/10` : ''}
+${overrides.usesFirstPerson !== undefined ? `- First person: ${overrides.usesFirstPerson ? 'allowed' : 'disallowed'}` : ''}
+${overrides.voicePreference ? `- Voice: ${overrides.voicePreference}` : ''}
+${overrides.terminologyDensity ? `- Terminology density: ${overrides.terminologyDensity}` : ''}
+${overrides.citationDensity ? `- Citation density: ${overrides.citationDensity}` : ''}
+${overrides.paragraphLength ? `- Paragraph length: ${overrides.paragraphLength}` : ''}
+${overrides.usesBlockQuotes !== undefined ? `- Block quotes: ${overrides.usesBlockQuotes ? 'yes' : 'no'}` : ''}
+${overrides.notes ? `- Notes: ${overrides.notes}` : ''}
+`
+      : ''
 
   const guidelinesBlock = ctx.writingGuidelines
     ? `\nWRITING GUIDELINES:\n${JSON.stringify(ctx.writingGuidelines, null, 2)}\n`
@@ -95,7 +116,7 @@ ${ctx.position.chapterLast ? '- This is the LAST subsection of the chapter.' : '
     return `You are an expert creative writer. Your task is to write well-crafted, engaging prose for the specified subsection. Adapt your technique to the material — lean into narrative/sensory craft when the content is scenic, and into clear exposition when the content explains.
 
 ${bookContext}
-${styleInstructions}${guidelinesBlock}
+${styleInstructions}${overridesBlock}${guidelinesBlock}
 INSTRUCTIONS:
 - Write ONLY the content for this specific subsection.
 - Do not include headings/titles (they are rendered separately).
@@ -111,7 +132,7 @@ ${modeGuidance}
 CITATION FORMAT: ${lang}
 
 ${bookContext}
-${styleInstructions}${guidelinesBlock}${sourcesBlock}
+${styleInstructions}${overridesBlock}${guidelinesBlock}${sourcesBlock}
 INSTRUCTIONS:
 - Write ONLY the content for this specific subsection.
 - Do not include headings/titles for the subsection itself (they are rendered separately).
@@ -368,11 +389,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       citationFormat: project.citationFormat,
       projectType: project.projectType,
       styleProfile: project.styleProfile as Partial<StyleProfile> | null,
-      writingGuidelines: project.writingGuidelines
-        ? typeof project.writingGuidelines === 'string'
-          ? project.writingGuidelines
-          : JSON.stringify(project.writingGuidelines)
-        : null,
+      styleOverrides: extractStyleOverrides(project.writingGuidelines),
+      writingGuidelines: stringifyRemainingGuidelines(project.writingGuidelines),
     }
 
     const systemPrompt = buildSystemPrompt(writingCtx)

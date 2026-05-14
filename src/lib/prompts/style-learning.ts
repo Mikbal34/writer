@@ -1,35 +1,31 @@
-import type { StyleProfile } from '@/types/project'
+import type { WritingTwinProfile } from '@/types/project'
 
 // ==================== STYLE ANALYSIS ====================
 
 /**
  * Builds a prompt that asks Claude to analyse a writing sample and extract
- * a StyleProfile. The response is expected to be valid JSON.
+ * a WritingTwinProfile. The response is expected to be valid JSON.
+ *
+ * Only the *stable* parts of the author's voice are extracted here —
+ * project-specific knobs like tone / formality / 1st-person / etc. live in
+ * ProjectStyleOverrides and are gathered separately in project setup.
  *
  * Usage:
  *   const prompt = getStyleAnalysisPrompt(sampleText)
- *   const json   = await generateJSON<StyleProfile>(prompt, STYLE_SYSTEM_PROMPT)
+ *   const json   = await generateJSON<WritingTwinProfile>(prompt, STYLE_SYSTEM_PROMPT)
  */
 export function getStyleAnalysisPrompt(sampleText: string): string {
-  return `Analyse the following writing sample and extract a detailed style profile. Return a JSON object that strictly matches the TypeScript interface below.
+  return `Analyse the following writing sample and extract the author's *stable* writing twin profile — only the parts that travel from project to project. Return a JSON object that strictly matches the TypeScript interface below.
 
 ## TypeScript Interface
 
 \`\`\`typescript
-interface StyleProfile {
+interface WritingTwinProfile {
   sentenceLength: 'short' | 'medium' | 'long' | 'varied'
-  tone: 'formal' | 'semi-formal' | 'conversational'
-  terminologyDensity: 'low' | 'medium' | 'high'
-  voicePreference: 'active' | 'passive' | 'mixed'
   paragraphStructure: 'topic-sentence-first' | 'inductive' | 'deductive' | 'mixed'
-  transitionPatterns: string[]        // Array of transition words/phrases the author uses
-  formality: number                   // 1 (very informal) to 10 (very formal)
-  usesFirstPerson: boolean
-  citationApproach: 'inline-footnote' | 'parenthetical' | 'endnote-heavy' | 'light'  // citation placement/density habit — NOT the academic format (APA/ISNAD/etc.)
-  paragraphLength: 'short' | 'medium' | 'long'
-  usesBlockQuotes: boolean
+  transitionPatterns: string[]        // ~5–10 actual transition words/phrases the author reaches for
   rhetoricalApproach: 'argumentative' | 'descriptive' | 'analytical' | 'comparative'
-  additionalNotes: string             // Free-form observations about distinctive features
+  additionalNotes: string             // pet phrases, rhythm quirks, structural habits not captured above
 }
 \`\`\`
 
@@ -40,10 +36,9 @@ ${sampleText}
 ## Instructions
 
 - Infer \`sentenceLength\` from average words per sentence: short < 15, medium 15–25, long > 25.
-- \`terminologyDensity\` refers to domain-specific or technical vocabulary frequency.
 - \`transitionPatterns\`: list up to 10 actual transition words or phrases observed in the sample.
-- \`formality\`: score 1–10 based on vocabulary complexity, sentence structure, and register.
-- \`additionalNotes\`: describe any distinctive rhetorical features, unusual punctuation habits, or patterns not captured by the structured fields.
+- \`additionalNotes\`: describe distinctive rhetorical features, unusual punctuation habits, or patterns not captured by the structured fields.
+- Do NOT include tone, formality, voice, terminology density, paragraph length, block quotes, or first-person usage — those are project-scoped and asked elsewhere.
 - Return ONLY the JSON object. No markdown, no explanation.`
 }
 
@@ -51,53 +46,46 @@ ${sampleText}
 
 /**
  * Returns a prompt that asks Claude to identify the single most important
- * next question to ask the user in order to complete their style profile.
+ * next question to ask the user in order to complete their Twin profile.
  *
  * Usage:
  *   const prompt = getStyleInterviewPrompt(partialProfile)
- *   const response = await generateJSON<{ question: string; field: keyof StyleProfile }>(prompt)
+ *   const response = await generateJSON<{ question: string; field: keyof WritingTwinProfile }>(prompt)
  */
 export function getStyleInterviewPrompt(
-  currentProfile: Partial<StyleProfile>
+  currentProfile: Partial<WritingTwinProfile>
 ): string {
   const filled = Object.entries(currentProfile)
     .filter(([, v]) => v !== undefined && v !== null)
     .map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`)
     .join('\n')
 
-  const allFields: Array<keyof StyleProfile> = [
+  const allFields: Array<keyof WritingTwinProfile> = [
     'sentenceLength',
-    'tone',
-    'terminologyDensity',
-    'voicePreference',
     'paragraphStructure',
     'transitionPatterns',
-    'formality',
-    'usesFirstPerson',
-    'citationApproach',
-    'paragraphLength',
-    'usesBlockQuotes',
     'rhetoricalApproach',
+    'additionalNotes',
   ]
 
   const missing = allFields.filter(
     (f) => currentProfile[f] === undefined || currentProfile[f] === null
   )
 
-  return `You are helping a writer build their personal style profile for an AI writing assistant.
+  return `You are helping a writer build their personal Writing Twin — only the stable, project-independent parts of their style.
 
-## Already Known Style Attributes
+## Already Known
 ${filled || '  (none yet)'}
 
-## Missing Attributes
-${missing.join(', ')}
+## Missing
+${missing.join(', ') || '(none)'}
 
 ## Task
 Identify the single most important missing attribute and generate one natural, friendly question to ask the writer about it.
 
 Return a JSON object in this exact shape:
 {
-  "field": "<attribute name from Missing Attributes>",
+  "field": "<attribute name from Missing>",
   "question": "<the question to ask the writer, phrased naturally in the language appropriate for an academic writer>",
   "options": ["<option1>", "<option2>", ...]   // optional: include if the answer choices are finite
 }
@@ -108,13 +96,15 @@ Return ONLY the JSON. No markdown, no explanation.`
 // ==================== PARSE STYLE PROFILE ====================
 
 /**
- * Parses a Claude JSON response string into a StyleProfile.
+ * Parses a Claude JSON response string into a WritingTwinProfile.
  * Handles both raw JSON and JSON wrapped in markdown code fences.
+ * Legacy fields from the old 13-field StyleProfile shape are silently
+ * dropped — only the 5 Twin fields are kept.
  *
  * Usage:
  *   const profile = parseStyleProfile(claudeResponseText)
  */
-export function parseStyleProfile(response: string): StyleProfile {
+export function parseStyleProfile(response: string): WritingTwinProfile {
   const clean = response
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
@@ -128,33 +118,16 @@ export function parseStyleProfile(response: string): StyleProfile {
     throw new Error(`Failed to parse style profile JSON.\nRaw:\n${response}`)
   }
 
-  // Apply defaults for any missing optional fields
-  const profile: StyleProfile = {
-    sentenceLength: (raw.sentenceLength as StyleProfile['sentenceLength']) ?? 'varied',
-    tone: (raw.tone as StyleProfile['tone']) ?? 'formal',
-    terminologyDensity:
-      (raw.terminologyDensity as StyleProfile['terminologyDensity']) ?? 'medium',
-    voicePreference:
-      (raw.voicePreference as StyleProfile['voicePreference']) ?? 'mixed',
+  const profile: WritingTwinProfile = {
+    sentenceLength: (raw.sentenceLength as WritingTwinProfile['sentenceLength']) ?? 'varied',
     paragraphStructure:
-      (raw.paragraphStructure as StyleProfile['paragraphStructure']) ??
+      (raw.paragraphStructure as WritingTwinProfile['paragraphStructure']) ??
       'topic-sentence-first',
     transitionPatterns: Array.isArray(raw.transitionPatterns)
       ? (raw.transitionPatterns as string[])
       : [],
-    formality: typeof raw.formality === 'number' ? raw.formality : 7,
-    usesFirstPerson:
-      typeof raw.usesFirstPerson === 'boolean' ? raw.usesFirstPerson : false,
-    citationApproach:
-      (raw.citationApproach as StyleProfile['citationApproach']) ??
-      (raw.citationStyle as StyleProfile['citationApproach']) ??
-      'inline-footnote',
-    paragraphLength:
-      (raw.paragraphLength as StyleProfile['paragraphLength']) ?? 'medium',
-    usesBlockQuotes:
-      typeof raw.usesBlockQuotes === 'boolean' ? raw.usesBlockQuotes : false,
     rhetoricalApproach:
-      (raw.rhetoricalApproach as StyleProfile['rhetoricalApproach']) ?? 'analytical',
+      (raw.rhetoricalApproach as WritingTwinProfile['rhetoricalApproach']) ?? 'analytical',
     additionalNotes:
       typeof raw.additionalNotes === 'string' ? raw.additionalNotes : undefined,
   }

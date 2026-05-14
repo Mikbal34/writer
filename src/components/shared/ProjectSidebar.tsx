@@ -16,6 +16,7 @@ import {
   X,
   Paintbrush,
   BookmarkCheck,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CreditBalance from "@/components/shared/CreditBalance";
@@ -117,6 +118,12 @@ export default function ProjectSidebar({
       href: `/projects/${projectId}/citations`,
       icon: <BookmarkCheck className="w-4 h-4" />,
       statusKey: "writing",
+    },
+    {
+      label: "Stil",
+      href: `/projects/${projectId}/style`,
+      icon: <Sparkles className="w-4 h-4" />,
+      statusKey: "roadmap",
     },
     {
       label: "Art",

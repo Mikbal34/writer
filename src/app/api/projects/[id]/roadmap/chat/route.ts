@@ -289,7 +289,7 @@ const SOURCE_DENSITY_INSTRUCTIONS: Record<SourceDensity, string> = {
 
 function buildSystemPrompt(
   roadmapIndex: ReturnType<typeof buildRoadmapIndex> | null,
-  project: { title: string; topic: string | null; purpose: string | null; audience: string | null; language: string | null; citationFormat: string | null; projectType: string },
+  project: { title: string; topic: string | null; purpose: string | null; audience: string | null; language: string | null; citationFormat: string | null; projectType: string; writingGuidelines?: unknown },
   conversationSummary?: string | null,
   sourceDensity?: SourceDensity
 ): SystemPromptPart[] {
@@ -397,6 +397,23 @@ When you issue a batch of commands:
 
   const projectTypeLabel = project.projectType === 'ACADEMIC' ? 'academic book' : 'creative writing project'
 
+  // Pull the project-style overrides (set during the wizard's Step 4)
+  // out of writingGuidelines and summarise so the AI honours them while
+  // designing the roadmap — e.g. won't draft 1st-person subsection
+  // descriptions when the project has usesFirstPerson=false.
+  const overrides = (() => {
+    const g = project.writingGuidelines
+    if (!g || typeof g !== 'object') return null
+    const o = (g as Record<string, unknown>).styleOverrides
+    return o && typeof o === 'object' ? (o as Record<string, unknown>) : null
+  })()
+  const styleOverridesBlock = overrides
+    ? `\n\nPROJECT STYLE OVERRIDES (already set by the user — respect these when describing/drafting subsections):\n${Object.entries(overrides)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `- ${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+        .join('\n')}`
+    : ''
+
   let staticPart: string
   if (isCreationMode) {
     const creativeWritingPrefsStep = project.projectType !== 'ACADEMIC' ? `
@@ -436,7 +453,7 @@ SOURCE DENSITY: ${SOURCE_DENSITY_INSTRUCTIONS[sourceDensity ?? 'normal']}
 3. After gathering enough information, create a comprehensive roadmap (4-6 chapters, 2-3 sections per chapter, 2-3 subsections per section). Do NOT add any sources.
 4. Use update_project command to update project information.`
 
-    staticPart = `You are a ${projectTypeLabel} planning assistant. The user has created a new project with no roadmap yet.
+    staticPart = `You are a ${projectTypeLabel} planning assistant. The user has created a new project with no roadmap yet.${styleOverridesBlock}
 
 Your tasks:
 1. If topic, purpose, or target audience are not specified, ask the user questions about the ${projectTypeLabel}.
@@ -452,7 +469,7 @@ PAGE ESTIMATION RULES:
 
 ${commonRules}`
   } else {
-    staticPart = `You are a ${projectTypeLabel} planning assistant. The user wants to make changes to the existing roadmap.
+    staticPart = `You are a ${projectTypeLabel} planning assistant. The user wants to make changes to the existing roadmap.${styleOverridesBlock}
 
 Your task: Understand the user's request, use get_chapter_detail to fetch the relevant chapter(s), then generate the commands to apply the changes.
 
@@ -975,7 +992,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
-      select: { id: true, title: true, topic: true, purpose: true, audience: true, language: true, citationFormat: true, projectType: true },
+      select: { id: true, title: true, topic: true, purpose: true, audience: true, language: true, citationFormat: true, projectType: true, writingGuidelines: true },
     })
 
     if (!project) {

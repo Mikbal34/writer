@@ -10,35 +10,65 @@ import type {
 } from '@prisma/client'
 
 // ==================== STYLE PROFILE ====================
+//
+// Style data is split into two layers:
+//
+//   1. WritingTwinProfile — the user's *personal* writing habits that
+//      don't change across projects (sentence rhythm, paragraph reflex,
+//      pet transitions, rhetorical leaning). Lives on UserStyleProfile,
+//      reused across every project the author opens.
+//
+//   2. ProjectStyleOverrides — per-project rules that override the Twin
+//      at writing time (tone, formality, 1st person, voice, terminology
+//      density, paragraph length, block quotes, citation density).
+//      A thesis and a popular essay share one Twin but their overrides
+//      diverge sharply. Stored in Project.writingGuidelines.styleOverrides.
+//
+// Atıf placement (inline / parenthetical / endnote) used to live in the
+// Twin but is now fully governed by Project.citationFormat (APA / ISNAD /
+// MLA / Chicago) so we don't carry a redundant field.
 
-export interface StyleProfile {
-  /** Average sentence length preference: 'short' | 'medium' | 'long' | 'varied' */
-  sentenceLength: 'short' | 'medium' | 'long' | 'varied'
-  /** Overall tone: 'formal' | 'semi-formal' | 'conversational' */
-  tone: 'formal' | 'semi-formal' | 'conversational'
-  /** Density of domain-specific terminology: 'low' | 'medium' | 'high' */
-  terminologyDensity: 'low' | 'medium' | 'high'
-  /** Grammatical voice preference: 'active' | 'passive' | 'mixed' */
-  voicePreference: 'active' | 'passive' | 'mixed'
-  /** How paragraphs are structured: 'topic-sentence-first' | 'inductive' | 'deductive' | 'mixed' */
-  paragraphStructure: 'topic-sentence-first' | 'inductive' | 'deductive' | 'mixed'
+export interface WritingTwinProfile {
+  /** Average sentence length preference */
+  sentenceLength?: 'short' | 'medium' | 'long' | 'varied'
+  /** How paragraphs are structured */
+  paragraphStructure?: 'topic-sentence-first' | 'inductive' | 'deductive' | 'mixed'
   /** Common transition patterns the author uses (e.g., ['furthermore', 'however', 'in contrast']) */
-  transitionPatterns: string[]
-  /** Overall formality level 1–10 */
-  formality: number
-  /** Whether the author uses first person */
-  usesFirstPerson: boolean
-  /** Author's citation placement/density habit — NOT the academic format (APA/ISNAD/etc., set per-project). */
-  citationApproach: 'inline-footnote' | 'parenthetical' | 'endnote-heavy' | 'light'
-  /** Typical paragraph length: 'short' (1-3 sentences) | 'medium' (4-6) | 'long' (7+) */
-  paragraphLength: 'short' | 'medium' | 'long'
-  /** Whether the author uses block quotes for long citations */
-  usesBlockQuotes: boolean
-  /** Rhetorical approach: 'argumentative' | 'descriptive' | 'analytical' | 'comparative' */
-  rhetoricalApproach: 'argumentative' | 'descriptive' | 'analytical' | 'comparative'
+  transitionPatterns?: string[]
+  /** Rhetorical approach */
+  rhetoricalApproach?: 'argumentative' | 'descriptive' | 'analytical' | 'comparative'
   /** Additional style notes captured from sample analysis */
   additionalNotes?: string
+}
 
+export interface ProjectStyleOverrides {
+  /** Overall tone for this project */
+  tone?: 'formal' | 'semi-formal' | 'conversational'
+  /** Overall formality level 1–10 */
+  formality?: number
+  /** Whether the AI should write in first person */
+  usesFirstPerson?: boolean
+  /** Grammatical voice preference */
+  voicePreference?: 'active' | 'passive' | 'mixed'
+  /** Density of domain-specific terminology */
+  terminologyDensity?: 'low' | 'medium' | 'high'
+  /** How many citations per paragraph the AI should target */
+  citationDensity?: 'light' | 'normal' | 'dense'
+  /** Typical paragraph length */
+  paragraphLength?: 'short' | 'medium' | 'long'
+  /** Whether the AI should set off long quotations as block quotes */
+  usesBlockQuotes?: boolean
+  /** Free-text notes the user wants the AI to honour for this project */
+  notes?: string
+}
+
+/**
+ * Deprecated unified shape. Older code reads this; new code should
+ * pick `WritingTwinProfile` or `ProjectStyleOverrides` explicitly.
+ * Kept as a wide union so persisted JSON (UserStyleProfile.profile /
+ * Project.styleProfile) still parses without migration.
+ */
+export interface StyleProfile extends WritingTwinProfile, ProjectStyleOverrides {
   // ---- Narrative / Creative Writing Fields (CREATIVE) ----
 
   /** Narrative point of view */
@@ -49,7 +79,7 @@ export interface StyleProfile {
   dialogueStyle?: 'sparse' | 'moderate' | 'dialogue_heavy'
   /** Story pacing */
   pacing?: 'slow' | 'moderate' | 'fast'
-  /** Mood / atmosphere description (e.g. "dark and brooding", "lighthearted", "tense") */
+  /** Mood / atmosphere description */
   moodAtmosphere?: string
   /** Target age group */
   targetAgeGroup?: 'children' | 'young_adult' | 'adult'
@@ -179,8 +209,10 @@ export interface WritingContext {
   citationFormat: CitationFormat
   /** Project type: ACADEMIC or CREATIVE */
   projectType: ProjectType
-  /** Style profile (may be partial) */
+  /** Style profile (may be partial) — Writing Twin (stable personal habits) */
   styleProfile: Partial<StyleProfile> | null
-  /** Any additional writing guidelines */
+  /** Project-scoped style overrides — hard rules that win over the Twin */
+  styleOverrides: Partial<ProjectStyleOverrides> | null
+  /** Any other free-form writingGuidelines (non-styleOverrides namespace) */
   writingGuidelines: string | null
 }

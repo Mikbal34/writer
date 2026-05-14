@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
       language,
       projectType,
       styleProfileId,
+      styleOverrides,
       seriesId,
       seriesOrder,
       newSeriesName,
@@ -65,6 +67,9 @@ export async function POST(req: NextRequest) {
       language?: string
       projectType?: ProjectType
       styleProfileId?: string
+      // Project-scoped writing style overrides — set in the wizard's
+      // Step 4 (ProjectStyleSetup). Stored under writingGuidelines.
+      styleOverrides?: Record<string, unknown> | null
       seriesId?: string | null
       seriesOrder?: number | null
       newSeriesName?: string | null
@@ -155,6 +160,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Persist styleOverrides under the existing writingGuidelines JSON
+    // bucket (namespace: styleOverrides). The bucket is also used by the
+    // creative pipeline for `artStyle`; coexistence is fine — we only
+    // populate styleOverrides at creation time. Cast through Prisma's
+    // InputJsonValue contract.
+    const writingGuidelines: Prisma.InputJsonValue | undefined =
+      styleOverrides && typeof styleOverrides === 'object'
+        ? ({ styleOverrides } as Prisma.InputJsonValue)
+        : undefined
+
     const project = await prisma.project.create({
       data: {
         userId,
@@ -168,6 +183,7 @@ export async function POST(req: NextRequest) {
         language: language ?? 'en',
         status: 'roadmap',
         ...(verifiedStyleProfileId && { styleProfileId: verifiedStyleProfileId }),
+        ...(writingGuidelines && { writingGuidelines }),
         ...(resolvedSeriesId && {
           seriesId: resolvedSeriesId,
           seriesOrder: resolvedSeriesOrder,

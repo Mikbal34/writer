@@ -51,25 +51,24 @@ export default function StyleProfileCard({
         </div>
 
         {hasProfile && data ? (
+          // Twin card only surfaces the 5 stable fields. Legacy
+          // (tone/formality/voice) might still be present on older
+          // profiles in the DB — we let them sit and read only the
+          // Twin-relevant pills here.
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {data.tone && (
-              <span className="px-2 py-0.5 rounded-sm bg-[#C9A84C]/10 font-ui text-[10px] text-[#5C4A32]">
-                {String(data.tone)}
-              </span>
-            )}
-            {data.formality !== undefined && (
-              <span className="px-2 py-0.5 rounded-sm bg-[#C9A84C]/10 font-ui text-[10px] text-[#5C4A32]">
-                Formality: {String(data.formality)}/10
-              </span>
-            )}
             {data.sentenceLength && (
               <span className="px-2 py-0.5 rounded-sm bg-[#C9A84C]/10 font-ui text-[10px] text-[#5C4A32]">
                 {String(data.sentenceLength)} sentences
               </span>
             )}
-            {data.voicePreference && (
+            {data.paragraphStructure && (
               <span className="px-2 py-0.5 rounded-sm bg-[#C9A84C]/10 font-ui text-[10px] text-[#5C4A32]">
-                {String(data.voicePreference)} voice
+                {String(data.paragraphStructure)}
+              </span>
+            )}
+            {data.rhetoricalApproach && (
+              <span className="px-2 py-0.5 rounded-sm bg-[#C9A84C]/10 font-ui text-[10px] text-[#5C4A32]">
+                {String(data.rhetoricalApproach)}
               </span>
             )}
           </div>

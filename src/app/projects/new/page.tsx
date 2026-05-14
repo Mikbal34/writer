@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, BookOpen, Quote, Palette, Eye } from "lucide-react";
+import { Check, Loader2, BookOpen, Quote, Palette, Eye, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -15,7 +15,8 @@ import CitationSelector, {
   type CitationFormat,
 } from "@/components/onboarding/CitationSelector";
 import StyleLearning from "@/components/onboarding/StyleLearning";
-import type { StyleProfile } from "@/types/project";
+import ProjectStyleSetup from "@/components/onboarding/ProjectStyleSetup";
+import type { ProjectStyleOverrides, StyleProfile } from "@/types/project";
 
 // ==================== STEP CONFIG ====================
 
@@ -41,12 +42,18 @@ const STEPS: Step[] = [
   },
   {
     id: 3,
-    label: "Writing Style",
+    label: "Writing Twin",
     icon: <Palette className="h-4 w-4" />,
-    description: "Teach the AI your voice",
+    description: "Genel yazı sitilin — projeler arası sabit kalan kişisel kalıtım",
   },
   {
     id: 4,
+    label: "Proje Stili",
+    icon: <Sparkles className="h-4 w-4" />,
+    description: "Bu projeye özel ton, resmiyet, atıf yoğunluğu vb.",
+  },
+  {
+    id: 5,
     label: "Review",
     icon: <Eye className="h-4 w-4" />,
     description: "Confirm and create your project",
@@ -79,6 +86,7 @@ export default function NewProjectPage() {
   const [basics, setBasics] = useState<BookBasicsData>(INITIAL_BASICS);
   const [citationFormat, setCitationFormat] = useState<CitationFormat>("ISNAD");
   const [styleProfile, setStyleProfile] = useState<Partial<StyleProfile> | null>(null);
+  const [styleOverrides, setStyleOverrides] = useState<Partial<ProjectStyleOverrides> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
   function canProceed(): boolean {
@@ -124,6 +132,7 @@ export default function NewProjectPage() {
           language: basics.language,
           citationFormat,
           styleProfile: styleProfile ?? undefined,
+          styleOverrides: styleOverrides ?? undefined,
         }),
       });
 
@@ -240,10 +249,25 @@ export default function NewProjectPage() {
             )}
 
             {currentStep === 4 && (
+              <ProjectStyleSetup
+                basics={{
+                  projectType: "ACADEMIC",
+                  language: basics.language,
+                  audience: basics.audience,
+                  topic: basics.topic,
+                  citationFormat,
+                }}
+                value={styleOverrides}
+                onChange={setStyleOverrides}
+              />
+            )}
+
+            {currentStep === 5 && (
               <ReviewStep
                 basics={basics}
                 citationFormat={citationFormat}
                 styleProfile={styleProfile}
+                styleOverrides={styleOverrides}
               />
             )}
           </CardContent>
@@ -260,7 +284,7 @@ export default function NewProjectPage() {
           </Button>
 
           <div className="flex items-center gap-2">
-            {currentStep === 3 && (
+            {(currentStep === 3 || currentStep === 4) && (
               <Button
                 variant="ghost"
                 onClick={handleNext}
@@ -304,10 +328,12 @@ function ReviewStep({
   basics,
   citationFormat,
   styleProfile,
+  styleOverrides,
 }: {
   basics: BookBasicsData;
   citationFormat: CitationFormat;
   styleProfile: Partial<StyleProfile> | null;
+  styleOverrides: Partial<ProjectStyleOverrides> | null;
 }) {
   const languageMap: Record<string, string> = {
     tr: "Turkish",
@@ -334,34 +360,87 @@ function ReviewStep({
         <ReviewRow label="Format" value={citationFormat} />
       </ReviewSection>
 
-      <ReviewSection title="Writing Style">
+      <ReviewSection title="Writing Twin (kişisel sitil)">
         {styleProfile && Object.keys(styleProfile).length > 0 ? (
           <>
-            {styleProfile.tone && (
-              <ReviewRow label="Tone" value={styleProfile.tone} />
-            )}
             {styleProfile.sentenceLength && (
               <ReviewRow
-                label="Sentence length"
+                label="Cümle uzunluğu"
                 value={styleProfile.sentenceLength}
               />
             )}
-            {styleProfile.formality !== undefined && (
+            {styleProfile.paragraphStructure && (
               <ReviewRow
-                label="Formality"
-                value={`${styleProfile.formality}/10`}
+                label="Paragraf yapısı"
+                value={styleProfile.paragraphStructure}
               />
             )}
             {styleProfile.rhetoricalApproach && (
               <ReviewRow
-                label="Rhetorical approach"
+                label="Retorik yaklaşım"
                 value={styleProfile.rhetoricalApproach}
               />
             )}
           </>
         ) : (
           <p className="text-sm text-muted-foreground italic">
-            No style profile set — you can add one later in project settings.
+            Twin profili boş — yazma sırasında genel varsayılanlar kullanılacak.
+          </p>
+        )}
+      </ReviewSection>
+
+      <ReviewSection title="Proje Stili (bu projeye özel)">
+        {styleOverrides && Object.keys(styleOverrides).length > 0 ? (
+          <>
+            {styleOverrides.tone && (
+              <ReviewRow label="Ton" value={styleOverrides.tone} />
+            )}
+            {typeof styleOverrides.formality === "number" && (
+              <ReviewRow
+                label="Resmiyet"
+                value={`${styleOverrides.formality}/10`}
+              />
+            )}
+            {styleOverrides.usesFirstPerson !== undefined && (
+              <ReviewRow
+                label="1. tekil"
+                value={styleOverrides.usesFirstPerson ? "izinli" : "kapalı"}
+              />
+            )}
+            {styleOverrides.voicePreference && (
+              <ReviewRow
+                label="Etken/edilgen"
+                value={styleOverrides.voicePreference}
+              />
+            )}
+            {styleOverrides.terminologyDensity && (
+              <ReviewRow
+                label="Terim yoğunluğu"
+                value={styleOverrides.terminologyDensity}
+              />
+            )}
+            {styleOverrides.citationDensity && (
+              <ReviewRow
+                label="Atıf yoğunluğu"
+                value={styleOverrides.citationDensity}
+              />
+            )}
+            {styleOverrides.paragraphLength && (
+              <ReviewRow
+                label="Paragraf uzunluğu"
+                value={styleOverrides.paragraphLength}
+              />
+            )}
+            {styleOverrides.usesBlockQuotes !== undefined && (
+              <ReviewRow
+                label="Blok alıntı"
+                value={styleOverrides.usesBlockQuotes ? "açık" : "kapalı"}
+              />
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">
+            Proje stili ayarlanmadı — sonradan Stil sekmesinden düzenleyebilirsin.
           </p>
         )}
       </ReviewSection>

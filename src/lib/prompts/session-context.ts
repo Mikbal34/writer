@@ -18,7 +18,7 @@ import type {
   SectionWithSubsections,
   ChapterWithSections,
 } from '@/types/project'
-import type { StyleProfile } from '@/types/project'
+import type { ProjectStyleOverrides, StyleProfile } from '@/types/project'
 import type { CitationFormat } from '@prisma/client'
 
 // ==================== MAIN EXPORTED FUNCTION ====================
@@ -115,10 +115,40 @@ export async function buildSessionContext(
       : project.styleProfile
       ? (project.styleProfile as Partial<StyleProfile>)
       : null,
-    writingGuidelines: project.writingGuidelines
-      ? JSON.stringify(project.writingGuidelines)
-      : null,
+    // writingGuidelines is the generic JSON bucket; we now pull two
+    // namespaces out of it for the writing prompt:
+    //   - styleOverrides  → per-project style knobs (hard rules)
+    //   - other keys      → legacy free-form guidelines + artStyle (preview)
+    styleOverrides: extractStyleOverrides(project.writingGuidelines),
+    writingGuidelines: stringifyRemainingGuidelines(project.writingGuidelines),
   }
+}
+
+/**
+ * Pull the `styleOverrides` namespace out of writingGuidelines if it
+ * exists. Returns null when no overrides are set so the writing prompt
+ * can cleanly omit the section.
+ */
+export function extractStyleOverrides(
+  guidelines: unknown,
+): Partial<ProjectStyleOverrides> | null {
+  if (!guidelines || typeof guidelines !== 'object') return null
+  const g = guidelines as Record<string, unknown>
+  const o = g.styleOverrides
+  if (!o || typeof o !== 'object') return null
+  return o as Partial<ProjectStyleOverrides>
+}
+
+/**
+ * Serialize the remaining (non-styleOverrides) parts of writingGuidelines
+ * so older prompt code keeps working without re-seeing the style fields.
+ * Returns null if nothing is left after dropping styleOverrides.
+ */
+export function stringifyRemainingGuidelines(guidelines: unknown): string | null {
+  if (!guidelines || typeof guidelines !== 'object') return null
+  const g = { ...(guidelines as Record<string, unknown>) }
+  delete g.styleOverrides
+  return Object.keys(g).length > 0 ? JSON.stringify(g) : null
 }
 
 // ==================== POSITION DETERMINATION ====================

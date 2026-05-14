@@ -1,5 +1,11 @@
 "use client";
 
+// Writing Twin preview — only renders the 5 stable Twin fields.
+// Project-dependent fields (tone, formality, 1st-person, voice,
+// terminology density, paragraph length, block quotes) are intentionally
+// omitted here even when present on a legacy profile, since they're
+// gathered per-project under writingGuidelines.styleOverrides.
+
 import type { StyleProfile } from "@/types/project";
 
 interface StyleProfilePreviewProps {
@@ -15,28 +21,6 @@ function Pill({ label, value }: { label: string; value: string }) {
       <span className="px-2 py-0.5 rounded-sm bg-[#C9A84C]/10 font-ui text-xs text-[#2D1F0E]">
         {value}
       </span>
-    </div>
-  );
-}
-
-function FormalityBar({ value }: { value: number }) {
-  const pct = Math.min(100, Math.max(0, (value / 10) * 100));
-  return (
-    <div className="flex items-center gap-2">
-      <span className="font-ui text-[10px] text-[#8a7a65] w-28 shrink-0">
-        Formality
-      </span>
-      <div className="flex-1 flex items-center gap-2">
-        <div className="flex-1 h-1.5 rounded-full bg-[#d4c9b5]/40 overflow-hidden">
-          <div
-            className="h-full rounded-full bg-[#C9A84C]"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <span className="font-ui text-xs text-[#2D1F0E] w-8 text-right">
-          {value}/10
-        </span>
-      </div>
     </div>
   );
 }
@@ -74,49 +58,14 @@ export default function StyleProfilePreview({
       </h3>
 
       <div className="space-y-2.5">
-        {profile.tone && <Pill label="Tone" value={profile.tone} />}
         {profile.sentenceLength && (
           <Pill label="Sentence Length" value={profile.sentenceLength} />
-        )}
-        {profile.formality !== undefined && (
-          <FormalityBar value={profile.formality} />
-        )}
-        {profile.voicePreference && (
-          <Pill label="Voice" value={profile.voicePreference} />
-        )}
-        {profile.terminologyDensity && (
-          <Pill label="Terminology" value={profile.terminologyDensity} />
         )}
         {profile.paragraphStructure && (
           <Pill label="Paragraph" value={profile.paragraphStructure} />
         )}
-        {profile.paragraphLength && (
-          <Pill label="Para. Length" value={profile.paragraphLength} />
-        )}
         {profile.rhetoricalApproach && (
           <Pill label="Rhetoric" value={profile.rhetoricalApproach} />
-        )}
-        {(profile.citationApproach ??
-          (profile as { citationStyle?: string }).citationStyle) && (
-          <Pill
-            label="Citation Approach"
-            value={
-              profile.citationApproach ??
-              (profile as { citationStyle?: string }).citationStyle!
-            }
-          />
-        )}
-        {profile.usesFirstPerson !== undefined && (
-          <Pill
-            label="First Person"
-            value={profile.usesFirstPerson ? "Yes" : "No"}
-          />
-        )}
-        {profile.usesBlockQuotes !== undefined && (
-          <Pill
-            label="Block Quotes"
-            value={profile.usesBlockQuotes ? "Yes" : "No"}
-          />
         )}
       </div>
 

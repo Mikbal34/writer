@@ -3,27 +3,25 @@ import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
 import { checkCredits, deductCredits } from '@/lib/credits'
-import type { StyleProfile } from '@/types/project'
+import type { WritingTwinProfile } from '@/types/project'
 
 type RouteContext = { params: Promise<{ profileId: string }> }
 
-const STYLE_ANALYSIS_SYSTEM = `You are an expert literary analyst specialising in academic and scholarly writing styles.
-Analyse the provided writing sample and return a JSON object with these fields:
+const STYLE_ANALYSIS_SYSTEM = `You are an expert literary analyst.
+Analyse the provided writing sample and return a JSON object describing the
+author's *Writing Twin* — only the stable, project-independent parts of
+their voice:
 {
   "sentenceLength": "short" | "medium" | "long" | "varied",
-  "tone": "formal" | "semi-formal" | "conversational",
-  "terminologyDensity": "low" | "medium" | "high",
-  "voicePreference": "active" | "passive" | "mixed",
   "paragraphStructure": "topic-sentence-first" | "inductive" | "deductive" | "mixed",
-  "transitionPatterns": ["list of common transition phrases used"],
-  "formality": 1-10,
-  "usesFirstPerson": true | false,
-  "citationApproach": "inline-footnote" | "parenthetical" | "endnote-heavy" | "light",
-  "paragraphLength": "short" | "medium" | "long",
-  "usesBlockQuotes": true | false,
+  "transitionPatterns": ["~5-10 transition phrases the author actually uses"],
   "rhetoricalApproach": "argumentative" | "descriptive" | "analytical" | "comparative",
-  "additionalNotes": "brief notes about the style"
+  "additionalNotes": "brief notes about distinctive features"
 }
+Do NOT infer tone, formality, terminology density, voice preference,
+paragraph length, block-quote habit, or first-person usage — those are
+project-scoped and gathered separately.
+
 Respond with valid JSON only. No markdown fences, no explanation.`
 
 // POST /api/style-profiles/[profileId]/analyze
@@ -60,8 +58,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       )
     }
 
-    const prompt = `Analyse the following writing sample and return a StyleProfile JSON object:\n\n---\n${sampleText}\n---`
-    const result = await generateJSONWithUsage<StyleProfile>(prompt, STYLE_ANALYSIS_SYSTEM, { model: HAIKU })
+    const prompt = `Analyse the following writing sample and return a WritingTwinProfile JSON object:\n\n---\n${sampleText}\n---`
+    const result = await generateJSONWithUsage<WritingTwinProfile>(prompt, STYLE_ANALYSIS_SYSTEM, { model: HAIKU })
 
     await deductCredits(
       session.user.id,
