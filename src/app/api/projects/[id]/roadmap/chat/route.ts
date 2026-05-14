@@ -231,12 +231,17 @@ async function handleToolCallFn(
     const query = toolInput.query as string | undefined
     const limit = Math.min((toolInput.limit as number) || 20, 50)
 
-    // Only surface library entries that have a usable PDF. Metadata-only
-    // entries are filtered out because they cannot be grounded during writing
-    // and would invite hallucinated citations.
+    // Only surface library entries that have usable PDF content somewhere
+    // — either a standalone file, a stored filePath, or at least one cilt
+    // ready on a multi-volume parent (parents themselves carry no PDF).
+    // Metadata-only entries stay filtered out to avoid hallucinated cites.
     const where: Record<string, unknown> = {
       userId,
-      OR: [{ pdfStatus: 'ready' }, { filePath: { not: null } }],
+      OR: [
+        { pdfStatus: 'ready' },
+        { filePath: { not: null } },
+        { volumes: { some: { pdfStatus: 'ready' } } },
+      ],
     }
     if (query) {
       where.AND = [

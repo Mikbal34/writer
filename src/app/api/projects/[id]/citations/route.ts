@@ -156,7 +156,22 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
             title: true,
             year: true,
             libraryEntryId: true,
-            libraryEntry: { select: { id: true, filePath: true, pdfStatus: true } },
+            libraryEntry: {
+              select: {
+                id: true,
+                filePath: true,
+                pdfStatus: true,
+                // Probe for at least one ready cilt so multi-volume
+                // parents (whose own pdfStatus is 'none') still report
+                // hasChunks=true. Avoids the UI greying citation rows
+                // for classical works that are fully RAG-ready.
+                volumes: {
+                  where: { pdfStatus: 'ready' },
+                  select: { id: true },
+                  take: 1,
+                },
+              },
+            },
           },
         })
     const bibById = new Map(bibs.map((b) => [b.id, b]))
@@ -187,8 +202,12 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
                 title: bib.title,
                 year: bib.year,
                 libraryEntryId: bib.libraryEntryId,
-                hasPdf: Boolean(bib.libraryEntry?.filePath),
-                hasChunks: bib.libraryEntry?.pdfStatus === 'ready',
+                hasPdf:
+                  Boolean(bib.libraryEntry?.filePath) ||
+                  (bib.libraryEntry?.volumes?.length ?? 0) > 0,
+                hasChunks:
+                  bib.libraryEntry?.pdfStatus === 'ready' ||
+                  (bib.libraryEntry?.volumes?.length ?? 0) > 0,
               }
             : null,
         }

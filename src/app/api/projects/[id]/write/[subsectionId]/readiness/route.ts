@@ -56,7 +56,19 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
               },
             },
             libraryEntry: {
-              select: { id: true, pdfStatus: true },
+              select: {
+                id: true,
+                pdfStatus: true,
+                // Multi-volume parents have pdfStatus='none' themselves;
+                // their cilts carry the real PDFs. Probe whether any
+                // cilt is ready so we don't falsely mark the entry
+                // un-usable when only the parent row is checked.
+                volumes: {
+                  where: { pdfStatus: 'ready' },
+                  select: { id: true },
+                  take: 1,
+                },
+              },
             },
           },
         },
@@ -68,7 +80,9 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       const hasProjectSource =
         !!bib.sourceId && !!bib.source?.processed && (bib.source?._count?.chunks ?? 0) > 0
       const hasLibraryEntryReady =
-        !!bib.libraryEntryId && bib.libraryEntry?.pdfStatus === 'ready'
+        !!bib.libraryEntryId &&
+        (bib.libraryEntry?.pdfStatus === 'ready' ||
+          (bib.libraryEntry?.volumes?.length ?? 0) > 0)
       return {
         mappingId: m.id,
         title: bib.title,
