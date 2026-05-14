@@ -3,10 +3,18 @@ PDF text extraction using PyMuPDF (fitz), with pypdf fallback for PDFs that
 PyMuPDF chokes on (malformed xref tables, unusual encoders, etc.).
 Extracts text page by page with optional header/footer cleaning.
 Falls back to OCR (tesseract) for scanned/image-based PDFs.
+
+OCR is parallelized across CPU cores via ProcessPoolExecutor — Arabic
+classical works regularly need 30+ s per page in tesseract, so serial
+processing of a 500-page book hits the Node→Python fetch timeout long
+before extraction completes. Splitting the work across workers keeps
+the whole book under the 10-min HTTP budget for any reasonable size.
 """
 
 import io
+import os
 import re
+from concurrent.futures import ProcessPoolExecutor
 
 import fitz  # PyMuPDF
 
@@ -32,9 +40,55 @@ _MIN_TEXT_CHARS = 30
 # Latin scripts with Turkish diacritics or Arabic transliteration.
 _OCR_LANGS = "eng+tur+ara"
 
+# Cap parallelism so we don't OOM Railway. Each worker holds one
+# 300-DPI page bitmap (≈30-60 MB for a typical academic page) plus a
+# tesseract process. With small Railway plans 4 is a safe ceiling;
+# override via OCR_WORKERS if the host has more headroom.
+_OCR_WORKERS = max(1, int(os.environ.get("OCR_WORKERS", "4")))
+
+
+def _ocr_page_at_path(args: tuple[str, int]) -> tuple[int, str]:
+    """Worker for ProcessPoolExecutor — opens the doc, renders one page,
+    runs OCR. Module-level so it's picklable across processes."""
+    file_path, page_num = args
+    try:
+        doc = fitz.open(file_path)
+        try:
+            page = doc.load_page(page_num)
+            pix = page.get_pixmap(dpi=300)
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            try:
+                text = pytesseract.image_to_string(img, lang=_OCR_LANGS)
+            except pytesseract.TesseractError:
+                # Missing traineddata for one of the languages — fall
+                # back to English-only rather than dropping the page.
+                text = pytesseract.image_to_string(img, lang="eng")
+            return (page_num, text)
+        finally:
+            doc.close()
+    except Exception:
+        return (page_num, "")
+
+
+def _parallel_ocr(file_path: str, page_nums: list[int]) -> dict[int, str]:
+    """OCR many pages in parallel; returns {page_num: text}."""
+    if not page_nums or not HAS_OCR:
+        return {}
+    workers = min(len(page_nums), _OCR_WORKERS)
+    results: dict[int, str] = {}
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        for page_num, text in executor.map(
+            _ocr_page_at_path,
+            [(file_path, p) for p in page_nums],
+        ):
+            results[page_num] = text
+    return results
+
 
 def _ocr_page(page: fitz.Page) -> str:
-    """Render a page to image and run OCR via tesseract."""
+    """Render a single page to image and run OCR — kept for callers that
+    still hold a fitz.Page open (notably the existing single-page
+    fallback paths). Prefer `_parallel_ocr` for bulk extraction."""
     if not HAS_OCR:
         return ""
     pix = page.get_pixmap(dpi=300)
@@ -42,9 +96,6 @@ def _ocr_page(page: fitz.Page) -> str:
     try:
         return pytesseract.image_to_string(img, lang=_OCR_LANGS)
     except pytesseract.TesseractError:
-        # Fall back to English-only if the multi-lang traineddata is
-        # missing in this image (shouldn't happen in our Dockerfile,
-        # but resilient against ad-hoc deployments).
         return pytesseract.image_to_string(img, lang="eng")
 
 
@@ -108,14 +159,20 @@ def get_total_pages(file_path: str) -> int:
 def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
     """
     Extract text from a PDF file, returning content for each page.
-    Tries PyMuPDF first; on failure or if a page throws, falls back to pypdf.
-    If native text extraction yields little/no text, falls back to OCR.
+
+    Two-pass strategy: PyMuPDF over every page to grab native text fast,
+    then a single parallel-OCR pass for the pages whose native text fell
+    below MIN_TEXT_CHARS. This decouples the cheap step from the expensive
+    one and lets the OCR pool saturate multiple cores instead of running
+    page-by-page in lockstep.
+
+    Falls back to pypdf for PDFs PyMuPDF can't open or that explode mid-
+    document.
     """
     # Primary path: PyMuPDF.
     try:
         doc = fitz.open(file_path)
     except Exception:
-        # PyMuPDF can't even open this PDF — go straight to pypdf.
         return _pypdf_extract_pages(file_path, max_pages)
 
     try:
@@ -132,18 +189,33 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
         if max_pages > 0:
             page_count = min(max_pages, page_count)
 
-        pages: list[dict] = []
+        # Pass 1: native text for every page.
+        native_texts: dict[int, str] = {}
         mupdf_errors = 0
         for page_num in range(page_count):
             try:
-                page = doc.load_page(page_num)
-                raw_text = page.get_text("text") or ""
-                if len(raw_text.strip()) < _MIN_TEXT_CHARS and use_ocr:
-                    raw_text = _ocr_page(page)
+                raw_text = doc.load_page(page_num).get_text("text") or ""
+                native_texts[page_num] = raw_text
             except Exception:
                 mupdf_errors += 1
-                continue
+                native_texts[page_num] = ""
 
+        # Pass 2: parallel OCR the pages that came back too thin to be real
+        # text. Only kicks in when the sample already flagged the doc as
+        # OCR-needing — pure native-text PDFs skip this entirely.
+        ocr_texts: dict[int, str] = {}
+        if use_ocr:
+            pages_to_ocr = [
+                p for p, text in native_texts.items()
+                if len(text.strip()) < _MIN_TEXT_CHARS
+            ]
+            if pages_to_ocr:
+                ocr_texts = _parallel_ocr(file_path, pages_to_ocr)
+
+        # Stitch + clean.
+        pages: list[dict] = []
+        for page_num in range(page_count):
+            raw_text = ocr_texts.get(page_num) or native_texts.get(page_num, "")
             cleaned = _clean_page_text(raw_text)
             if cleaned.strip():
                 pages.append({
