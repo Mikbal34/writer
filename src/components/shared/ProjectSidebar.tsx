@@ -87,11 +87,20 @@ export default function ProjectSidebar({
     return () => clearInterval(interval);
   }, [checkActiveOps]);
 
+  // Ordered as the natural workflow: set the project's voice first,
+  // plan the roadmap, gather sources, write, check citations, then
+  // (creative) design + (everyone) export. Dashboard stays on top.
   const allNavItems: NavItem[] = [
     {
       label: "Dashboard",
       href: `/projects/${projectId}`,
       icon: <LayoutDashboard className="w-4 h-4" />,
+      statusKey: "roadmap",
+    },
+    {
+      label: "Stil",
+      href: `/projects/${projectId}/style`,
+      icon: <Sparkles className="w-4 h-4" />,
       statusKey: "roadmap",
     },
     {
@@ -118,12 +127,6 @@ export default function ProjectSidebar({
       href: `/projects/${projectId}/citations`,
       icon: <BookmarkCheck className="w-4 h-4" />,
       statusKey: "writing",
-    },
-    {
-      label: "Stil",
-      href: `/projects/${projectId}/style`,
-      icon: <Sparkles className="w-4 h-4" />,
-      statusKey: "roadmap",
     },
     {
       label: "Art",
