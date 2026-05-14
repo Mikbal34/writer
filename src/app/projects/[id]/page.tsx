@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/dateUtils";
 import { Ornament, PageNumber, SectionTitle, SpineShadow } from "@/components/shared/BookElements";
 import { FadeUp, FadeIn, FadeRight, StaggerItem, AnimatedBar } from "@/components/shared/Animations";
+import DeleteProjectButton from "@/components/projects/DeleteProjectButton";
 
 interface ProjectPageProps {
   params: Promise<{ id: string }>;
@@ -166,16 +167,23 @@ export default async function ProjectDashboardPage({
       <div className="flex-1 p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0">
         {/* Header: title, status badge, date */}
         <FadeIn delay={0.2}>
-          <header className="mb-6">
-            <h1 className="font-display text-3xl md:text-4xl font-bold text-ink tracking-tight leading-tight">
-              {project.title}
-            </h1>
-            {project.description && (
-              <p className="font-body text-sm text-muted-foreground mt-1">{project.description}</p>
-            )}
-            <span className="font-ui text-xs text-muted-foreground mt-2 block">
-              {formatDate(new Date(project.createdAt))}
-            </span>
+          <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <h1 className="font-display text-3xl md:text-4xl font-bold text-ink tracking-tight leading-tight">
+                {project.title}
+              </h1>
+              {project.description && (
+                <p className="font-body text-sm text-muted-foreground mt-1">{project.description}</p>
+              )}
+              <span className="font-ui text-xs text-muted-foreground mt-2 block">
+                {formatDate(new Date(project.createdAt))}
+              </span>
+            </div>
+            <DeleteProjectButton
+              projectId={project.id}
+              projectTitle={project.title}
+              variant="button"
+            />
           </header>
         </FadeIn>
 

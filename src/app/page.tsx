@@ -17,6 +17,7 @@ import {
   Crown,
 } from "lucide-react";
 import NewProjectDialog from "@/components/NewProjectDialog";
+import DeleteProjectButton from "@/components/projects/DeleteProjectButton";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import SignOutButton from "@/components/shared/SignOutButton";
@@ -141,12 +142,21 @@ export default async function HomePage() {
 
     return (
       <FadeUpLarge key={project.id} delay={index * 0.08}>
-        <Link
-          href={`/projects/${project.id}`}
-          className="group block"
-          style={{ perspective: "800px" }}
-          aria-label={`Go to ${project.title}`}
-        >
+        <div className="group relative" style={{ perspective: "800px" }}>
+          {/* Kebab menu floats over the card; outside the Link so its
+              click doesn't propagate to the navigation anchor. */}
+          <div className="absolute top-2.5 right-2.5 z-20">
+            <DeleteProjectButton
+              projectId={project.id}
+              projectTitle={project.title}
+              variant="icon"
+            />
+          </div>
+          <Link
+            href={`/projects/${project.id}`}
+            className="block"
+            aria-label={`Go to ${project.title}`}
+          >
           <article className="book-card relative overflow-hidden rounded-sm">
             {/* Spine */}
             <div
@@ -245,6 +255,7 @@ export default async function HomePage() {
             </div>
           </article>
         </Link>
+        </div>
       </FadeUpLarge>
     );
   }
