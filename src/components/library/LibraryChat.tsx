@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Send,
   Plus,
@@ -26,10 +27,15 @@ interface ChatMessage {
   content: string;
   sources?: Array<{
     marker: number;
+    /** "note" rows come from the user's own LibraryNote table; the UI
+     *  badges them differently so the reader knows the AI is quoting
+     *  their own commentary, not a primary text. */
+    kind?: "chunk" | "note";
     entryId: string;
     title: string;
     authorSurname: string | null;
     page: number | null;
+    noteTitle?: string | null;
   }>;
   scope?: Scope;
   entryIds?: string[];
@@ -56,6 +62,7 @@ function newSessionId(): string {
 }
 
 export default function LibraryChat() {
+  const searchParams = useSearchParams();
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>(() => newSessionId());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -68,6 +75,16 @@ export default function LibraryChat() {
   const [librarySearch, setLibrarySearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
+
+  // Folder / tag scope chips. Deep links (?collectionId / ?tagId from
+  // the EntryDetailPanel's "Bu kitaba sor" or from the sidebar) pre-fill
+  // these on first render so the chat starts scoped correctly.
+  const [activeCollectionIds, setActiveCollectionIds] = useState<string[]>([]);
+  const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
+  const [scopeLabels, setScopeLabels] = useState<{ collections: Record<string, string>; tags: Record<string, string> }>({
+    collections: {},
+    tags: {},
+  });
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -127,6 +144,60 @@ export default function LibraryChat() {
     fetchAllEntries();
   }, [fetchAllEntries]);
 
+  // Deep-link initialisation. Runs once after the library list and
+  // tag/collection metadata load so we can label the scope chips.
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current) return;
+    const entryId = searchParams.get("entryId");
+    const collectionId = searchParams.get("collectionId");
+    const tagId = searchParams.get("tagId");
+    if (!entryId && !collectionId && !tagId) return;
+    if (allEntries.length === 0) return; // wait for library
+    deepLinkApplied.current = true;
+
+    if (entryId && allEntries.some((e) => e.id === entryId)) {
+      setSelectedIds(new Set([entryId]));
+    }
+    if (collectionId) {
+      // Best-effort label fetch — non-blocking; chip shows id otherwise.
+      fetch("/api/library/collections")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data) return;
+          const found = (data.collections as Array<{ id: string; name: string }>).find(
+            (c) => c.id === collectionId,
+          );
+          if (found) {
+            setScopeLabels((prev) => ({
+              ...prev,
+              collections: { ...prev.collections, [collectionId]: found.name },
+            }));
+          }
+        })
+        .catch(() => undefined);
+      setActiveCollectionIds([collectionId]);
+    }
+    if (tagId) {
+      fetch("/api/library/tags")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!Array.isArray(data)) return;
+          const found = (data as Array<{ id: string; name: string }>).find(
+            (t) => t.id === tagId,
+          );
+          if (found) {
+            setScopeLabels((prev) => ({
+              ...prev,
+              tags: { ...prev.tags, [tagId]: found.name },
+            }));
+          }
+        })
+        .catch(() => undefined);
+      setActiveTagIds([tagId]);
+    }
+  }, [searchParams, allEntries]);
+
   // ── Load a specific session's messages ─────────────────────────
   const loadSession = useCallback(async (sessionId: string) => {
     setIsLoadingHistory(true);
@@ -185,10 +256,13 @@ export default function LibraryChat() {
     const trimmed = input.trim();
     if (!trimmed || isStreaming) return;
 
-    // Implicit scope: empty selection = whole library, otherwise the
-    // picked subset. The old explicit "single" mode was redundant —
-    // the user just checks one box.
-    const scope: Scope = selectedIds.size === 0 ? "all" : "picked";
+    // Implicit scope: any of entry-picks, folder chips, or tag chips
+    // narrows the search. Empty = whole library.
+    const hasScopeNarrowing =
+      selectedIds.size > 0 ||
+      activeCollectionIds.length > 0 ||
+      activeTagIds.length > 0;
+    const scope: Scope = hasScopeNarrowing ? "picked" : "all";
     const entryIds = scope === "all" ? [] : Array.from(selectedIds);
     const userMsg: ChatMessage = { role: "user", content: trimmed, scope, entryIds };
     setMessages((prev) => [...prev, userMsg, { role: "assistant", content: "" }]);
@@ -207,6 +281,8 @@ export default function LibraryChat() {
           message: trimmed,
           scope,
           entryIds,
+          collectionIds: activeCollectionIds,
+          tagIds: activeTagIds,
         }),
         signal: abortController.signal,
       });
@@ -484,10 +560,57 @@ export default function LibraryChat() {
                 className="flex-1 bg-transparent outline-none font-ui text-xs text-[#2D1F0E] placeholder:text-[#a89a82]"
               />
             </div>
+            {/* Folder + tag scope chips (set via deep-link, e.g.
+                /library/chat?collectionId=… from a folder header).
+                Each chip can be removed; cleared chips fall the chat
+                back to whole-library mode. */}
+            {(activeCollectionIds.length > 0 || activeTagIds.length > 0) && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {activeCollectionIds.map((cid) => (
+                  <span
+                    key={`col-${cid}`}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-[#C9A84C]/15 border border-[#C9A84C]/40 font-ui text-[10px] text-[#5C4A32]"
+                  >
+                    📁 {scopeLabels.collections[cid] ?? "klasör"}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveCollectionIds((p) => p.filter((x) => x !== cid))
+                      }
+                      className="text-[#8a7a65] hover:text-red-700 ml-0.5"
+                      aria-label="Klasörü kaldır"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {activeTagIds.map((tid) => (
+                  <span
+                    key={`tag-${tid}`}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-[#e8dfd0] border border-[#d4c9b5] font-ui text-[10px] text-[#5C4A32]"
+                  >
+                    #{scopeLabels.tags[tid] ?? "etiket"}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveTagIds((p) => p.filter((x) => x !== tid))
+                      }
+                      className="text-[#8a7a65] hover:text-red-700 ml-0.5"
+                      aria-label="Etiketi kaldır"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
             <p className="font-body text-[10px] text-[#a89a82] mt-2 leading-snug">
-              {selectedIds.size === 0
+              {selectedIds.size === 0 && activeCollectionIds.length === 0 && activeTagIds.length === 0
                 ? "Hiç seçim yoksa tüm kütüphaneye sorulur."
-                : `${selectedIds.size} PDF'e odaklanılıyor.`}
+                : selectedIds.size > 0
+                  ? `${selectedIds.size} PDF'e odaklanılıyor.`
+                  : `Seçili klasör/etiketteki kaynaklara sorulur.`}
             </p>
           </div>
 
@@ -633,19 +756,30 @@ function MessageBubble({
         </div>
         {!isUser && message.sources && message.sources.length > 0 && (
           <div className="mt-3 pt-2 border-t border-[#d4c9b5]/40 flex flex-wrap gap-1.5">
-            {message.sources.map((src) => (
-              <span
-                key={`${src.entryId}-${src.marker}`}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-[#FAF3E3] border border-[#C9A84C]/30 font-ui text-[10px] text-[#8a5a1a]"
-                title={`${src.title}${src.page !== null ? ` (s. ${src.page})` : ""}`}
-              >
-                <span className="font-mono">[{src.marker}]</span>
-                <span className="line-clamp-1 max-w-[200px]">
-                  {src.authorSurname ?? src.title}
-                  {src.page !== null ? `, s. ${src.page}` : ""}
+            {message.sources.map((src) => {
+              const isNote = src.kind === "note";
+              return (
+                <span
+                  key={`${src.entryId}-${src.marker}-${isNote ? "n" : "c"}`}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm font-ui text-[10px] ${
+                    isNote
+                      ? "bg-[#e8dfd0] border border-[#d4c9b5] text-[#5C4A32]"
+                      : "bg-[#FAF3E3] border border-[#C9A84C]/30 text-[#8a5a1a]"
+                  }`}
+                  title={`${src.title}${src.noteTitle ? ` — ${src.noteTitle}` : ""}${
+                    src.page !== null ? ` (s. ${src.page})` : ""
+                  }`}
+                >
+                  <span className="font-mono">[{src.marker}]</span>
+                  {isNote && <span className="font-ui">📝</span>}
+                  <span className="line-clamp-1 max-w-[200px]">
+                    {src.authorSurname ?? src.title}
+                    {src.noteTitle ? ` — ${src.noteTitle}` : ""}
+                    {src.page !== null ? `, s. ${src.page}` : ""}
+                  </span>
                 </span>
-              </span>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

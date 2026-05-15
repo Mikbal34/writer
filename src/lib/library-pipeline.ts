@@ -863,6 +863,37 @@ export async function reprocessLibraryVolume(
 }
 
 /**
+ * Generate + persist the pgvector embedding for a single LibraryNote.
+ *
+ * Notes are short relative to PDF chunks (a few sentences to a few
+ * paragraphs), so we embed the full `contentText` in one shot rather
+ * than splitting it. Used by Notes POST/PATCH via setImmediate so the
+ * write returns instantly and the embed catches up in the background;
+ * the chat retrieval UNION simply skips notes whose embedding is still
+ * NULL.
+ */
+export async function embedLibraryNote(noteId: string): Promise<void> {
+  const note = await prisma.libraryNote.findUnique({
+    where: { id: noteId },
+    select: { id: true, contentText: true },
+  })
+  if (!note) return
+  const text = (note.contentText ?? '').trim()
+  if (!text) return
+
+  const vectors = await embedBatch([text])
+  if (!vectors || vectors.length === 0) {
+    console.warn('[library-pipeline] embedLibraryNote failed for', noteId)
+    return
+  }
+  await prisma.$executeRawUnsafe(
+    `UPDATE "LibraryNote" SET embedding = $1::vector WHERE id = $2`,
+    JSON.stringify(vectors[0]),
+    note.id,
+  )
+}
+
+/**
  * Background kickoff for a batch of URL-based jobs (bulk-add-from-search).
  * When userId is passed we also emit a BackgroundJob so the navbar bell
  * can surface progress and completion.

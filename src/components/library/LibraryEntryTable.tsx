@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, BookCopy, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown, X, GraduationCap, Users, Link as LinkIcon, Globe } from "lucide-react";
+import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, BookCopy, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown, X, GraduationCap, Users, Link as LinkIcon, Globe, FileText, FolderClosed } from "lucide-react";
 import { StaggerItem, FadeUpLarge } from "@/components/shared/Animations";
 import { toast } from "sonner";
 import VolumesDialog from "@/components/library/VolumesDialog";
@@ -88,7 +88,7 @@ export interface LibraryEntryRow {
  doi?: string | null;
  url?: string | null;
  tags: Array<{ tag: { id: string; name: string } }>;
- _count?: { bibliographies: number; volumes?: number };
+ _count?: { bibliographies: number; volumes?: number; notes?: number; collections?: number };
  /** Per-volume statuses — used to render an aggregate badge on
   *  multi-volume parents (which carry no pdfStatus of their own). */
  volumes?: Array<{ pdfStatus: string }>;
@@ -105,6 +105,11 @@ export interface LibraryEntryRow {
 
 interface LibraryEntryTableProps {
  entries: LibraryEntryRow[];
+ /** Called when the user clicks a row. The new 3-pane shell uses this
+  *  to fill the right-side detail panel; legacy callers (if any) can
+  *  still pass `onEdit` and have the old behaviour by forwarding the
+  *  same handler. */
+ onSelect?: (entry: LibraryEntryRow) => void;
  onEdit: (entry: LibraryEntryRow) => void;
  onDelete: (id: string) => void;
  onPdfAttached?: (entryId: string) => void;
@@ -133,11 +138,18 @@ const ENTRY_TYPE_COLORS: Record<string, { color: string; accent: string; spine: 
 
 export default function LibraryEntryTable({
  entries,
+ onSelect,
  onEdit,
  onDelete,
  onPdfAttached,
  viewMode = "list",
 }: LibraryEntryTableProps) {
+ // Default behaviour: if the parent didn't pass onSelect, fall back to
+ // opening the edit dialog so legacy callers keep working unchanged.
+ const handleRowActivate = (entry: LibraryEntryRow) => {
+  if (onSelect) onSelect(entry);
+  else onEdit(entry);
+ };
  const [uploadingId, setUploadingId] = useState<string | null>(null);
  const fileInputRef = useRef<HTMLInputElement>(null);
  const [pendingEntryId, setPendingEntryId] = useState<string | null>(null);
@@ -229,7 +241,15 @@ export default function LibraryEntryTable({
       <FadeUpLarge key={entry.id} delay={i * 0.05}>
       <button
        type="button"
-       onClick={() => onEdit(entry)}
+       onClick={() => handleRowActivate(entry)}
+       draggable
+       onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "copy";
+        e.dataTransfer.setData(
+         "application/x-library-entry",
+         JSON.stringify([entry.id]),
+        );
+       }}
        className="group text-left w-full"
        style={{ perspective: "800px" }}
       >
@@ -388,11 +408,19 @@ export default function LibraryEntryTable({
      <div
       role="button"
       tabIndex={0}
-      onClick={() => onEdit(entry)}
+      draggable
+      onDragStart={(e) => {
+       e.dataTransfer.effectAllowed = "copy";
+       e.dataTransfer.setData(
+        "application/x-library-entry",
+        JSON.stringify([entry.id]),
+       );
+      }}
+      onClick={() => handleRowActivate(entry)}
       onKeyDown={(e) => {
        if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        onEdit(entry);
+        handleRowActivate(entry);
        }
       }}
       className="group flex items-center gap-3 py-3.5 border-b border-dashed border-[#d4c9b5]/40 hover:bg-[#e8dfd0]/15 px-4 w-full text-left transition-colors last:border-b-0 cursor-pointer"
@@ -488,6 +516,28 @@ export default function LibraryEntryTable({
        <span className="flex items-center gap-0.5 font-ui text-[10px] text-forest shrink-0" title="Linked projects">
         <Link2 className="h-3 w-3" />
         {entry._count!.bibliographies}
+       </span>
+      )}
+
+      {/* Note + collection badges — surface the "research depth" of an
+          entry at a glance: how many notes you've taken on it, how many
+          folders contain it. */}
+      {(entry._count?.notes ?? 0) > 0 && (
+       <span
+        className="flex items-center gap-0.5 font-ui text-[10px] text-[#5C4A32] shrink-0"
+        title={`${entry._count!.notes} not`}
+       >
+        <FileText className="h-3 w-3" />
+        {entry._count!.notes}
+       </span>
+      )}
+      {(entry._count?.collections ?? 0) > 0 && (
+       <span
+        className="flex items-center gap-0.5 font-ui text-[10px] text-[#C9A84C] shrink-0"
+        title={`${entry._count!.collections} klasör`}
+       >
+        <FolderClosed className="h-3 w-3" />
+        {entry._count!.collections}
        </span>
       )}
 

@@ -11,6 +11,10 @@ export async function GET(req: NextRequest) {
     const search = url.searchParams.get('search') ?? ''
     const entryType = url.searchParams.get('entryType') ?? ''
     const tagId = url.searchParams.get('tagId') ?? ''
+    // New: filter by collection. When set, only entries in that collection
+    // are returned. Combines with tagId via AND so "Kelam klasörü AND
+    // tez tag'i" works naturally.
+    const collectionId = url.searchParams.get('collectionId') ?? ''
     const page = parseInt(url.searchParams.get('page') ?? '1', 10)
     const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
     const skip = (page - 1) * limit
@@ -33,12 +37,25 @@ export async function GET(req: NextRequest) {
       where.tags = { some: { tagId } }
     }
 
+    if (collectionId) {
+      where.collections = { some: { collectionId } }
+    }
+
     const [entries, total] = await Promise.all([
       prisma.libraryEntry.findMany({
         where,
         include: {
           tags: { include: { tag: true } },
-          _count: { select: { bibliographies: true, volumes: true } },
+          _count: {
+            select: {
+              bibliographies: true,
+              volumes: true,
+              // Surface note + collection counts so the entry table can
+              // show 🗂 N and 📝 N badges without a second roundtrip.
+              notes: true,
+              collections: true,
+            },
+          },
           // pdfStatus per volume powers the aggregate badge on
           // multi-volume parent rows (no per-row `pdfStatus` of its own).
           volumes: { select: { pdfStatus: true } },

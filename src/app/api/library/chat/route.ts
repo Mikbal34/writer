@@ -21,17 +21,24 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
-const TOP_K = 8
+// Split the retrieval budget between PDF chunks (raw source text) and
+// user-authored notes (curated, often higher-signal commentary). 8 + 4
+// stays under the same token budget as the previous 8-chunk-only setup
+// while letting notes carry weight.
+const TOP_K_CHUNKS = 8
+const TOP_K_NOTES = 4
 const MAX_HISTORY_MESSAGES = 12
 
 type Scope = 'all' | 'picked' | 'single'
 
 interface RetrievedChunk {
+  kind: 'chunk' | 'note'
   entryId: string
   title: string
   authorSurname: string | null
   pageNumber: number | null
   content: string
+  noteTitle: string | null
 }
 
 async function embedQueryText(text: string): Promise<number[] | null> {
@@ -57,11 +64,15 @@ export async function POST(req: NextRequest) {
       message?: string
       scope?: Scope
       entryIds?: string[]
+      collectionIds?: string[]
+      tagIds?: string[]
     }
     const sessionId = (body.sessionId ?? '').trim()
     const message = (body.message ?? '').trim()
     const scope: Scope = body.scope === 'picked' || body.scope === 'single' ? body.scope : 'all'
-    const entryIds = (body.entryIds ?? []).filter((id) => typeof id === 'string')
+    let entryIds = (body.entryIds ?? []).filter((id) => typeof id === 'string')
+    const collectionIds = (body.collectionIds ?? []).filter((id) => typeof id === 'string')
+    const tagIds = (body.tagIds ?? []).filter((id) => typeof id === 'string')
 
     if (!sessionId || !message) {
       return new Response(JSON.stringify({ error: 'sessionId and message are required' }), {
@@ -69,11 +80,44 @@ export async function POST(req: NextRequest) {
         headers: { 'Content-Type': 'application/json' },
       })
     }
-    if (scope !== 'all' && entryIds.length === 0) {
+    if (scope !== 'all' && entryIds.length === 0 && collectionIds.length === 0 && tagIds.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'Picked / single scope requires at least one entryId' }),
+        JSON.stringify({ error: 'Picked / single scope requires at least one entryId, collectionId or tagId' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } },
       )
+    }
+
+    // Resolve folder + tag scopes into the explicit entry id list that
+    // the SQL retrieval queries can plug into ANY($1::text[]). We union
+    // with any explicit entryIds the caller already passed.
+    if (scope !== 'all' && (collectionIds.length > 0 || tagIds.length > 0)) {
+      const filters: Record<string, unknown>[] = []
+      if (collectionIds.length > 0) {
+        filters.push({ collections: { some: { collectionId: { in: collectionIds } } } })
+      }
+      if (tagIds.length > 0) {
+        filters.push({ tags: { some: { tagId: { in: tagIds } } } })
+      }
+      const resolved = await prisma.libraryEntry.findMany({
+        where: {
+          userId: session.user.id,
+          OR: filters,
+        },
+        select: { id: true },
+      })
+      const merged = new Set<string>([...entryIds, ...resolved.map((e) => e.id)])
+      entryIds = [...merged]
+      if (entryIds.length === 0) {
+        // No matching entries — bail with an empty assistant response
+        // rather than running an unscoped query against the whole lib.
+        return new Response(
+          JSON.stringify({
+            error:
+              'Seçili klasör/etikette uygun kaynak bulunamadı.',
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
     }
 
     // Credits gate.
@@ -102,51 +146,102 @@ export async function POST(req: NextRequest) {
       { chatType: 'general', keepRecent: MAX_HISTORY_MESSAGES },
     )
 
-    // Embed the user's question and retrieve the top-K most similar
-    // library chunks. Filter by entryIds when scope is picked/single.
+    // Embed the user's question once and run two ordered retrievals:
+    // top-K PDF chunks and top-K user notes. We keep them as separate
+    // queries (instead of one big UNION) so each side can use its own
+    // ORDER BY ... <-> $1 index pass cleanly; the JS layer merges and
+    // tags rows with kind="chunk" | "note" for the prompt.
     const queryVec = await embedQueryText(message)
-    let retrieved: RetrievedChunk[] = []
+    let retrievedChunks: RetrievedChunk[] = []
+    let retrievedNotes: RetrievedChunk[] = []
     if (queryVec) {
       const vecLiteral = JSON.stringify(queryVec)
-      retrieved =
+      retrievedChunks =
         scope === 'all'
           ? await prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT le.id AS "entryId",
+              SELECT 'chunk' AS kind,
+                     le.id AS "entryId",
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      lc."pageNumber" AS "pageNumber",
-                     lc.content AS content
+                     lc.content AS content,
+                     NULL AS "noteTitle"
               FROM "LibraryChunk" lc
               JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
               WHERE le."userId" = ${session.user.id}
                 AND lc.embedding IS NOT NULL
               ORDER BY lc.embedding <-> ${vecLiteral}::vector
-              LIMIT ${TOP_K}
+              LIMIT ${TOP_K_CHUNKS}
             `
           : await prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT le.id AS "entryId",
+              SELECT 'chunk' AS kind,
+                     le.id AS "entryId",
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      lc."pageNumber" AS "pageNumber",
-                     lc.content AS content
+                     lc.content AS content,
+                     NULL AS "noteTitle"
               FROM "LibraryChunk" lc
               JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
               WHERE le."userId" = ${session.user.id}
                 AND le.id = ANY(${entryIds}::text[])
                 AND lc.embedding IS NOT NULL
               ORDER BY lc.embedding <-> ${vecLiteral}::vector
-              LIMIT ${TOP_K}
+              LIMIT ${TOP_K_CHUNKS}
+            `
+      retrievedNotes =
+        scope === 'all'
+          ? await prisma.$queryRaw<RetrievedChunk[]>`
+              SELECT 'note' AS kind,
+                     le.id AS "entryId",
+                     le.title AS title,
+                     le."authorSurname" AS "authorSurname",
+                     ln."pageNumber" AS "pageNumber",
+                     ln."contentText" AS content,
+                     ln.title AS "noteTitle"
+              FROM "LibraryNote" ln
+              JOIN "LibraryEntry" le ON ln."libraryEntryId" = le.id
+              WHERE ln."userId" = ${session.user.id}
+                AND ln.embedding IS NOT NULL
+              ORDER BY ln.embedding <-> ${vecLiteral}::vector
+              LIMIT ${TOP_K_NOTES}
+            `
+          : await prisma.$queryRaw<RetrievedChunk[]>`
+              SELECT 'note' AS kind,
+                     le.id AS "entryId",
+                     le.title AS title,
+                     le."authorSurname" AS "authorSurname",
+                     ln."pageNumber" AS "pageNumber",
+                     ln."contentText" AS content,
+                     ln.title AS "noteTitle"
+              FROM "LibraryNote" ln
+              JOIN "LibraryEntry" le ON ln."libraryEntryId" = le.id
+              WHERE ln."userId" = ${session.user.id}
+                AND le.id = ANY(${entryIds}::text[])
+                AND ln.embedding IS NOT NULL
+              ORDER BY ln.embedding <-> ${vecLiteral}::vector
+              LIMIT ${TOP_K_NOTES}
             `
     }
+    // Interleave: notes first (curated, usually more relevant) then
+    // chunks. The prompt block stays in the merged order so [1]..[N]
+    // numbering matches what we send to the model.
+    const retrieved: RetrievedChunk[] = [...retrievedNotes, ...retrievedChunks]
 
     // Build prompt — number each excerpt so the model can cite [1], [2]…
+    // Notes are marked with NOT: tag so the model can introduce them
+    // differently ("kendi notunda şunu yazmıştın..." vs "kitapta...").
     const excerptBlock =
       retrieved.length === 0
-        ? '(Bu konuda kütüphanede embedded chunk bulunamadı.)'
+        ? '(Bu konuda kütüphanede embedded içerik bulunamadı.)'
         : retrieved
             .map((c, i) => {
               const author = c.authorSurname ? `${c.authorSurname}, ` : ''
               const page = c.pageNumber !== null ? ` (s. ${c.pageNumber})` : ''
+              if (c.kind === 'note') {
+                const noteLabel = c.noteTitle ? ` — "${c.noteTitle}"` : ''
+                return `[${i + 1}] NOT (${author}${c.title}${noteLabel}${page})\n${c.content}`
+              }
               return `[${i + 1}] ${author}${c.title}${page}\n${c.content}`
             })
             .join('\n\n')
@@ -182,10 +277,12 @@ export async function POST(req: NextRequest) {
     const encoder = new TextEncoder()
     const sources = retrieved.map((c, i) => ({
       marker: i + 1,
+      kind: c.kind,
       entryId: c.entryId,
       title: c.title,
       authorSurname: c.authorSurname,
       page: c.pageNumber,
+      noteTitle: c.noteTitle,
     }))
 
     const stream = new ReadableStream({

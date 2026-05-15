@@ -51,6 +51,9 @@ model User {
   libraryEntries     LibraryEntry[]
   libraryChatMessages LibraryChatMessage[]
   libraryTags        LibraryTag[]
+  libraryCollections LibraryCollection[]
+  libraryNotes       LibraryNote[]
+  libraryHighlights  LibraryHighlight[]
   zoteroConnection   ZoteroConnection?
   creditBalance      Int                 @default(1500)
   creditTransactions CreditTransaction[]
@@ -519,6 +522,9 @@ model LibraryEntry {
   tags           LibraryEntryTag[]
   chunks         LibraryChunk[]
   volumes        LibraryEntryVolume[]
+  collections    LibraryEntryCollection[]
+  notes          LibraryNote[]
+  highlights     LibraryHighlight[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -546,6 +552,8 @@ model LibraryEntryVolume {
 
   libraryEntry LibraryEntry   @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
   chunks       LibraryChunk[]
+  notes        LibraryNote[]
+  highlights   LibraryHighlight[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -572,6 +580,125 @@ model LibraryChunk {
 
   @@index([libraryEntryId])
   @@index([volumeId])
+}
+
+// User-defined hierarchical folder over library entries. Unlike tags
+// which are flat, collections nest (parent → child) and a single entry
+// can sit in many folders. Used for Zotero-style organisation:
+// "Tez/Kelam/Mâtürîdî", "Tez/Tasavvuf", "Modern okumalar" etc.
+//
+// Sort order is user-controlled within each parent — drag to reorder
+// in the sidebar. Deleting a folder cascades to its children but
+// LEAVES the entries themselves alone (junction rows are removed via
+// LibraryEntryCollection's cascade on the collectionId side).
+model LibraryCollection {
+  id        String   @id @default(cuid())
+  userId    String
+  parentId  String?
+  name      String
+  color     String?
+  sortOrder Int      @default(0)
+
+  user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   LibraryCollection?       @relation("CollectionTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children LibraryCollection[]      @relation("CollectionTree")
+  entries  LibraryEntryCollection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Uniqueness lives within a parent, including the null parent at the
+  // tree root. "Kelam" at root + "Kelam" under "Tez" coexist; two
+  // "Kelam"s under the same parent do not.
+  @@unique([userId, parentId, name])
+  @@index([userId])
+  @@index([parentId])
+}
+
+// Many-to-many join: an entry can live in any number of folders.
+// addedAt lets the UI show "Added to 'Kelam' 3 days ago" if we ever
+// want it.
+model LibraryEntryCollection {
+  libraryEntryId String
+  collectionId   String
+  addedAt        DateTime @default(now())
+
+  libraryEntry LibraryEntry      @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
+  collection   LibraryCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([libraryEntryId, collectionId])
+  @@index([collectionId])
+}
+
+// User-authored notes attached to a library entry. Stored as Tiptap
+// JSON in `content` (rich text + formatting + headings + lists + block
+// quotes + highlights) plus a flattened plaintext `contentText` for
+// pgvector embedding + full-text search.
+//
+// volumeId is optional: for multi-volume works (Tabari Tafsir, etc.)
+// notes can be anchored to a specific cilt; the parent-level note has
+// volumeId = NULL.
+//
+// pageNumber is optional: notes captured from a PDF highlight remember
+// the page they came from so the UI can jump back. Free-form notes
+// don't set it.
+//
+// pinnedFromChatSessionId is set when the note was created by clicking
+// "📌 Nota Kaydet" on a library chat message — lets the UI link back
+// to the original conversation.
+//
+// Same vector(768) dimension as LibraryChunk so the chat retrieval
+// query can UNION the two embedding tables in one ORDER BY ... <-> $1.
+model LibraryNote {
+  id                      String   @id @default(cuid())
+  libraryEntryId          String
+  volumeId                String?
+  userId                  String
+  title                   String?
+  content                 Json
+  contentText             String   @db.Text
+  embedding               Unsupported("vector(768)")?
+  pageNumber              Int?
+  pinnedFromChatSessionId String?
+
+  libraryEntry LibraryEntry        @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
+  volume       LibraryEntryVolume? @relation(fields: [volumeId], references: [id], onDelete: SetNull)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  highlights   LibraryHighlight[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([libraryEntryId])
+  @@index([userId])
+  @@index([volumeId])
+}
+
+// PDF highlights: a user selects text on a page, we save the selected
+// quote + the bounding rectangles (normalised 0-1 to the page size so
+// they survive zoom and viewport changes). Each highlight can optionally
+// be paired with a LibraryNote — the "Highlight + Not" floating action
+// creates both at once and links them.
+model LibraryHighlight {
+  id             String   @id @default(cuid())
+  libraryEntryId String
+  volumeId       String?
+  noteId         String?
+  userId         String
+  pageNumber     Int
+  text           String   @db.Text
+  rangeRects     Json     // [{ x, y, w, h }] in 0-1 page-relative units
+  color          String   @default("#FFEB3B")
+  createdAt      DateTime @default(now())
+
+  libraryEntry LibraryEntry        @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
+  volume       LibraryEntryVolume? @relation(fields: [volumeId], references: [id], onDelete: SetNull)
+  note         LibraryNote?        @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([libraryEntryId, pageNumber])
+  @@index([userId])
+  @@index([noteId])
 }
 
 // "Chat with your PDFs" feature — turns the user's library into a
