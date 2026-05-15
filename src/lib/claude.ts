@@ -296,6 +296,71 @@ export interface JSONResult<T> {
   outputTokens: number
 }
 
+/**
+ * Like generateJSONWithUsage but with extended-thinking enabled —
+ * Claude reasons in a scratchpad before emitting the JSON answer. Used
+ * for analysis tasks where pattern recognition matters more than
+ * latency (e.g. Writing Twin extraction from prose samples).
+ *
+ * The thinking block is consumed silently — only the final text block
+ * is parsed as JSON.
+ */
+export async function generateJSONExtendedWithUsage<T = unknown>(
+  prompt: string,
+  systemPrompt?: string,
+  options?: { model?: string; thinkingBudgetTokens?: number; maxTokens?: number },
+): Promise<JSONResult<T>> {
+  const client = createClaudeClient()
+
+  const jsonSystemPrompt = [
+    systemPrompt,
+    'You must respond with valid JSON only. Do not include markdown code fences, explanations, or any text outside of the JSON object.',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+
+  // Extended thinking requires temperature=1 and budget < max_tokens.
+  const thinkingBudget = options?.thinkingBudgetTokens ?? 8000
+  const maxTokens = options?.maxTokens ?? Math.max(thinkingBudget + 4096, 16384)
+
+  const stream = await client.messages.stream({
+    model: options?.model ?? SONNET,
+    max_tokens: maxTokens,
+    temperature: 1,
+    thinking: {
+      type: 'enabled',
+      budget_tokens: thinkingBudget,
+    },
+    system: jsonSystemPrompt,
+    messages: [{ role: 'user', content: prompt }],
+  })
+
+  const response = await stream.finalMessage()
+
+  const textBlock = response.content.find((block) => block.type === 'text')
+  if (!textBlock || textBlock.type !== 'text') {
+    throw new Error('Claude returned no text content (extended thinking)')
+  }
+
+  const raw = textBlock.text.trim()
+  const jsonString = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+
+  try {
+    return {
+      data: JSON.parse(jsonString) as T,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    }
+  } catch {
+    throw new Error(
+      `Failed to parse Claude (extended) response as JSON.\nRaw response:\n${raw}`,
+    )
+  }
+}
+
 export async function generateJSONWithUsage<T = unknown>(
   prompt: string,
   systemPrompt?: string,
