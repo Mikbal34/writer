@@ -21,8 +21,18 @@ import {
   BookOpen,
 } from "lucide-react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import NotesTab from "./NotesTab";
+import HighlightsTab from "./HighlightsTab";
 import type { LibraryEntryRow } from "./LibraryEntryTable";
+
+// pdf.js worker + react-pdf are heavy; lazy-load so the rest of the
+// library page stays light. Loaded only when the user opens the PDF
+// tab on the right panel.
+const PdfViewerWithHighlights = dynamic(
+  () => import("./PdfViewerWithHighlights"),
+  { ssr: false, loading: () => null },
+);
 
 interface EntryDetailPanelProps {
   entry: LibraryEntryRow;
@@ -47,7 +57,20 @@ export default function EntryDetailPanel({
 }: EntryDetailPanelProps) {
   const [tab, setTab] = useState<Tab>("notes");
   const [volumes, setVolumes] = useState<VolumeOption[]>([]);
+  // Cross-tab signals: clicking a highlight in HighlightsTab flips us
+  // to PDF and asks the viewer to jump to that page; saving a highlight
+  // in the PDF tab bumps highlightRefreshKey so HighlightsTab refetches.
+  const [pdfTargetPage, setPdfTargetPage] = useState<number | null>(null);
+  const [highlightRefreshKey, setHighlightRefreshKey] = useState(0);
   const hasVolumes = (entry._count?.volumes ?? 0) > 0;
+  // For multi-volume entries the user picks a cilt; default to the
+  // first one. PDF viewer + highlight queries scope to that volumeId.
+  const [activeVolumeId, setActiveVolumeId] = useState<string | null>(null);
+  useEffect(() => {
+    if (volumes.length > 0 && !activeVolumeId) {
+      setActiveVolumeId(volumes[0].id);
+    }
+  }, [volumes, activeVolumeId]);
 
   // Load the entry's volumes only if it's multi-volume; otherwise the
   // notes tab hides its "Cilt" picker.
@@ -169,27 +192,53 @@ export default function EntryDetailPanel({
           />
         )}
         {tab === "highlights" && (
-          <div className="px-4 py-8 text-center font-body text-sm text-[#8a7a65]">
-            Highlight desteği bir sonraki sürümde geliyor.
-          </div>
+          <HighlightsTab
+            entryId={entry.id}
+            refreshKey={highlightRefreshKey}
+            onJumpToPage={(p) => {
+              setPdfTargetPage(p);
+              setTab("pdf");
+            }}
+          />
         )}
         {tab === "pdf" && (
-          <div className="px-4 py-8 text-center font-body text-sm text-[#8a7a65]">
-            {entry.filePath && entry.fileType === "pdf" ? (
+          <div className="p-3">
+            {(entry.filePath && entry.fileType === "pdf") || hasVolumes ? (
               <>
-                PDF'i şimdilik yeni sekmede aç:{" "}
-                <a
-                  href={`/api/library/${entry.id}/pdf`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#2D1F0E] underline"
-                >
-                  /api/library/{entry.id}/pdf
-                </a>
-                . Highlight'lı viewer Faz 3'te.
+                {hasVolumes && volumes.length > 1 && (
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+                      Cilt
+                    </span>
+                    <select
+                      value={activeVolumeId ?? ""}
+                      onChange={(e) =>
+                        setActiveVolumeId(e.target.value || null)
+                      }
+                      className="px-1.5 py-0.5 rounded-sm border border-[#d4c9b5] bg-white font-ui text-xs text-[#2D1F0E]"
+                    >
+                      {volumes.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          Cilt {v.volumeNumber}
+                          {v.label ? ` — ${v.label}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <PdfViewerWithHighlights
+                  entryId={entry.id}
+                  volumeId={hasVolumes ? activeVolumeId : null}
+                  targetPage={pdfTargetPage}
+                  onHighlightsChanged={() =>
+                    setHighlightRefreshKey((k) => k + 1)
+                  }
+                />
               </>
             ) : (
-              <>Bu kaynak için yüklü bir PDF yok.</>
+              <div className="py-8 text-center font-body text-sm text-[#8a7a65]">
+                Bu kaynak için yüklü bir PDF yok.
+              </div>
             )}
           </div>
         )}

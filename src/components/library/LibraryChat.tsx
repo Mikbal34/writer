@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+import PinNoteButton from "./PinNoteButton";
 
 type Scope = "all" | "picked" | "single";
 
@@ -476,6 +477,8 @@ export default function LibraryChat() {
                     message={m}
                     isStreaming={isStreaming}
                     isLast={i === messages.length - 1}
+                    sessionId={currentSessionId}
+                    allEntries={allEntries}
                   />
                 ))}
               </div>
@@ -700,13 +703,24 @@ function MessageBubble({
   message,
   isStreaming,
   isLast,
+  sessionId,
+  allEntries,
 }: {
   message: ChatMessage;
   isStreaming?: boolean;
   isLast?: boolean;
+  sessionId: string;
+  allEntries: LibraryEntry[];
 }) {
   const isUser = message.role === "user";
   const showCursor = isStreaming && isLast && !isUser && message.content.length > 0;
+  // Entries the assistant cited — promoted to the top of the pin
+  // picker so 1-click pinning is the common case.
+  const suggestedEntryIds = (message.sources ?? [])
+    .map((s) => s.entryId)
+    .filter((v, i, arr) => arr.indexOf(v) === i);
+  const showPin =
+    !isUser && message.content.length > 0 && !isStreaming;
   return (
     <div className="flex gap-3 items-start">
       {isUser ? (
@@ -754,6 +768,22 @@ function MessageBubble({
             <span className="inline-block w-1.5 h-4 bg-[#2D1F0E]/60 animate-pulse ml-0.5 align-middle" />
           )}
         </div>
+        {showPin && (
+          <div className="mt-2 flex items-center gap-2">
+            <PinNoteButton
+              sessionId={sessionId}
+              messageContent={message.content}
+              entries={allEntries.map((e) => ({
+                id: e.id,
+                title: e.title,
+                authorSurname: e.authorSurname,
+                authorName: e.authorName,
+                year: e.year,
+              }))}
+              suggestedEntryIds={suggestedEntryIds}
+            />
+          </div>
+        )}
         {!isUser && message.sources && message.sources.length > 0 && (
           <div className="mt-3 pt-2 border-t border-[#d4c9b5]/40 flex flex-wrap gap-1.5">
             {message.sources.map((src) => {
