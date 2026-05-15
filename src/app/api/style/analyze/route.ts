@@ -18,7 +18,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth";
-import { generateJSONExtendedWithUsage, SONNET } from "@/lib/claude";
+import { generateJSONExtendedWithUsage, generateJSONWithUsage, SONNET, HAIKU } from "@/lib/claude";
 import { checkCredits, deductCredits } from "@/lib/credits";
 import type { WritingTwinProfile } from "@/types/project";
 import { combineStats, computeTextStats, type TextStats } from "@/lib/text-stats";
@@ -165,18 +165,42 @@ ${sampleBlocks}
 
 Now produce the JSON.`;
 
-    const result = await generateJSONExtendedWithUsage<WritingTwinProfile>(
-      prompt,
-      STYLE_ANALYSIS_SYSTEM,
-      { model: SONNET, thinkingBudgetTokens: 8000, maxTokens: 16384 },
-    );
+    // Fallback ladder: Sonnet+thinking → Sonnet → Haiku. We always want
+    // to return *some* profile rather than a 500 when Anthropic is
+    // briefly overloaded.
+    let result: Awaited<ReturnType<typeof generateJSONExtendedWithUsage<WritingTwinProfile>>>;
+    let modelUsed: 'sonnet' | 'haiku' = 'sonnet';
+    try {
+      result = await generateJSONExtendedWithUsage<WritingTwinProfile>(
+        prompt,
+        STYLE_ANALYSIS_SYSTEM,
+        { model: SONNET, thinkingBudgetTokens: 8000, maxTokens: 16384 },
+      );
+    } catch (extendedErr) {
+      console.warn('[style/analyze] Sonnet thinking failed, retrying without thinking', extendedErr);
+      try {
+        result = await generateJSONWithUsage<WritingTwinProfile>(
+          prompt,
+          STYLE_ANALYSIS_SYSTEM,
+          { model: SONNET },
+        );
+      } catch (sonnetErr) {
+        console.warn('[style/analyze] Sonnet plain failed, falling back to Haiku', sonnetErr);
+        result = await generateJSONWithUsage<WritingTwinProfile>(
+          prompt,
+          STYLE_ANALYSIS_SYSTEM,
+          { model: HAIKU },
+        );
+        modelUsed = 'haiku';
+      }
+    }
 
     await deductCredits(
       session.user.id,
       "style_analyze",
       result.inputTokens,
       result.outputTokens,
-      "sonnet",
+      modelUsed,
       { sampleCount: samples.length },
     );
 

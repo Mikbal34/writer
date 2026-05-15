@@ -305,6 +305,52 @@ export interface JSONResult<T> {
  * The thinking block is consumed silently — only the final text block
  * is parsed as JSON.
  */
+/**
+ * Detect retryable Anthropic API errors — capacity-related (`overloaded_error`,
+ * 529 Overloaded, 503) or generic 5xx blips. Auth, validation, and content
+ * errors are non-retryable.
+ */
+function isRetryableAnthropicError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { status?: number; error?: { type?: string; error?: { type?: string } } }
+  const status = typeof e.status === 'number' ? e.status : 0
+  // Various shapes from the SDK: { status }, { error: { type } }, nested.
+  const innerType =
+    e.error?.error?.type ?? e.error?.type ?? ''
+  if (innerType === 'overloaded_error' || innerType === 'api_error') return true
+  if (status === 529 || status === 503 || (status >= 500 && status <= 599)) return true
+  return false
+}
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 4,
+  label = 'claude-call',
+): Promise<T> {
+  let lastErr: unknown
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      if (!isRetryableAnthropicError(err) || i === attempts - 1) {
+        throw err
+      }
+      // Exponential backoff with jitter — 1.5s, 3s, 6s typical.
+      const base = 1500 * Math.pow(2, i)
+      const jitter = Math.floor(Math.random() * 500)
+      const wait = base + jitter
+      console.warn(
+        `[${label}] retrying after ${wait}ms (attempt ${i + 1}/${attempts}) — ${
+          (err as { error?: { error?: { type?: string } } })?.error?.error?.type ?? 'transient'
+        }`,
+      )
+      await new Promise((r) => setTimeout(r, wait))
+    }
+  }
+  throw lastErr
+}
+
 export async function generateJSONExtendedWithUsage<T = unknown>(
   prompt: string,
   systemPrompt?: string,
@@ -323,42 +369,46 @@ export async function generateJSONExtendedWithUsage<T = unknown>(
   const thinkingBudget = options?.thinkingBudgetTokens ?? 8000
   const maxTokens = options?.maxTokens ?? Math.max(thinkingBudget + 4096, 16384)
 
-  const stream = await client.messages.stream({
-    model: options?.model ?? SONNET,
-    max_tokens: maxTokens,
-    temperature: 1,
-    thinking: {
-      type: 'enabled',
-      budget_tokens: thinkingBudget,
-    },
-    system: jsonSystemPrompt,
-    messages: [{ role: 'user', content: prompt }],
-  })
+  const callOnce = async () => {
+    const stream = await client.messages.stream({
+      model: options?.model ?? SONNET,
+      max_tokens: maxTokens,
+      temperature: 1,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: thinkingBudget,
+      },
+      system: jsonSystemPrompt,
+      messages: [{ role: 'user', content: prompt }],
+    })
 
-  const response = await stream.finalMessage()
+    const response = await stream.finalMessage()
 
-  const textBlock = response.content.find((block) => block.type === 'text')
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('Claude returned no text content (extended thinking)')
-  }
-
-  const raw = textBlock.text.trim()
-  const jsonString = raw
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim()
-
-  try {
-    return {
-      data: JSON.parse(jsonString) as T,
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
+    const textBlock = response.content.find((block) => block.type === 'text')
+    if (!textBlock || textBlock.type !== 'text') {
+      throw new Error('Claude returned no text content (extended thinking)')
     }
-  } catch {
-    throw new Error(
-      `Failed to parse Claude (extended) response as JSON.\nRaw response:\n${raw}`,
-    )
+
+    const raw = textBlock.text.trim()
+    const jsonString = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim()
+
+    try {
+      return {
+        data: JSON.parse(jsonString) as T,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      }
+    } catch {
+      throw new Error(
+        `Failed to parse Claude (extended) response as JSON.\nRaw response:\n${raw}`,
+      )
+    }
   }
+
+  return withRetry(callOnce, 4, 'generateJSONExtendedWithUsage')
 }
 
 export async function generateJSONWithUsage<T = unknown>(
@@ -375,37 +425,41 @@ export async function generateJSONWithUsage<T = unknown>(
     .filter(Boolean)
     .join('\n\n')
 
-  const stream = await client.messages.stream({
-    model: options?.model ?? SONNET,
-    max_tokens: 32768,
-    system: jsonSystemPrompt,
-    messages: [{ role: 'user', content: prompt }],
-  })
+  const callOnce = async () => {
+    const stream = await client.messages.stream({
+      model: options?.model ?? SONNET,
+      max_tokens: 32768,
+      system: jsonSystemPrompt,
+      messages: [{ role: 'user', content: prompt }],
+    })
 
-  const response = await stream.finalMessage()
+    const response = await stream.finalMessage()
 
-  const textBlock = response.content.find((block) => block.type === 'text')
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('Claude returned no text content')
-  }
-
-  const raw = textBlock.text.trim()
-  const jsonString = raw
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim()
-
-  try {
-    return {
-      data: JSON.parse(jsonString) as T,
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
+    const textBlock = response.content.find((block) => block.type === 'text')
+    if (!textBlock || textBlock.type !== 'text') {
+      throw new Error('Claude returned no text content')
     }
-  } catch {
-    throw new Error(
-      `Failed to parse Claude response as JSON.\nRaw response:\n${raw}`
-    )
+
+    const raw = textBlock.text.trim()
+    const jsonString = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim()
+
+    try {
+      return {
+        data: JSON.parse(jsonString) as T,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      }
+    } catch {
+      throw new Error(
+        `Failed to parse Claude response as JSON.\nRaw response:\n${raw}`
+      )
+    }
   }
+
+  return withRetry(callOnce, 4, 'generateJSONWithUsage')
 }
 
 export async function generateJSON<T = unknown>(

@@ -23,7 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { generateJSONExtendedWithUsage, SONNET } from '@/lib/claude'
+import { generateJSONExtendedWithUsage, generateJSONWithUsage, SONNET, HAIKU } from '@/lib/claude'
 import { checkCredits, deductCredits } from '@/lib/credits'
 import type { WritingTwinProfile } from '@/types/project'
 import { combineStats, computeTextStats, type TextStats } from '@/lib/text-stats'
@@ -200,18 +200,44 @@ Now produce the JSON.`
     // 3. Sonnet + extended thinking. Budget 8k thinking tokens — enough
     // for the model to walk through the stats and cross-check the
     // structured fields against its own notes before answering.
-    const result = await generateJSONExtendedWithUsage<WritingTwinProfile>(
-      prompt,
-      STYLE_ANALYSIS_SYSTEM,
-      { model: SONNET, thinkingBudgetTokens: 8000, maxTokens: 16384 },
-    )
+    //
+    // Fallback ladder: if Sonnet with thinking is overloaded (and the
+    // built-in retry in generateJSONExtendedWithUsage also gives up),
+    // drop the thinking step first, and finally fall back to Haiku so
+    // the user always gets *some* profile rather than a 500.
+    let result: Awaited<ReturnType<typeof generateJSONExtendedWithUsage<WritingTwinProfile>>>
+    let modelUsed: 'sonnet' | 'haiku' = 'sonnet'
+    try {
+      result = await generateJSONExtendedWithUsage<WritingTwinProfile>(
+        prompt,
+        STYLE_ANALYSIS_SYSTEM,
+        { model: SONNET, thinkingBudgetTokens: 8000, maxTokens: 16384 },
+      )
+    } catch (extendedErr) {
+      console.warn('[analyze] Sonnet thinking failed, retrying without thinking', extendedErr)
+      try {
+        result = await generateJSONWithUsage<WritingTwinProfile>(
+          prompt,
+          STYLE_ANALYSIS_SYSTEM,
+          { model: SONNET },
+        )
+      } catch (sonnetErr) {
+        console.warn('[analyze] Sonnet plain failed, falling back to Haiku', sonnetErr)
+        result = await generateJSONWithUsage<WritingTwinProfile>(
+          prompt,
+          STYLE_ANALYSIS_SYSTEM,
+          { model: HAIKU },
+        )
+        modelUsed = 'haiku'
+      }
+    }
 
     await deductCredits(
       session.user.id,
       'style_analyze',
       result.inputTokens,
       result.outputTokens,
-      'sonnet',
+      modelUsed,
       { styleProfileId: profileId, sampleCount: samples.length },
     )
 
