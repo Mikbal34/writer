@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import {
   BookOpen,
   Library as LibraryIcon,
-  MessageSquare,
   Feather,
   User as UserIcon,
   LogOut,
@@ -29,6 +28,10 @@ interface NavItem {
   exact?: boolean;
 }
 
+// "Kütüphane'yle Konuş" used to live here; library chat now lives at
+// /library/[id]/ask (per-book) and /library/ask (whole/folder) and is
+// surfaced from the library page itself, so the global nav doesn't
+// need a top-level entry for it.
 const NAV: NavItem[] = [
   { label: "My Books", href: "/", icon: <BookOpen className="w-4 h-4" />, exact: true },
   { label: "Library", href: "/library", icon: <LibraryIcon className="w-4 h-4" />, exact: true },
@@ -36,11 +39,6 @@ const NAV: NavItem[] = [
     label: "Literatür Tara",
     href: "/library/literature-search",
     icon: <Sparkles className="w-4 h-4" />,
-  },
-  {
-    label: "Kütüphane'yle Konuş",
-    href: "/library/chat",
-    icon: <MessageSquare className="w-4 h-4" />,
   },
   { label: "Writing Twin", href: "/style", icon: <Feather className="w-4 h-4" /> },
   { label: "Account", href: "/account", icon: <UserIcon className="w-4 h-4" /> },
@@ -105,11 +103,15 @@ export default function WorkspaceSidebar() {
         })}
       </div>
 
-      {/* Footer: credits + bell + sign out */}
+      {/* Footer: credit card (V3 polished) + bell + sign out */}
       <div className="hidden lg:flex flex-col mt-auto border-t border-[#d4c9b5]/40">
-        <div className="px-4 py-3 flex items-center justify-between">
+        <div className="relative">
           <CreditBalance />
-          <NotificationBell />
+          {/* Notification bell floats over the credit card so the
+              footer stays a single tidy row even with two affordances. */}
+          <div className="absolute top-2 right-2">
+            <NotificationBell />
+          </div>
         </div>
         <button
           type="button"

@@ -1,21 +1,27 @@
 "use client";
 
 /**
- * Library — three-pane research workbench.
+ * Library — V3 layout (decade shelf + folder chips).
  *
- *   ┌──────────┬─────────────────────────┬──────────────────┐
- *   │ Folders  │  Entry list (search /   │  Selected entry  │
- *   │ + tags   │  filter / drop / table) │  detail panel    │
- *   │ (280px)  │  (flex)                 │  (420px)         │
- *   └──────────┴─────────────────────────┴──────────────────┘
+ * Layout structure:
  *
- * Sidebar lets the user organise into hierarchical folders + use tags;
- * clicking a row opens the right pane with notes/highlights/PDF tabs.
- * The middle list keeps all the existing drop-zone, search, BibTeX and
- * Zotero affordances — only its layout container changed.
+ *   ┌──── global sidebar (WorkspaceShell) ────┬──── main scroll panel ────┬──── detail (380px, conditional) ────┐
+ *   │  My Books / Library / ... / Account     │  Hero (title + sort)      │  EntryDetailHeader + tabs           │
+ *   │                                          │  Drop zone + search       │                                     │
+ *   │                                          │  Folder chips (+ create)  │                                     │
+ *   │                                          │  Decade-grouped list      │                                     │
+ *   └──────────────────────────────────────────┴───────────────────────────┴─────────────────────────────────────┘
+ *
+ * The old 280-px inner CollectionsSidebar is gone — its responsibilities
+ * are split between FolderChips (selection + drag target + inline
+ * create/rename/delete) and a Phase-2 ManageCollectionsDialog (deep
+ * hierarchy / drag-to-reorder).
+ *
+ * Detail panel opens on row click; ESC or its own × closes it.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Library,
   Plus,
@@ -24,9 +30,7 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  Filter,
-  LayoutGrid,
-  List,
+  MessageSquare,
 } from "lucide-react";
 import {
   Dialog,
@@ -35,49 +39,36 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import LibraryEntryTable, {
-  type LibraryEntryRow,
-} from "@/components/library/LibraryEntryTable";
 import LibraryEntryForm from "@/components/library/LibraryEntryForm";
 import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
 import PdfDropZone from "@/components/library/PdfDropZone";
 import VolumeHintBanner from "@/components/library/VolumeHintBanner";
-import CollectionsSidebar, {
+import FolderChips, {
   type LibrarySelection,
-  type Tag as SidebarTag,
-} from "@/components/library/CollectionsSidebar";
+} from "@/components/library/FolderChips";
+import DecadeShelfList from "@/components/library/DecadeShelfList";
 import EntryDetailPanel from "@/components/library/EntryDetailPanel";
-import { FadeIn } from "@/components/shared/Animations";
+import type { LibraryEntryRow } from "@/components/library/LibraryEntryTable";
 import WorkspaceShell from "@/components/shared/WorkspaceShell";
 
-const ENTRY_TYPES = [
-  { value: "", label: "All" },
-  { value: "kitap", label: "Book" },
-  { value: "makale", label: "Article" },
-  { value: "nesir", label: "Prose" },
-  { value: "ceviri", label: "Translation" },
-  { value: "tez", label: "Thesis" },
-  { value: "ansiklopedi", label: "Encyclopedia" },
-  { value: "web", label: "Web" },
-];
-
 export default function LibraryPage() {
+  const router = useRouter();
   const [entries, setEntries] = useState<LibraryEntryRow[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [entryTypeFilter, setEntryTypeFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [viewMode, setViewMode] = useState<"list" | "card">("list");
 
-  // Sidebar state
+  // Sidebar/chip state
   const [selection, setSelection] = useState<LibrarySelection>({ kind: "all" });
-  const [tags, setTags] = useState<SidebarTag[]>([]);
   const [sidebarKey, setSidebarKey] = useState(0);
 
   // Right panel state
   const [selectedEntry, setSelectedEntry] = useState<LibraryEntryRow | null>(null);
+
+  // Selected folder's display name (for hero h1 + breadcrumb).
+  const [selectionLabel, setSelectionLabel] = useState<string>("Tüm Kütüphane");
 
   // Dialogs
   const [showEntryDialog, setShowEntryDialog] = useState(false);
@@ -89,9 +80,8 @@ export default function LibraryPage() {
     async (opts: { silent?: boolean } = {}) => {
       if (!opts.silent) setIsLoading(true);
       try {
-        const params = new URLSearchParams({ page: String(page), limit: "50" });
+        const params = new URLSearchParams({ page: String(page), limit: "200" });
         if (search) params.set("search", search);
-        if (entryTypeFilter) params.set("entryType", entryTypeFilter);
         if (selection.kind === "collection") {
           params.set("collectionId", selection.collectionId);
         } else if (selection.kind === "tag") {
@@ -104,50 +94,19 @@ export default function LibraryPage() {
         setEntries(data.entries ?? []);
         setTotal(data.total ?? 0);
       } catch {
-        if (!opts.silent) toast.error("Failed to load library");
+        if (!opts.silent) toast.error("Kütüphane yüklenemedi");
       } finally {
         if (!opts.silent) setIsLoading(false);
       }
     },
-    [page, search, entryTypeFilter, selection],
+    [page, search, selection],
   );
-
-  const fetchTags = useCallback(async () => {
-    try {
-      const res = await fetch("/api/library/tags");
-      if (!res.ok) return;
-      const data = await res.json();
-      // /api/library/tags returns a plain array of LibraryTag rows
-      // (with _count.entries). Normalise to the shape the sidebar
-      // expects.
-      const list = (Array.isArray(data) ? data : []) as Array<{
-        id: string;
-        name: string;
-        _count?: { entries?: number };
-      }>;
-      setTags(
-        list.map((t) => ({
-          id: t.id,
-          name: t.name,
-          count: t._count?.entries ?? 0,
-        })),
-      );
-    } catch {
-      /* tags non-fatal */
-    }
-  }, []);
 
   useEffect(() => {
     fetchEntries();
   }, [fetchEntries]);
 
-  useEffect(() => {
-    fetchTags();
-  }, [fetchTags]);
-
-  // Auto-refresh while any entry is still processing. Polls quietly
-  // (no loading spinner flash) and stops as soon as all visible
-  // entries reach a terminal state (ready / failed / none).
+  // Auto-refresh while any entry is still processing.
   useEffect(() => {
     const IN_PROGRESS = new Set(["pending", "downloading", "extracting", "embedding"]);
     const anyInProgress = entries.some((e) => IN_PROGRESS.has(e.pdfStatus ?? ""));
@@ -173,6 +132,32 @@ export default function LibraryPage() {
     setPage(1);
   }, [selection]);
 
+  // Resolve the active selection's display label. For collections we
+  // hit the collections endpoint once and cache the result by id.
+  const [collectionLabelById, setCollectionLabelById] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/library/collections")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.collections) return;
+        const map: Record<string, string> = {};
+        for (const c of data.collections as Array<{ id: string; name: string }>) {
+          map[c.id] = c.name;
+        }
+        setCollectionLabelById(map);
+      })
+      .catch(() => undefined);
+  }, [sidebarKey]);
+
+  useEffect(() => {
+    if (selection.kind === "all") setSelectionLabel("Tüm Kütüphane");
+    else if (selection.kind === "collection") {
+      setSelectionLabel(collectionLabelById[selection.collectionId] ?? "Klasör");
+    } else if (selection.kind === "tag") {
+      setSelectionLabel("Etiket");
+    }
+  }, [selection, collectionLabelById]);
+
   function handleEdit(entry: LibraryEntryRow) {
     setEditingEntry(entry);
     setShowEntryDialog(true);
@@ -183,15 +168,15 @@ export default function LibraryPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this source?")) return;
+    if (!confirm("Bu kaynak silinsin mi?")) return;
     try {
       const res = await fetch(`/api/library/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
-      toast.success("Source deleted");
+      toast.success("Kaynak silindi");
       if (selectedEntry?.id === id) setSelectedEntry(null);
       fetchEntries();
     } catch {
-      toast.error("Delete failed");
+      toast.error("Silinemedi");
     }
   }
 
@@ -207,52 +192,67 @@ export default function LibraryPage() {
     if (!selectedEntry) return;
     const fresh = entries.find((e) => e.id === selectedEntry.id);
     if (fresh) setSelectedEntry(fresh);
-  }, [entries, selectedEntry]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries]);
 
-  const totalPages = Math.ceil(total / 50);
+  // Whole-library ask: routes to /library/ask preserving any active
+  // collection/tag scope so the chat opens already-narrowed.
+  function askEntireScope() {
+    if (selection.kind === "collection") {
+      router.push(`/library/ask?collectionId=${selection.collectionId}`);
+    } else if (selection.kind === "tag") {
+      router.push(`/library/ask?tagId=${selection.tagId}`);
+    } else {
+      router.push("/library/ask");
+    }
+  }
+
+  const totalPages = Math.ceil(total / 200);
+
+  // Derived: subtitle line under the H1. Tells the user what scope
+  // they're looking at without forcing them to read the chip row.
+  const subtitle = useMemo(() => {
+    if (selection.kind === "all") {
+      return "Eklediğin tüm kitaplar, makaleler ve tezler. Bir kitaba tıkla — notların, alıntıların ve PDF açılır.";
+    }
+    if (selection.kind === "collection") {
+      return `${selectionLabel} klasöründeki kaynaklar.`;
+    }
+    return "Etiket altındaki kaynaklar.";
+  }, [selection, selectionLabel]);
 
   return (
     <WorkspaceShell>
       <div className="flex flex-1 min-h-0 h-[calc(100vh-3.5rem)]">
-        {/* === LEFT — Folders + tags === */}
-        <CollectionsSidebar
-          selection={selection}
-          onSelectionChange={(s) => {
-            setSelection(s);
-          }}
-          tags={tags}
-          refreshKey={sidebarKey}
-        />
-
-        {/* === MIDDLE — Entry list === */}
+        {/* === MAIN SCROLLABLE PANEL === */}
         <div className="flex-1 min-w-0 overflow-y-auto">
-          <div className="max-w-5xl mx-auto px-6 py-6">
-            <FadeIn className="flex items-center justify-between gap-3 flex-wrap mb-4">
-              <div className="flex items-center gap-2">
-                <Library className="h-4 w-4 text-[#C9A84C]" />
-                <h1 className="font-display text-lg font-semibold text-[#2D1F0E]">
-                  {selection.kind === "all"
-                    ? "Tüm Kütüphane"
-                    : selection.kind === "collection"
-                      ? "Klasör"
-                      : "Etiket"}
+          <div className="max-w-5xl mx-auto px-6 py-6 space-y-5">
+            {/* Hero — eyebrow, H1, sort/import/add */}
+            <header className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 font-ui text-[10px] uppercase tracking-widest text-[#8a7a65] mb-1">
+                  <Library className="h-3 w-3" />
+                  Kütüphane · {total} kaynak
+                </div>
+                <h1 className="font-display text-2xl font-semibold text-ink leading-tight">
+                  {selectionLabel}
                 </h1>
-                <span className="font-ui text-xs text-[#8a7a65]">
-                  {total} kaynak
-                </span>
+                <p className="font-body text-sm text-[#6b5a45] mt-1 max-w-2xl">
+                  {subtitle}
+                </p>
               </div>
 
-              <div className="flex gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => {
-                    setEditingEntry(null);
-                    setShowEntryDialog(true);
-                  }}
+                  onClick={askEntireScope}
                   className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/70 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
+                  title="Bu kapsama sor"
                 >
-                  <Plus className="h-3 w-3" />
-                  Manuel Ekle
+                  <MessageSquare className="h-3 w-3" />
+                  {selection.kind === "all"
+                    ? "Kütüphaneye sor"
+                    : "Bu kapsama sor"}
                 </button>
                 <button
                   type="button"
@@ -269,15 +269,23 @@ export default function LibraryPage() {
                 >
                   Zotero
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingEntry(null);
+                    setShowEntryDialog(true);
+                  }}
+                  className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm bg-forest text-[#F5EDE0] hover:bg-forest/90 transition-colors"
+                >
+                  <Plus className="h-3 w-3" />
+                  Kaynak ekle
+                </button>
               </div>
-            </FadeIn>
+            </header>
 
-            {/* Drop zone — drag PDFs to auto-extract bibliography */}
-            <PdfDropZone onUploaded={fetchEntries} />
-
-            {/* Filter bar */}
-            <div className="flex items-center gap-3 mt-4 mb-4 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
+            {/* Drop zone + search row */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[260px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a7a65]" />
                 <input
                   type="text"
@@ -287,82 +295,56 @@ export default function LibraryPage() {
                   className="w-full pl-10 pr-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0] font-body text-sm text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/50 transition-colors"
                 />
               </div>
-
-              <div className="flex items-center gap-2 px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]">
-                <Filter className="h-3.5 w-3.5 text-[#8a7a65]" />
-                <select
-                  value={entryTypeFilter}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setEntryTypeFilter(v === "all" ? "" : v);
-                    setPage(1);
-                  }}
-                  className="font-ui text-sm text-[#2D1F0E] bg-transparent focus:outline-none cursor-pointer pr-1"
-                >
-                  <option value="all">Tür</option>
-                  {ENTRY_TYPES.filter((t) => t.value).map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center rounded-sm border border-[#d4c9b5]/60 overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("card")}
-                  className={`flex items-center gap-1.5 px-3 py-2 font-ui text-xs transition-colors ${
-                    viewMode === "card"
-                      ? "bg-[#FAF7F0] text-[#2D1F0E]"
-                      : "bg-transparent text-[#8a7a65] hover:text-[#5C4A32] hover:bg-[#FAF7F0]/50"
-                  }`}
-                >
-                  <LayoutGrid className="h-3.5 w-3.5" />
-                  Card
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("list")}
-                  className={`flex items-center gap-1.5 px-3 py-2 font-ui text-xs transition-colors ${
-                    viewMode === "list"
-                      ? "bg-[#2D1F0E] text-[#F5EDE0]"
-                      : "bg-transparent text-[#8a7a65] hover:text-[#5C4A32] hover:bg-[#FAF7F0]/50"
-                  }`}
-                >
-                  <List className="h-3.5 w-3.5" />
-                  List
-                </button>
-              </div>
+              {/* Inline drop affordance, smaller than the old hero
+                  panel; main "+ Kaynak ekle" button is the primary CTA. */}
+              <details className="rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0] px-3 py-2 cursor-pointer">
+                <summary className="font-ui text-xs text-[#5C4A32] list-none flex items-center gap-1.5">
+                  <FileUp className="h-3 w-3" />
+                  PDF sürükle
+                </summary>
+                <div className="pt-2">
+                  <PdfDropZone onUploaded={fetchEntries} />
+                </div>
+              </details>
             </div>
+
+            {/* Folder chips row */}
+            <FolderChips
+              selection={selection}
+              onSelectionChange={setSelection}
+              refreshKey={sidebarKey}
+              totalEntries={total}
+            />
 
             <VolumeHintBanner entries={entries} onChanged={fetchEntries} />
 
-            <div
-              className={
-                viewMode === "list"
-                  ? "border border-[#d4c9b5]/50 rounded-sm bg-[#FAF7F0]/80 overflow-hidden"
-                  : ""
-              }
-            >
-              {isLoading ? (
-                <div className="flex items-center justify-center py-12 gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin text-[#2C5F2E]" />
-                  <span className="font-body text-sm text-[#8a7a65]">
-                    Yükleniyor...
-                  </span>
-                </div>
-              ) : (
-                <LibraryEntryTable
-                  entries={entries}
-                  onSelect={handleSelect}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onPdfAttached={() => fetchEntries()}
-                  viewMode={viewMode}
-                />
-              )}
-            </div>
+            {/* Decade shelves */}
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12 gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-[#2C5F2E]" />
+                <span className="font-body text-sm text-[#8a7a65]">
+                  Yükleniyor...
+                </span>
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="rounded-sm border border-dashed border-[#d4c9b5] bg-[#FAF7F0]/40 px-6 py-12 text-center">
+                <p className="font-body text-sm text-[#8a7a65] mb-2">
+                  Bu kapsamda henüz kaynak yok.
+                </p>
+                <p className="font-ui text-xs text-[#a89880]">
+                  Üstteki <strong>+ Kaynak ekle</strong> ile başla, ya da PDF
+                  sürükle.
+                </p>
+              </div>
+            ) : (
+              <DecadeShelfList
+                entries={entries}
+                onSelect={handleSelect}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onPdfAttached={() => fetchEntries()}
+              />
+            )}
 
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-3 mt-5">
@@ -373,7 +355,7 @@ export default function LibraryPage() {
                   className="flex items-center gap-1 font-ui text-xs px-3 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/80 text-[#5C4A32] hover:bg-[#FAF7F0] disabled:opacity-40 transition-colors"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
-                  Previous
+                  Önceki
                 </button>
                 <span className="font-ui text-xs text-[#8a7a65]">
                   {page} / {totalPages}
@@ -384,7 +366,7 @@ export default function LibraryPage() {
                   onClick={() => setPage((p) => p + 1)}
                   className="flex items-center gap-1 font-ui text-xs px-3 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/80 text-[#5C4A32] hover:bg-[#FAF7F0] disabled:opacity-40 transition-colors"
                 >
-                  Next
+                  Sonraki
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>

@@ -17,8 +17,27 @@ export async function GET() {
       take: 20,
     })
 
+    // Month-to-date credit consumption — surfaced in the sidebar
+    // CreditBalance card as a subtitle. CreditTransaction.amount is
+    // signed (negative = spend, positive = top-up). We sum only the
+    // negatives so a mid-month refill doesn't make "used this month"
+    // jump backwards.
+    const monthStart = new Date()
+    monthStart.setUTCDate(1)
+    monthStart.setUTCHours(0, 0, 0, 0)
+    const monthRows = await prisma.creditTransaction.findMany({
+      where: {
+        userId: session.user.id,
+        createdAt: { gte: monthStart },
+        amount: { lt: 0 },
+      },
+      select: { amount: true },
+    })
+    const monthUsage = monthRows.reduce((acc, r) => acc + Math.abs(r.amount), 0)
+
     return NextResponse.json({
       balance: user?.creditBalance ?? 0,
+      monthUsage,
       usage,
     })
   } catch (err) {
