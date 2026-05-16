@@ -15,10 +15,10 @@ interface StyleProfilePreviewProps {
 function Pill({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="font-ui text-[10px] text-[#8a7a65] w-28 shrink-0">
+      <span className="font-ui text-[10px] text-ink-light w-28 shrink-0">
         {label}
       </span>
-      <span className="px-2 py-0.5 rounded-sm bg-[#C9A84C]/10 font-ui text-xs text-[#2D1F0E]">
+      <span className="px-2 py-0.5 rounded-sm bg-gold/10 font-ui text-xs text-ink">
         {value}
       </span>
     </div>
@@ -34,7 +34,7 @@ export default function StyleProfilePreview({
         <div className="w-16 h-16 rounded-full bg-[#f0ece4] flex items-center justify-center mb-5">
           <svg
             viewBox="0 0 24 24"
-            className="w-8 h-8 text-[#c9bfad]"
+            className="w-8 h-8 text-sandy"
             fill="none"
             stroke="currentColor"
             strokeWidth="1.5"
@@ -44,7 +44,7 @@ export default function StyleProfilePreview({
             <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
           </svg>
         </div>
-        <p className="font-body text-sm text-[#8a7a65] max-w-[240px] leading-relaxed">
+        <p className="font-body text-sm text-ink-light max-w-[240px] leading-relaxed">
           Start a conversation or paste a writing sample to build your profile.
         </p>
       </div>
@@ -53,7 +53,7 @@ export default function StyleProfilePreview({
 
   return (
     <div className="px-5 py-6 space-y-4 overflow-y-auto h-full">
-      <h3 className="font-display text-base font-semibold text-[#2D1F0E] mb-4">
+      <h3 className="font-display text-base font-semibold text-ink mb-4">
         Style Profile
       </h3>
 
@@ -71,14 +71,14 @@ export default function StyleProfilePreview({
 
       {profile.transitionPatterns && profile.transitionPatterns.length > 0 && (
         <div className="pt-2">
-          <span className="font-ui text-[10px] text-[#8a7a65] block mb-1.5">
+          <span className="font-ui text-[10px] text-ink-light block mb-1.5">
             Transition Patterns
           </span>
           <div className="flex flex-wrap gap-1">
             {profile.transitionPatterns.map((t, i) => (
               <span
                 key={i}
-                className="px-2 py-0.5 rounded-sm bg-[#2D1F0E]/5 font-body text-[11px] text-[#5C4A32]"
+                className="px-2 py-0.5 rounded-sm bg-ink/5 font-body text-[11px] text-ink-light"
               >
                 {t}
               </span>
@@ -89,10 +89,10 @@ export default function StyleProfilePreview({
 
       {profile.additionalNotes && (
         <div className="pt-2">
-          <span className="font-ui text-[10px] text-[#8a7a65] block mb-1.5">
+          <span className="font-ui text-[10px] text-ink-light block mb-1.5">
             Additional Notes
           </span>
-          <p className="font-body text-xs text-[#2D1F0E] leading-relaxed">
+          <p className="font-body text-xs text-ink leading-relaxed">
             {profile.additionalNotes}
           </p>
         </div>

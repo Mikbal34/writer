@@ -76,11 +76,11 @@ export default async function AccountPage() {
         </header>
 
         {/* Plan card */}
-        <section className="rounded-sm border border-[#d4c9b5]/60 bg-white p-6 mb-6">
+        <section className="rounded-sm border border-sandy/60 bg-white p-6 mb-6">
           <div className="flex items-start justify-between mb-5">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                {isPaid && <Crown className="w-4 h-4 text-[#C9A84C]" />}
+                {isPaid && <Crown className="w-4 h-4 text-gold" />}
                 <h2 className="font-display text-xl font-semibold text-ink">
                   {tier.label} plan
                 </h2>
@@ -98,7 +98,7 @@ export default async function AccountPage() {
               {!isPaid && (
                 <Link
                   href="/pricing"
-                  className="font-ui text-sm font-semibold px-4 py-2 bg-[#C9A84C] text-[#1a0f05] rounded-sm hover:bg-[#d4b85a] transition-colors"
+                  className="font-ui text-sm font-semibold px-4 py-2 bg-gold text-ink rounded-sm hover:bg-gold-hover transition-colors"
                 >
                   Upgrade
                 </Link>
@@ -106,7 +106,7 @@ export default async function AccountPage() {
               {isPaid && user.paddleCustomerId && (
                 <Link
                   href="/api/billing/portal"
-                  className="flex items-center gap-1.5 font-ui text-sm font-medium px-4 py-2 border border-[#d4c9b5]/80 text-ink rounded-sm hover:border-[#C9A84C]/60 hover:bg-[#C9A84C]/5 transition-all"
+                  className="flex items-center gap-1.5 font-ui text-sm font-medium px-4 py-2 border border-sandy/80 text-ink rounded-sm hover:border-gold/60 hover:bg-gold/5 transition-all"
                 >
                   Manage subscription
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -128,7 +128,7 @@ export default async function AccountPage() {
                 </span>
               </span>
             </div>
-            <div className="h-2 rounded-full bg-[#d4c9b5]/40 overflow-hidden">
+            <div className="h-2 rounded-full bg-sandy/40 overflow-hidden">
               <div
                 className="h-full rounded-full transition-all"
                 style={{
@@ -145,9 +145,9 @@ export default async function AccountPage() {
 
         {/* Plan comparison upsell */}
         {!isPaid && (
-          <section className="rounded-sm border border-[#C9A84C]/30 bg-[#C9A84C]/5 p-5 mb-6">
+          <section className="rounded-sm border border-gold/30 bg-gold/5 p-5 mb-6">
             <div className="flex items-start gap-3">
-              <Crown className="w-5 h-5 text-[#C9A84C] mt-0.5 shrink-0" />
+              <Crown className="w-5 h-5 text-gold mt-0.5 shrink-0" />
               <div>
                 <h3 className="font-display font-semibold text-ink mb-1">
                   Need more room?
@@ -159,7 +159,7 @@ export default async function AccountPage() {
                 </p>
                 <Link
                   href="/pricing"
-                  className="font-ui text-sm font-medium text-[#C9A84C] hover:text-[#d4b85a]"
+                  className="font-ui text-sm font-medium text-gold hover:text-gold-hover"
                 >
                   See plans →
                 </Link>
@@ -169,7 +169,7 @@ export default async function AccountPage() {
         )}
 
         {/* Recent activity */}
-        <section className="rounded-sm border border-[#d4c9b5]/60 bg-white p-6">
+        <section className="rounded-sm border border-sandy/60 bg-white p-6">
           <div className="flex items-center gap-2 mb-4">
             <Receipt className="w-4 h-4 text-ink-light" />
             <h2 className="font-display text-lg font-semibold text-ink">
@@ -181,7 +181,7 @@ export default async function AccountPage() {
           ) : (
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-[#d4c9b5]/40">
+                <tr className="border-b border-sandy/40">
                   <th className="py-2 font-ui text-xs uppercase tracking-wider text-ink-light">
                     Date
                   </th>
@@ -198,7 +198,7 @@ export default async function AccountPage() {
               </thead>
               <tbody>
                 {recentTx.map((tx) => (
-                  <tr key={tx.id} className="border-b border-[#d4c9b5]/20 last:border-0">
+                  <tr key={tx.id} className="border-b border-sandy/20 last:border-0">
                     <td className="py-2 font-ui text-sm text-ink">
                       {tx.createdAt.toLocaleDateString('en-GB', {
                         day: 'numeric',

@@ -430,10 +430,10 @@ export default function BulkUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col bg-[#FAF7F0] border-[#d4c9b5]">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col bg-page border-sandy">
         <DialogHeader>
-          <DialogTitle className="font-display text-[#2D1F0E] flex items-center gap-2">
-            <Upload className="h-4 w-4 text-[#C9A84C]" />
+          <DialogTitle className="font-display text-ink flex items-center gap-2">
+            <Upload className="h-4 w-4 text-gold" />
             Yeni kaynak ekle
           </DialogTitle>
         </DialogHeader>
@@ -442,7 +442,7 @@ export default function BulkUploadDialog({
         {/* Group form overlay                                      */}
         {/* ====================================================== */}
         {groupFormOpen ? (
-          <div className="space-y-3 border border-[#C9A84C]/40 bg-[#C9A84C]/8 rounded-sm p-4">
+          <div className="space-y-3 border border-gold/40 bg-gold/8 rounded-sm p-4">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -450,24 +450,24 @@ export default function BulkUploadDialog({
                   setGroupFormOpen(false);
                   setEditingGroupId(null);
                 }}
-                className="text-[#5C4A32] hover:text-[#2D1F0E]"
+                className="text-ink-light hover:text-ink"
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
-              <h3 className="font-display text-sm font-semibold text-[#2D1F0E]">
+              <h3 className="font-display text-sm font-semibold text-ink">
                 {editingGroupId
                   ? "Çok ciltli eseri düzenle"
                   : "Bu dosyalar bir multi-volume eserin parçası"}
               </h3>
               {extractingMeta && (
-                <span className="ml-auto inline-flex items-center gap-1.5 font-ui text-[10px] text-[#8a5a1a]">
+                <span className="ml-auto inline-flex items-center gap-1.5 font-ui text-[10px] text-gold-dark">
                   <Sparkles className="h-3 w-3" />
                   Künye çıkarılıyor…
                 </span>
               )}
             </div>
 
-            <p className="font-body text-[11px] text-[#6b5a45] leading-snug">
+            <p className="font-body text-[11px] text-ink-light leading-snug">
               Ana esere ait künye bilgilerini gir. Yüklediğin ilk dosyadan
               otomatik çıkarmayı denedik; eksikleri tamamla, yanlışları düzelt.
             </p>
@@ -483,7 +483,7 @@ export default function BulkUploadDialog({
                     authorSurname: e.target.value,
                   }))
                 }
-                className="px-2 py-1.5 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+                className="px-2 py-1.5 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink focus:outline-none focus:border-gold/60"
               />
               <input
                 dir="auto"
@@ -495,7 +495,7 @@ export default function BulkUploadDialog({
                     authorName: e.target.value,
                   }))
                 }
-                className="px-2 py-1.5 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+                className="px-2 py-1.5 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink focus:outline-none focus:border-gold/60"
               />
             </div>
             <input
@@ -505,7 +505,7 @@ export default function BulkUploadDialog({
               onChange={(e) =>
                 setGroupFormState((s) => ({ ...s, title: e.target.value }))
               }
-              className="w-full px-2 py-1.5 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+              className="w-full px-2 py-1.5 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink focus:outline-none focus:border-gold/60"
             />
             <div className="grid grid-cols-2 gap-2">
               <input
@@ -515,7 +515,7 @@ export default function BulkUploadDialog({
                 onChange={(e) =>
                   setGroupFormState((s) => ({ ...s, year: e.target.value }))
                 }
-                className="px-2 py-1.5 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+                className="px-2 py-1.5 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink focus:outline-none focus:border-gold/60"
               />
               <input
                 dir="auto"
@@ -527,15 +527,15 @@ export default function BulkUploadDialog({
                     publisher: e.target.value,
                   }))
                 }
-                className="px-2 py-1.5 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+                className="px-2 py-1.5 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink focus:outline-none focus:border-gold/60"
               />
             </div>
 
             <div>
-              <div className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] pt-1 pb-1">
+              <div className="font-ui text-[11px] uppercase tracking-widest text-ink-light pt-1 pb-1">
                 Hangi dosya hangi cilt?
               </div>
-              <p className="font-body text-[11px] text-[#6b5a45] mb-2 leading-snug">
+              <p className="font-body text-[11px] text-ink-light mb-2 leading-snug">
                 Her dosya için cilt numarasını sen yaz — sıralı olmak
                 zorunda değil. Örnek: elinde Cilt 5 ve Cilt 12 olabilir.
               </p>
@@ -546,9 +546,9 @@ export default function BulkUploadDialog({
                   return (
                     <li
                       key={fid}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-sm bg-white border border-[#d4c9b5]/40"
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-sm bg-white border border-sandy/40"
                     >
-                      <span className="font-ui text-[10px] uppercase tracking-wider text-[#8a7a65] shrink-0">
+                      <span className="font-ui text-[10px] uppercase tracking-wider text-ink-light shrink-0">
                         Cilt
                       </span>
                       <input
@@ -561,11 +561,11 @@ export default function BulkUploadDialog({
                             [fid]: e.target.value,
                           }))
                         }
-                        className="w-14 px-1.5 py-0.5 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/60 font-body text-xs text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+                        className="w-14 px-1.5 py-0.5 rounded-sm border border-sandy/60 bg-page/60 font-body text-xs text-ink focus:outline-none focus:border-gold/60"
                       />
                       <span
                         dir="auto"
-                        className="font-body text-xs text-[#2D1F0E] flex-1 truncate"
+                        className="font-body text-xs text-ink flex-1 truncate"
                       >
                         {pf.file.name}
                       </span>
@@ -579,7 +579,7 @@ export default function BulkUploadDialog({
                             [fid]: e.target.value,
                           }))
                         }
-                        className="w-20 px-1.5 py-0.5 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/60 font-body text-[10px] text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+                        className="w-20 px-1.5 py-0.5 rounded-sm border border-sandy/60 bg-page/60 font-body text-[10px] text-ink focus:outline-none focus:border-gold/60"
                       />
                     </li>
                   );
@@ -594,14 +594,14 @@ export default function BulkUploadDialog({
                   setGroupFormOpen(false);
                   setEditingGroupId(null);
                 }}
-                className="px-3 py-1.5 rounded-sm border border-[#d4c9b5] font-ui text-xs text-[#5C4A32] hover:bg-[#FAF7F0]"
+                className="px-3 py-1.5 rounded-sm border border-sandy font-ui text-xs text-ink-light hover:bg-page"
               >
                 Vazgeç
               </button>
               <button
                 type="button"
                 onClick={commitGroupForm}
-                className="px-3 py-1.5 rounded-sm bg-[#2D1F0E] text-[#FAF7F0] font-ui text-xs hover:opacity-90"
+                className="px-3 py-1.5 rounded-sm bg-ink text-page font-ui text-xs hover:opacity-90"
               >
                 {editingGroupId ? "Değişiklikleri kaydet" : "Grubu oluştur"}
               </button>
@@ -613,7 +613,7 @@ export default function BulkUploadDialog({
           /* ==================================================== */
           <>
             {/* Helper paragraph */}
-            <p className="font-body text-xs text-[#6b5a45] leading-snug">
+            <p className="font-body text-xs text-ink-light leading-snug">
               Tek kitapları olduğu gibi yükle — birden fazla cilt aynı eserin
               parçasıysa <strong>seç + Grupla</strong> diyerek tek bir
               multi-volume kaynağa dönüştür.
@@ -624,7 +624,7 @@ export default function BulkUploadDialog({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm border border-[#d4c9b5] font-ui text-xs text-[#5C4A32] hover:bg-[#FAF7F0]"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm border border-sandy font-ui text-xs text-ink-light hover:bg-page"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Dosya ekle
@@ -634,7 +634,7 @@ export default function BulkUploadDialog({
                   type="button"
                   onClick={openGroupFormForSelection}
                   disabled={selectedIds.size < 2}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-[#C9A84C] text-[#1A0F05] font-ui text-xs font-semibold hover:bg-[#d4b85a] disabled:opacity-40"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-gold text-ink font-ui text-xs font-semibold hover:bg-gold-hover disabled:opacity-40"
                 >
                   <BookCopy className="h-3.5 w-3.5" />
                   Seçili {selectedIds.size > 0 ? `${selectedIds.size} ` : ""}dosyayı grupla
@@ -658,19 +658,19 @@ export default function BulkUploadDialog({
               {groups.map((g) => (
                 <div
                   key={g.id}
-                  className="rounded-sm border border-[#C9A84C]/40 bg-[#C9A84C]/8 p-2.5"
+                  className="rounded-sm border border-gold/40 bg-gold/8 p-2.5"
                 >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <div className="min-w-0 flex-1">
                       <div
                         dir="auto"
-                        className="font-display text-sm font-semibold text-[#2D1F0E] truncate"
+                        className="font-display text-sm font-semibold text-ink truncate"
                       >
                         📚 {g.form.title || "(başlıksız)"}
                       </div>
                       <div
                         dir="auto"
-                        className="font-ui text-[11px] text-[#6b5a45] truncate"
+                        className="font-ui text-[11px] text-ink-light truncate"
                       >
                         {g.form.authorSurname}
                         {g.form.authorName ? `, ${g.form.authorName}` : ""}
@@ -683,14 +683,14 @@ export default function BulkUploadDialog({
                       <button
                         type="button"
                         onClick={() => openGroupFormForEdit(g)}
-                        className="font-ui text-[10px] uppercase tracking-wider px-2 py-1 rounded-sm border border-[#d4c9b5] text-[#5C4A32] hover:bg-white"
+                        className="font-ui text-[10px] uppercase tracking-wider px-2 py-1 rounded-sm border border-sandy text-ink-light hover:bg-white"
                       >
                         Düzenle
                       </button>
                       <button
                         type="button"
                         onClick={() => dissolveGroup(g.id)}
-                        className="font-ui text-[10px] uppercase tracking-wider px-2 py-1 rounded-sm border border-[#d4c9b5] text-[#5C4A32] hover:bg-white"
+                        className="font-ui text-[10px] uppercase tracking-wider px-2 py-1 rounded-sm border border-sandy text-ink-light hover:bg-white"
                       >
                         Grubu çöz
                       </button>
@@ -705,21 +705,21 @@ export default function BulkUploadDialog({
                       return (
                         <li
                           key={fid}
-                          className="flex items-center gap-2 px-2 py-1 rounded-sm bg-white border border-[#d4c9b5]/40"
+                          className="flex items-center gap-2 px-2 py-1 rounded-sm bg-white border border-sandy/40"
                         >
-                          <span className="font-display text-[11px] font-semibold text-[#2D1F0E] w-12 shrink-0">
+                          <span className="font-display text-[11px] font-semibold text-ink w-12 shrink-0">
                             Cilt {volNum}
                           </span>
                           <span
                             dir="auto"
-                            className="font-body text-[11px] text-[#2D1F0E] flex-1 truncate"
+                            className="font-body text-[11px] text-ink flex-1 truncate"
                           >
                             {pf.file.name}
                           </span>
                           {g.labels[fid] && (
                             <span
                               dir="auto"
-                              className="font-ui text-[10px] text-[#8a5a1a] italic"
+                              className="font-ui text-[10px] text-gold-dark italic"
                             >
                               {g.labels[fid]}
                             </span>
@@ -727,7 +727,7 @@ export default function BulkUploadDialog({
                           <button
                             type="button"
                             onClick={() => removeFile(fid)}
-                            className="text-[#a89a82] hover:text-red-600"
+                            className="text-ink-muted hover:text-red-600"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -739,13 +739,13 @@ export default function BulkUploadDialog({
               ))}
 
               {ungroupedFiles.length > 0 && (
-                <div className="rounded-sm border border-[#d4c9b5]/40 bg-white">
-                  <div className="px-2.5 py-1.5 border-b border-[#d4c9b5]/40 flex items-center justify-between">
-                    <span className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+                <div className="rounded-sm border border-sandy/40 bg-white">
+                  <div className="px-2.5 py-1.5 border-b border-sandy/40 flex items-center justify-between">
+                    <span className="font-ui text-[10px] uppercase tracking-widest text-ink-light">
                       Tek kitap olarak yüklenecek ({ungroupedFiles.length})
                     </span>
                     {selectedIds.size > 0 && (
-                      <span className="font-ui text-[10px] text-[#8a5a1a]">
+                      <span className="font-ui text-[10px] text-gold-dark">
                         {selectedIds.size} seçili — Grupla'ya basabilirsin
                       </span>
                     )}
@@ -756,24 +756,24 @@ export default function BulkUploadDialog({
                       return (
                         <li
                           key={pf.id}
-                          className="flex items-center gap-2 px-2.5 py-1.5 border-b border-[#d4c9b5]/30 last:border-0"
+                          className="flex items-center gap-2 px-2.5 py-1.5 border-b border-sandy/30 last:border-0"
                         >
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleSelect(pf.id)}
-                            className="h-3 w-3 accent-[#C9A84C]"
+                            className="h-3 w-3 accent-gold"
                           />
                           <span
                             dir="auto"
-                            className="font-body text-xs text-[#2D1F0E] flex-1 truncate"
+                            className="font-body text-xs text-ink flex-1 truncate"
                           >
                             {pf.file.name}
                           </span>
                           <button
                             type="button"
                             onClick={() => removeFile(pf.id)}
-                            className="text-[#a89a82] hover:text-red-600"
+                            className="text-ink-muted hover:text-red-600"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -785,11 +785,11 @@ export default function BulkUploadDialog({
               )}
 
               {files.length === 0 && (
-                <div className="rounded-sm border border-dashed border-[#d4c9b5] bg-[#FAF7F0]/40 px-4 py-8 text-center">
-                  <p className="font-body text-sm text-[#8a7a65] mb-1">
+                <div className="rounded-sm border border-dashed border-sandy bg-page/40 px-4 py-8 text-center">
+                  <p className="font-body text-sm text-ink-light mb-1">
                     Henüz dosya yok.
                   </p>
-                  <p className="font-ui text-[11px] text-[#a89a82]">
+                  <p className="font-ui text-[11px] text-ink-muted">
                     Yukarıdaki <strong>Dosya ekle</strong>&apos;ye bas ya da
                     bu kutuyu kapatıp drop zone&apos;a sürükle.
                   </p>
@@ -797,8 +797,8 @@ export default function BulkUploadDialog({
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#d4c9b5]/40 mt-2">
-              <span className="font-body text-[11px] text-[#8a7a65]">
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-sandy/40 mt-2">
+              <span className="font-body text-[11px] text-ink-light">
                 Toplam:{" "}
                 {ungroupedFiles.length +
                   groups.reduce((a, g) => a + g.fileIds.length, 0)}{" "}
@@ -810,7 +810,7 @@ export default function BulkUploadDialog({
                   type="button"
                   onClick={() => onOpenChange(false)}
                   disabled={submitting}
-                  className="px-3 py-1.5 rounded-sm border border-[#d4c9b5] font-ui text-xs text-[#5C4A32] hover:bg-[#FAF7F0]"
+                  className="px-3 py-1.5 rounded-sm border border-sandy font-ui text-xs text-ink-light hover:bg-page"
                 >
                   İptal
                 </button>
@@ -818,7 +818,7 @@ export default function BulkUploadDialog({
                   type="button"
                   onClick={handleUpload}
                   disabled={submitting || files.length === 0}
-                  className="px-3 py-1.5 rounded-sm bg-[#2D1F0E] text-[#FAF7F0] font-ui text-xs hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-sm bg-ink text-page font-ui text-xs hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
                 >
                   {submitting && <Loader2 className="h-3 w-3 animate-spin" />}
                   Yükle

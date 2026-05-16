@@ -68,12 +68,12 @@ export default async function ProjectLayout({
       <div className="flex-1 flex items-start justify-center p-4 md:p-6 lg:p-8">
         <FadeUpLarge className="w-full max-w-[1400px] relative">
           {/* Book shadow */}
-          <div className="absolute -inset-4 bg-[#3C2415]/8 rounded-sm blur-2xl" />
+          <div className="absolute -inset-4 bg-ink/8 rounded-sm blur-2xl" />
 
           {/* Book container */}
-          <div className="relative bg-[#FAF7F0] rounded-sm shadow-[0_4px_40px_rgba(60,36,21,0.15)] overflow-hidden">
+          <div className="relative bg-page rounded-sm shadow-[0_4px_40px_rgba(60,36,21,0.15)] overflow-hidden">
             {/* Top decorative edge */}
-            <div className="h-[3px] bg-gradient-to-r from-transparent via-[#C9A84C]/40 to-transparent" />
+            <div className="h-[3px] bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
 
             <div className="flex flex-col lg:flex-row h-[93vh] overflow-hidden">
               <ProjectSidebar
@@ -92,7 +92,7 @@ export default async function ProjectLayout({
             </div>
 
             {/* Bottom decorative edge */}
-            <div className="h-[3px] bg-gradient-to-r from-transparent via-[#C9A84C]/40 to-transparent" />
+            <div className="h-[3px] bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
           </div>
         </FadeUpLarge>
       </div>

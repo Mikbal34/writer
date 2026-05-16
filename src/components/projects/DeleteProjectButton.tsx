@@ -184,7 +184,7 @@ function DeleteConfirm({
             type="button"
             onClick={() => onOpenChange(false)}
             disabled={busy}
-            className="px-3 py-1.5 rounded-sm border border-[#d4c9b5] text-[#5C4A32] font-ui text-xs hover:bg-[#FAF7F0] transition-colors disabled:opacity-40"
+            className="px-3 py-1.5 rounded-sm border border-sandy text-ink-light font-ui text-xs hover:bg-page transition-colors disabled:opacity-40"
           >
             Vazgeç
           </button>

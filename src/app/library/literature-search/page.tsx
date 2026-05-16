@@ -346,44 +346,44 @@ export default function LiteratureSearchPage() {
         {/* Page header — matches /library, /style pattern */}
         <FadeUp className="mb-8 text-center">
           <div className="flex items-center justify-center gap-3 mb-3">
-            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-[#C9A84C]/60" />
-            <Sparkles className="h-5 w-5 text-[#C9A84C]" />
-            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-[#C9A84C]/60" />
+            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-gold/60" />
+            <Sparkles className="h-5 w-5 text-gold" />
+            <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-gold/60" />
           </div>
-          <h1 className="font-display text-3xl font-bold text-[#2D1F0E] tracking-tight">
+          <h1 className="font-display text-3xl font-bold text-ink tracking-tight">
             Literatür Tara
           </h1>
-          <p className="font-body text-sm text-[#6b5a45] mt-1.5 max-w-2xl mx-auto">
+          <p className="font-body text-sm text-ink-light mt-1.5 max-w-2xl mx-auto">
             Konunu yaz, 8 akademik veritabanı (OpenAlex, Semantic Scholar,
             CrossRef, Google Books, arXiv, PMC, DOAJ, bioRxiv) paralel taranır
             ve en alakalı 25 kaynak skorlanır.
           </p>
         </FadeUp>
 
-        <Ornament className="w-32 mx-auto text-[#c9bfad] mb-6" />
+        <Ornament className="w-32 mx-auto text-sandy mb-6" />
 
         {/* Search form */}
         <FadeIn delay={0.15}>
         <form
           onSubmit={handleSearch}
-          className="bg-white/60 border border-[#d4c9b5]/60 rounded-sm p-5 mb-5"
+          className="bg-white/60 border border-sandy/60 rounded-sm p-5 mb-5"
         >
           <div className="flex gap-2 mb-3">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a7a65]" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-light" />
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="örn: erken çocukluk bilişsel gelişim"
                 required
-                className="w-full pl-10 pr-3 py-3 rounded-sm border border-[#d4c9b5] bg-white font-body text-sm text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]"
+                className="w-full pl-10 pr-3 py-3 rounded-sm border border-sandy bg-white font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold"
               />
             </div>
             <button
               type="submit"
               disabled={isSearching || !query.trim()}
-              className="flex items-center gap-2 px-5 py-3 rounded-sm bg-[#2D1F0E] text-[#FAF7F0] font-ui text-sm hover:opacity-90 disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-3 rounded-sm bg-ink text-page font-ui text-sm hover:opacity-90 disabled:opacity-50"
             >
               {isSearching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {isSearching ? "Aranıyor..." : "Ara"}
@@ -394,7 +394,7 @@ export default function LiteratureSearchPage() {
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-sm border border-[#d4c9b5] bg-white text-[#2D1F0E] font-ui text-xs"
+              className="px-3 py-1.5 rounded-sm border border-sandy bg-white text-ink font-ui text-xs"
             >
               <option value="">Tüm tipler</option>
               <option value="makale">Makale</option>
@@ -406,36 +406,36 @@ export default function LiteratureSearchPage() {
               value={yearFrom}
               onChange={(e) => setYearFrom(e.target.value)}
               placeholder="Yıl ≥"
-              className="w-24 px-2 py-1.5 rounded-sm border border-[#d4c9b5] bg-white text-[#2D1F0E] font-ui text-xs"
+              className="w-24 px-2 py-1.5 rounded-sm border border-sandy bg-white text-ink font-ui text-xs"
             />
             <input
               type="number"
               value={yearTo}
               onChange={(e) => setYearTo(e.target.value)}
               placeholder="Yıl ≤"
-              className="w-24 px-2 py-1.5 rounded-sm border border-[#d4c9b5] bg-white text-[#2D1F0E] font-ui text-xs"
+              className="w-24 px-2 py-1.5 rounded-sm border border-sandy bg-white text-ink font-ui text-xs"
             />
-            <label className="flex items-center gap-2 font-ui text-xs text-[#6b5a45] cursor-pointer">
+            <label className="flex items-center gap-2 font-ui text-xs text-ink-light cursor-pointer">
               <input
                 type="checkbox"
                 checked={requirePdf}
                 onChange={(e) => setRequirePdf(e.target.checked)}
-                className="accent-[#C9A84C]"
+                className="accent-gold"
               />
               Sadece PDF'i olanlar
             </label>
           </div>
 
           {generatedQueries.length > 0 && !cached && (
-            <div className="mt-3 p-3 rounded-sm bg-[#C9A84C]/10 border border-[#C9A84C]/30">
-              <p className="font-ui text-[11px] text-[#8a7a65] mb-1.5">
+            <div className="mt-3 p-3 rounded-sm bg-gold/10 border border-gold/30">
+              <p className="font-ui text-[11px] text-ink-light mb-1.5">
                 AI ile genişletildi:
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {generatedQueries.map((q, i) => (
                   <span
                     key={i}
-                    className="font-ui text-[11px] px-2 py-0.5 rounded bg-[#FAF7F0] text-[#6b5a45] border border-[#d4c9b5]"
+                    className="font-ui text-[11px] px-2 py-0.5 rounded bg-page text-ink-light border border-sandy"
                     title={q.reasoning}
                   >
                     {q.text}
@@ -449,10 +449,10 @@ export default function LiteratureSearchPage() {
 
         {/* Live progress — shown while stage !== idle/done */}
         {stage !== 'idle' && stage !== 'done' && (
-          <div className="mb-5 p-4 rounded-sm bg-[#FAF7F0] border border-[#d4c9b5]">
+          <div className="mb-5 p-4 rounded-sm bg-page border border-sandy">
             <div className="flex items-center gap-2 mb-3">
-              <Loader2 className="h-4 w-4 animate-spin text-[#C9A84C]" />
-              <span className="font-ui text-sm font-medium text-[#2D1F0E]">
+              <Loader2 className="h-4 w-4 animate-spin text-gold" />
+              <span className="font-ui text-sm font-medium text-ink">
                 {stage === 'expanding' && "AI sorguyu genişletiyor..."}
                 {stage === 'searching' && "Akademik kaynaklar taranıyor..."}
                 {stage === 'dedupe' && "Sonuçlar tekilleştiriliyor..."}
@@ -477,14 +477,14 @@ export default function LiteratureSearchPage() {
                       }}
                     >
                       {isDone ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-[#2D8B4E] shrink-0" />
+                        <CheckCircle2 className="h-3.5 w-3.5 text-forest-light shrink-0" />
                       ) : (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#C9A84C] shrink-0" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-gold shrink-0" />
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="font-ui text-xs text-[#2D1F0E] truncate">{label}</div>
+                        <div className="font-ui text-xs text-ink truncate">{label}</div>
                         {isDone && (
-                          <div className="font-ui text-[10px] text-[#8a7a65] tabular-nums">
+                          <div className="font-ui text-[10px] text-ink-light tabular-nums">
                             {count} sonuç
                           </div>
                         )}
@@ -496,7 +496,7 @@ export default function LiteratureSearchPage() {
             )}
 
             {dedupStats && (stage === 'dedupe' || stage === 'scoring') && (
-              <p className="font-ui text-[11px] text-[#8a7a65] mt-3">
+              <p className="font-ui text-[11px] text-ink-light mt-3">
                 {dedupStats.before} ham sonuç → {dedupStats.after} tekil
               </p>
             )}
@@ -505,7 +505,7 @@ export default function LiteratureSearchPage() {
 
         {/* Bulk-add bar */}
         {selectableCount > 0 && (
-          <div className="sticky top-4 z-10 mb-4 flex items-center justify-between p-3 rounded-sm bg-[#2D1F0E] text-[#FAF7F0]">
+          <div className="sticky top-4 z-10 mb-4 flex items-center justify-between p-3 rounded-sm bg-ink text-page">
             <div className="flex items-center gap-3 font-ui text-sm">
               <span>
                 {selectedIds.size} seçili · {selectableCount} eklenebilir
@@ -513,7 +513,7 @@ export default function LiteratureSearchPage() {
               <button
                 type="button"
                 onClick={selectAll}
-                className="text-[#C9A84C] text-xs hover:underline"
+                className="text-gold text-xs hover:underline"
               >
                 Tümünü seç
               </button>
@@ -521,7 +521,7 @@ export default function LiteratureSearchPage() {
                 <button
                   type="button"
                   onClick={clearSelection}
-                  className="text-xs text-[#FAF7F0]/70 hover:text-[#FAF7F0] hover:underline"
+                  className="text-xs text-page/70 hover:text-page hover:underline"
                 >
                   Temizle
                 </button>
@@ -531,7 +531,7 @@ export default function LiteratureSearchPage() {
               type="button"
               onClick={handleBulkAdd}
               disabled={selectedIds.size === 0 || isAdding}
-              className="flex items-center gap-2 px-4 py-1.5 rounded-sm bg-[#C9A84C] text-[#1a0f05] font-ui text-xs font-medium hover:bg-[#d4b85a] disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-1.5 rounded-sm bg-gold text-ink font-ui text-xs font-medium hover:bg-gold-hover disabled:opacity-50"
             >
               {isAdding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Library className="h-3 w-3" />}
               Kütüphaneme Ekle
@@ -541,21 +541,21 @@ export default function LiteratureSearchPage() {
 
         {/* PDF download status */}
         {pollIds.length > 0 && (activeDownloads > 0 || readyDownloads > 0 || failedDownloads > 0) && (
-          <div className="mb-4 flex items-center gap-4 p-3 rounded-sm bg-[#FAF7F0] border border-[#d4c9b5] font-ui text-xs">
+          <div className="mb-4 flex items-center gap-4 p-3 rounded-sm bg-page border border-sandy font-ui text-xs">
             {activeDownloads > 0 && (
-              <span className="flex items-center gap-1.5 text-[#6b5a45]">
+              <span className="flex items-center gap-1.5 text-ink-light">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 {activeDownloads} PDF indiriliyor
               </span>
             )}
             {readyDownloads > 0 && (
-              <span className="flex items-center gap-1.5 text-[#2D8B4E]">
+              <span className="flex items-center gap-1.5 text-forest-light">
                 <CheckCircle2 className="h-3 w-3" />
                 {readyDownloads} hazır
               </span>
             )}
             {failedDownloads > 0 && (
-              <span className="flex items-center gap-1.5 text-[#c44]">
+              <span className="flex items-center gap-1.5 text-destructive">
                 <AlertTriangle className="h-3 w-3" />
                 {failedDownloads} başarısız
               </span>
@@ -565,7 +565,7 @@ export default function LiteratureSearchPage() {
 
         {/* Results */}
         {results.length === 0 && !isSearching && (
-          <div className="text-center py-16 font-ui text-sm text-[#8a7a65]">
+          <div className="text-center py-16 font-ui text-sm text-ink-light">
             Sonuçlar burada görünecek.
           </div>
         )}
@@ -573,11 +573,11 @@ export default function LiteratureSearchPage() {
         {pdfAvailable.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
-              <FileDown className="h-4 w-4 text-[#2D8B4E]" />
-              <h2 className="font-display text-sm font-semibold text-[#2D1F0E]">
+              <FileDown className="h-4 w-4 text-forest-light" />
+              <h2 className="font-display text-sm font-semibold text-ink">
                 PDF'i Hazır ({pdfAvailable.length})
               </h2>
-              <span className="font-ui text-[11px] text-[#8a7a65]">
+              <span className="font-ui text-[11px] text-ink-light">
                 — eklerken PDF'i otomatik indirilir
               </span>
             </div>
@@ -588,11 +588,11 @@ export default function LiteratureSearchPage() {
         {pdfMissing.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="h-4 w-4 text-[#C9A84C]" />
-              <h2 className="font-display text-sm font-semibold text-[#2D1F0E]">
+              <AlertTriangle className="h-4 w-4 text-gold" />
+              <h2 className="font-display text-sm font-semibold text-ink">
                 PDF Yüklenmesi Gerekenler ({pdfMissing.length})
               </h2>
-              <span className="font-ui text-[11px] text-[#8a7a65]">
+              <span className="font-ui text-[11px] text-ink-light">
                 — kütüphaneye ekledikten sonra manuel PDF yüklemen gerekir, yoksa yazımda kullanılmaz
               </span>
             </div>
@@ -601,7 +601,7 @@ export default function LiteratureSearchPage() {
         )}
 
         <div className="text-center py-4 mt-4">
-          <span className="font-display text-xs text-[#a89880] italic">
+          <span className="font-display text-xs text-ink-muted italic">
             --- x ---
           </span>
         </div>
@@ -617,10 +617,10 @@ export default function LiteratureSearchPage() {
         key={r.externalId}
         className={`rounded-sm border p-4 transition-colors ${
           r.alreadyInLibrary
-            ? "bg-[#F5F0E6]/50 border-[#d4c9b5]/40"
+            ? "bg-page/50 border-sandy/40"
             : isSelected
-            ? "bg-[#C9A84C]/10 border-[#C9A84C]"
-            : "bg-[#FAF7F0] border-[#d4c9b5]"
+            ? "bg-gold/10 border-gold"
+            : "bg-page border-sandy"
         }`}
       >
                 <div className="flex items-start gap-3">
@@ -629,15 +629,15 @@ export default function LiteratureSearchPage() {
                     checked={isSelected}
                     onChange={() => toggleSelect(r.externalId)}
                     disabled={r.alreadyInLibrary}
-                    className="mt-1 h-4 w-4 accent-[#C9A84C] disabled:opacity-40"
+                    className="mt-1 h-4 w-4 accent-gold disabled:opacity-40"
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h3 className="font-body text-[15px] font-semibold text-[#2D1F0E] leading-snug">
+                        <h3 className="font-body text-[15px] font-semibold text-ink leading-snug">
                           {r.title}
                         </h3>
-                        <p className="font-ui text-xs text-[#6b5a45] mt-0.5">
+                        <p className="font-ui text-xs text-ink-light mt-0.5">
                           {r.authors.slice(0, 4).join(", ")}
                           {r.authors.length > 4 && ` +${r.authors.length - 4}`}
                           {r.year && ` · ${r.year}`}
@@ -648,14 +648,14 @@ export default function LiteratureSearchPage() {
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         {r.relevanceScore !== undefined && (
                           <span
-                            className="font-ui text-[10px] px-2 py-0.5 rounded-full bg-[#C9A84C]/20 text-[#8a7540] tabular-nums"
+                            className="font-ui text-[10px] px-2 py-0.5 rounded-full bg-gold/20 text-gold-dark tabular-nums"
                             title="Konuya alaka skoru (0-10)"
                           >
                             {r.relevanceScore.toFixed(1)}/10
                           </span>
                         )}
                         {r.citationCount !== null && r.citationCount > 0 && (
-                          <span className="font-ui text-[10px] text-[#8a7a65] tabular-nums">
+                          <span className="font-ui text-[10px] text-ink-light tabular-nums">
                             {r.citationCount.toLocaleString("tr-TR")} atıf
                           </span>
                         )}
@@ -663,14 +663,14 @@ export default function LiteratureSearchPage() {
                     </div>
 
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      <span className="font-ui text-[10px] px-1.5 py-0.5 rounded bg-[#d4c9b5]/40 text-[#6b5a45]">
+                      <span className="font-ui text-[10px] px-1.5 py-0.5 rounded bg-sandy/40 text-ink-light">
                         {TYPE_LABELS[r.entryType] ?? r.entryType}
                       </span>
-                      <span className="font-ui text-[10px] px-1.5 py-0.5 rounded bg-[#d4c9b5]/40 text-[#6b5a45]">
+                      <span className="font-ui text-[10px] px-1.5 py-0.5 rounded bg-sandy/40 text-ink-light">
                         {PROVIDER_LABELS[r.provider] ?? r.provider}
                       </span>
                       {r.openAccessUrl && (
-                        <span className="font-ui text-[10px] px-1.5 py-0.5 rounded bg-[#2D8B4E]/15 text-[#2D8B4E] flex items-center gap-1">
+                        <span className="font-ui text-[10px] px-1.5 py-0.5 rounded bg-forest-light/15 text-forest-light flex items-center gap-1">
                           <FileDown className="h-2.5 w-2.5" />
                           Açık erişim
                         </span>
@@ -686,7 +686,7 @@ export default function LiteratureSearchPage() {
                           href={`https://doi.org/${r.doi}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="font-ui text-[10px] text-[#8a7a65] hover:text-[#C9A84C] flex items-center gap-1"
+                          className="font-ui text-[10px] text-ink-light hover:text-gold flex items-center gap-1"
                         >
                           <ExternalLink className="h-2.5 w-2.5" />
                           DOI
@@ -704,7 +704,7 @@ export default function LiteratureSearchPage() {
                           <button
                             type="button"
                             onClick={() => toggleAbstract(r.externalId)}
-                            className="font-ui text-[10px] text-[#C9A84C] hover:underline mt-1 flex items-center gap-1"
+                            className="font-ui text-[10px] text-gold hover:underline mt-1 flex items-center gap-1"
                           >
                             {isExpanded ? (
                               <>

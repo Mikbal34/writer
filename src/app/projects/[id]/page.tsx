@@ -79,8 +79,8 @@ function BookmarkProgress({ percentage }: { percentage: number }) {
           <path d="M8 4 H56 V80 L32 66 L8 80Z" fill="none" stroke="#C9A84C" strokeWidth="0.8" opacity="0.6" />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
-          <span className="font-display text-2xl font-bold text-[#F5EDE0] leading-none">{percentage}</span>
-          <span className="font-ui text-[10px] text-[#C9A84C] tracking-wider">%</span>
+          <span className="font-display text-2xl font-bold text-page leading-none">{percentage}</span>
+          <span className="font-ui text-[10px] text-gold tracking-wider">%</span>
         </div>
       </div>
       <span className="font-ui text-xs text-ink-light tracking-widest uppercase">Completed</span>
@@ -188,7 +188,7 @@ export default async function ProjectDashboardPage({
         </FadeIn>
 
         {/* Stats row */}
-        <FadeUp delay={0.3} className="flex flex-wrap gap-x-6 gap-y-2 mb-6 pb-5 border-b border-[#d4c9b5]/50">
+        <FadeUp delay={0.3} className="flex flex-wrap gap-x-6 gap-y-2 mb-6 pb-5 border-b border-sandy/50">
           {[
             { value: project.chapters.length, label: "chapters" },
             { value: allSections.length, label: "sections" },
@@ -209,7 +209,7 @@ export default async function ProjectDashboardPage({
             <span className="font-ui text-xs text-muted-foreground tracking-wide uppercase">Overall Progress</span>
             <span className="font-display text-sm font-semibold text-forest">{completionPct}%</span>
           </div>
-          <div className="h-1.5 bg-[#e8dfd0] rounded-full overflow-hidden">
+          <div className="h-1.5 bg-sandy-soft rounded-full overflow-hidden">
             <AnimatedBar
               percentage={completionPct}
               delay={0.5}
@@ -218,7 +218,7 @@ export default async function ProjectDashboardPage({
           </div>
         </FadeIn>
 
-        <Ornament className="w-48 mx-auto text-[#c9bfad] mb-6" />
+        <Ornament className="w-48 mx-auto text-sandy mb-6" />
 
         {/* Table of Contents */}
         <div className="flex-1">
@@ -241,7 +241,7 @@ export default async function ProjectDashboardPage({
                 const isComplete = chapterCompleted === chapterSubsections.length && chapterSubsections.length > 0;
                 return (
                   <StaggerItem key={chapter.id} index={i} baseDelay={0.3} stagger={0.1} className="group">
-                    <div className="flex items-baseline justify-between py-3 border-b border-dashed border-[#d4c9b5]">
+                    <div className="flex items-baseline justify-between py-3 border-b border-dashed border-sandy">
                       <div className="flex items-baseline gap-3 flex-1 min-w-0">
                         <span className="font-display text-sm text-ink-light italic shrink-0">
                           {String(chapter.number).padStart(2, "0")}.
@@ -249,7 +249,7 @@ export default async function ProjectDashboardPage({
                         <span className="font-body text-[15px] text-ink truncate group-hover:text-forest transition-colors duration-300">
                           {chapter.title}
                         </span>
-                        <span className="flex-1 border-b border-dotted border-[#c9bfad] mx-2 translate-y-[-4px]" />
+                        <span className="flex-1 border-b border-dotted border-sandy mx-2 translate-y-[-4px]" />
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         <span className="font-ui text-xs text-muted-foreground">
@@ -279,13 +279,13 @@ export default async function ProjectDashboardPage({
       <SpineShadow />
 
       {/* RIGHT PAGE */}
-      <div className="flex-1 p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0 border-t lg:border-t-0 border-[#d4c9b5]/40">
+      <div className="flex-1 p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0 border-t lg:border-t-0 border-sandy/40">
         {/* Bookmark Progress */}
         <FadeUp delay={0.4} className="flex justify-center mb-8">
           <BookmarkProgress percentage={completionPct} />
         </FadeUp>
 
-        <Ornament className="w-40 mx-auto text-[#c9bfad] mb-8" />
+        <Ornament className="w-40 mx-auto text-sandy mb-8" />
 
         {/* Quick Actions */}
         <FadeRight delay={0.5} className="mb-8">
@@ -299,17 +299,17 @@ export default async function ProjectDashboardPage({
             ].map((action, i) => {
               const Icon = action.icon;
               return (
-                <Link key={i} href={action.href} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-sm hover:bg-[#e8dfd0]/40 transition-all duration-200 group no-underline">
+                <Link key={i} href={action.href} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-sm hover:bg-sandy-soft/40 transition-all duration-200 group no-underline">
                   <Icon className="w-4 h-4 text-ink-light group-hover:text-forest transition-colors" />
                   <span className="font-body text-sm text-ink group-hover:text-forest transition-colors">{action.label}</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-[#c9bfad] ml-auto group-hover:text-forest group-hover:translate-x-0.5 transition-all" />
+                  <ArrowRight className="w-3.5 h-3.5 text-sandy ml-auto group-hover:text-forest group-hover:translate-x-0.5 transition-all" />
                 </Link>
               );
             })}
           </div>
         </FadeRight>
 
-        <div className="border-t border-[#d4c9b5]/40 mb-8" />
+        <div className="border-t border-sandy/40 mb-8" />
 
         {/* Recent Activity */}
         {recentSubsections.length > 0 && (
@@ -326,8 +326,8 @@ export default async function ProjectDashboardPage({
                         sub.status === "completed"
                           ? "bg-forest/10 text-forest"
                           : sub.status === "in_progress" || sub.status === "draft"
-                          ? "bg-[#e8dfd0] text-ink-light"
-                          : "bg-[#e8dfd0]/50 text-muted-foreground"
+                          ? "bg-sandy-soft text-ink-light"
+                          : "bg-sandy-soft/50 text-muted-foreground"
                       }`}>
                         {sub.status === "completed" ? "Done" : sub.status === "in_progress" ? "In Progress" : sub.status === "draft" ? "Draft" : "Pending"}
                       </span>
@@ -343,12 +343,12 @@ export default async function ProjectDashboardPage({
         )}
 
         {/* Legend */}
-        <FadeIn delay={0.8} className="mt-6 pt-4 border-t border-[#d4c9b5]/40">
+        <FadeIn delay={0.8} className="mt-6 pt-4 border-t border-sandy/40">
           <div className="flex items-center gap-4 justify-center">
             {[
               { color: "bg-forest", label: `Completed (${completedCount})` },
               { color: "bg-ink", label: `In Progress (${inProgressCount})` },
-              { color: "bg-[#c9bfad]", label: `Pending (${allSubsections.length - completedCount - inProgressCount})` },
+              { color: "bg-sandy", label: `Pending (${allSubsections.length - completedCount - inProgressCount})` },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${item.color}`} />

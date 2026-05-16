@@ -339,7 +339,7 @@ export default function ChapterCard({
                ) : sub.status === "in_progress" || sub.status === "draft" ? (
                 <Pencil className="w-3 h-3 text-ink-light" />
                ) : (
-                <Clock className="w-3 h-3 text-[#c9bfad]" />
+                <Clock className="w-3 h-3 text-sandy" />
                )}
               </div>
              </div>

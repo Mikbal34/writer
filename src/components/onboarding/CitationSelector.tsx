@@ -56,7 +56,7 @@ export default function CitationSelector({
           className={cn(
             "rounded-lg border-2 p-4 text-left transition-all",
             selected === fmt.value
-              ? "border-indigo-600 bg-indigo-50 dark:bg-indigo-950/30"
+              ? "border-forest bg-forest/10"
               : "border-border hover:border-muted-foreground/30"
           )}
         >

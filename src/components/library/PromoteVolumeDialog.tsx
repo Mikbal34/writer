@@ -177,20 +177,20 @@ export default function PromoteVolumeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col bg-[#FAF7F0] border-[#d4c9b5]">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col bg-page border-sandy">
         <DialogHeader>
-          <DialogTitle className="font-display text-[#2D1F0E] flex items-center gap-2">
-            <BookCopy className="h-4 w-4 text-[#C9A84C]" />
+          <DialogTitle className="font-display text-ink flex items-center gap-2">
+            <BookCopy className="h-4 w-4 text-gold" />
             Cilt olarak ekle
           </DialogTitle>
-          <p className="font-body text-xs text-[#6b5a45]">
+          <p className="font-body text-xs text-ink-light">
             {parentWork ? (
               <>
-                <span className="text-[#8a5a1a] font-semibold">
+                <span className="text-gold-dark font-semibold">
                   &ldquo;{parentWork}&rdquo;
                 </span>{" "}
                 eserinin{" "}
-                <span className="text-[#8a5a1a] font-semibold">
+                <span className="text-gold-dark font-semibold">
                   Cilt {initialVolumeNumber}
                 </span>{" "}
                 olarak tespit edildi.
@@ -204,17 +204,17 @@ export default function PromoteVolumeDialog({
             )}
           </p>
         </DialogHeader>
-        <div className="h-px bg-[#d4c9b5]/50" />
+        <div className="h-px bg-sandy/50" />
 
         {/* Mode tabs */}
-        <div className="flex gap-1 p-0.5 bg-[#FAF7F0]/60 border border-[#d4c9b5]/40 rounded-sm">
+        <div className="flex gap-1 p-0.5 bg-page/60 border border-sandy/40 rounded-sm">
           <button
             type="button"
             onClick={() => setMode("existing")}
             className={`flex-1 px-3 py-1.5 rounded-sm font-ui text-xs transition-colors ${
               mode === "existing"
-                ? "bg-white text-[#2D1F0E] shadow-sm"
-                : "text-[#8a7a65] hover:text-[#5C4A32]"
+                ? "bg-white text-ink shadow-sm"
+                : "text-ink-light hover:text-ink-light"
             }`}
           >
             <Library className="h-3 w-3 inline mr-1.5" />
@@ -225,8 +225,8 @@ export default function PromoteVolumeDialog({
             onClick={() => setMode("new")}
             className={`flex-1 px-3 py-1.5 rounded-sm font-ui text-xs transition-colors ${
               mode === "new"
-                ? "bg-white text-[#2D1F0E] shadow-sm"
-                : "text-[#8a7a65] hover:text-[#5C4A32]"
+                ? "bg-white text-ink shadow-sm"
+                : "text-ink-light hover:text-ink-light"
             }`}
           >
             <Plus className="h-3 w-3 inline mr-1.5" />
@@ -237,23 +237,23 @@ export default function PromoteVolumeDialog({
         {mode === "existing" ? (
           <>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a7a65]" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-light" />
               <input
                 type="text"
                 placeholder="Yazar / başlık ara..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-3 py-2.5 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/60"
+                className="w-full pl-10 pr-3 py-2.5 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/60"
               />
             </div>
 
-            <div className="flex-1 min-h-[180px] max-h-[260px] overflow-y-auto border border-[#d4c9b5]/40 rounded-sm bg-white">
+            <div className="flex-1 min-h-[180px] max-h-[260px] overflow-y-auto border border-sandy/40 rounded-sm bg-white">
               {loading ? (
                 <div className="flex items-center justify-center py-10">
-                  <Loader2 className="h-4 w-4 animate-spin text-[#C9A84C]" />
+                  <Loader2 className="h-4 w-4 animate-spin text-gold" />
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="flex items-center justify-center py-10 font-body text-sm text-[#8a7a65]">
+                <div className="flex items-center justify-center py-10 font-body text-sm text-ink-light">
                   Eşleşen kaynak yok. &ldquo;Yeni multi-volume eser&rdquo; sekmesine geç.
                 </div>
               ) : (
@@ -265,15 +265,15 @@ export default function PromoteVolumeDialog({
                         <button
                           type="button"
                           onClick={() => setSelectedParentId(e.id)}
-                          className={`w-full text-left px-3 py-2 flex items-center gap-2 border-b border-[#d4c9b5]/30 last:border-0 transition-colors ${
-                            isActive ? "bg-[#C9A84C]/10" : "hover:bg-[#FAF7F0]/60"
+                          className={`w-full text-left px-3 py-2 flex items-center gap-2 border-b border-sandy/30 last:border-0 transition-colors ${
+                            isActive ? "bg-gold/10" : "hover:bg-page/60"
                           }`}
                         >
                           <div className="flex-1 min-w-0">
-                            <div className="font-body text-sm text-[#2D1F0E] truncate">
+                            <div className="font-body text-sm text-ink truncate">
                               {e.title}
                             </div>
-                            <div className="font-ui text-xs text-[#6b5a45] truncate">
+                            <div className="font-ui text-xs text-ink-light truncate">
                               {e.authorSurname}
                               {e.authorName ? `, ${e.authorName}` : ""}
                               {(e._count?.volumes ?? 0) > 0
@@ -291,7 +291,7 @@ export default function PromoteVolumeDialog({
           </>
         ) : (
           <div className="space-y-2">
-            <label className="block font-ui text-[11px] uppercase tracking-widest text-[#8a7a65]">
+            <label className="block font-ui text-[11px] uppercase tracking-widest text-ink-light">
               Ana eser başlığı
             </label>
             <input
@@ -300,9 +300,9 @@ export default function PromoteVolumeDialog({
               onChange={(e) => setNewParentTitle(e.target.value)}
               placeholder="örn: et-Tahrir ve't-Tenvir"
               autoFocus
-              className="w-full px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/60"
+              className="w-full px-3 py-2 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/60"
             />
-            <p className="font-body text-[11px] text-[#a89a82]">
+            <p className="font-body text-[11px] text-ink-muted">
               Yazar bilgisi mevcut entry&apos;den (varsa) kopyalanır — sonra düzenleyebilirsin.
             </p>
           </div>
@@ -310,7 +310,7 @@ export default function PromoteVolumeDialog({
 
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] mb-1">
+            <label className="block font-ui text-[11px] uppercase tracking-widest text-ink-light mb-1">
               Cilt numarası
             </label>
             <input
@@ -318,11 +318,11 @@ export default function PromoteVolumeDialog({
               min="1"
               value={volumeNumber}
               onChange={(e) => setVolumeNumber(e.target.value)}
-              className="w-full px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+              className="w-full px-3 py-2 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink focus:outline-none focus:border-gold/60"
             />
           </div>
           <div>
-            <label className="block font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] mb-1">
+            <label className="block font-ui text-[11px] uppercase tracking-widest text-ink-light mb-1">
               Etiket (ops.)
             </label>
             <input
@@ -330,7 +330,7 @@ export default function PromoteVolumeDialog({
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="örn: Bakara"
-              className="w-full px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/60"
+              className="w-full px-3 py-2 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/60"
             />
           </div>
         </div>
@@ -340,7 +340,7 @@ export default function PromoteVolumeDialog({
             type="button"
             onClick={() => onOpenChange(false)}
             disabled={submitting}
-            className="px-3 py-1.5 rounded-sm border border-[#d4c9b5] font-ui text-xs text-[#5C4A32] hover:bg-[#FAF7F0]"
+            className="px-3 py-1.5 rounded-sm border border-sandy font-ui text-xs text-ink-light hover:bg-page"
           >
             İptal
           </button>
@@ -352,7 +352,7 @@ export default function PromoteVolumeDialog({
               (mode === "existing" && !selectedParentId) ||
               (mode === "new" && !newParentTitle.trim())
             }
-            className="px-3 py-1.5 rounded-sm bg-[#2D1F0E] text-[#FAF7F0] font-ui text-xs hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-sm bg-ink text-page font-ui text-xs hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
           >
             {submitting && <Loader2 className="h-3 w-3 animate-spin" />}
             Cilt olarak ekle

@@ -125,14 +125,14 @@ export default function StylePage() {
         <div className="max-w-5xl w-full mx-auto px-6 py-8">
           <FadeUp className="mb-8 text-center">
             <div className="flex items-center justify-center gap-3 mb-3">
-              <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-[#C9A84C]/60" />
-              <Feather className="h-5 w-5 text-[#C9A84C]" />
-              <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-[#C9A84C]/60" />
+              <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-gold/60" />
+              <Feather className="h-5 w-5 text-gold" />
+              <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-gold/60" />
             </div>
-            <h1 className="font-display text-3xl font-bold text-[#2D1F0E] tracking-tight">
+            <h1 className="font-display text-3xl font-bold text-ink tracking-tight">
               Writing Twin
             </h1>
-            <p className="font-body text-sm text-[#6b5a45] mt-1.5">
+            <p className="font-body text-sm text-ink-light mt-1.5">
               Create and manage your writing style profiles.
             </p>
           </FadeUp>
@@ -140,30 +140,30 @@ export default function StylePage() {
           {profiles.length > 0 && (
             <>
               <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
-                <span className="font-ui text-xs text-[#8a7a65]">
+                <span className="font-ui text-xs text-ink-light">
                   {profiles.length} profile{profiles.length !== 1 ? "s" : ""}
                 </span>
                 <NewProfileDialog onCreated={handleCreated} />
               </div>
 
-              <Ornament className="w-32 mx-auto text-[#c9bfad] mb-5" />
+              <Ornament className="w-32 mx-auto text-sandy mb-5" />
             </>
           )}
 
           {isLoading ? (
             <div className="flex items-center justify-center py-12 gap-2">
-              <Loader2 className="h-5 w-5 animate-spin text-[#C9A84C]" />
-              <span className="font-body text-sm text-[#8a7a65]">Loading...</span>
+              <Loader2 className="h-5 w-5 animate-spin text-gold" />
+              <span className="font-body text-sm text-ink-light">Loading...</span>
             </div>
           ) : profiles.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="w-14 h-14 rounded-sm bg-[#C9A84C]/10 flex items-center justify-center mb-4">
-                <Feather className="h-7 w-7 text-[#C9A84C]" />
+              <div className="w-14 h-14 rounded-sm bg-gold/10 flex items-center justify-center mb-4">
+                <Feather className="h-7 w-7 text-gold" />
               </div>
-              <h2 className="font-display text-lg font-semibold text-[#2D1F0E] mb-2">
+              <h2 className="font-display text-lg font-semibold text-ink mb-2">
                 No style profiles yet
               </h2>
-              <p className="font-body text-sm text-[#8a7a65] max-w-sm mb-6">
+              <p className="font-body text-sm text-ink-light max-w-sm mb-6">
                 Create your first Writing Twin profile through a chat interview
                 or by analyzing a writing sample.
               </p>
@@ -183,7 +183,7 @@ export default function StylePage() {
           )}
 
           <div className="text-center py-4 mt-4">
-            <span className="font-display text-xs text-[#a89880] italic">
+            <span className="font-display text-xs text-ink-muted italic">
               --- x ---
             </span>
           </div>
@@ -195,8 +195,8 @@ export default function StylePage() {
   // ─── Chat / Analyze view ──────────────────────────────────────
   if (!mounted) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#FAF7F0]">
-        <Loader2 className="h-6 w-6 animate-spin text-[#C9A84C]" />
+      <div className="h-screen flex items-center justify-center bg-page">
+        <Loader2 className="h-6 w-6 animate-spin text-gold" />
       </div>
     );
   }
@@ -225,7 +225,7 @@ export default function StylePage() {
         <div className="max-w-6xl mx-auto w-full px-6 py-4">
           <button
             onClick={handleBackToList}
-            className="inline-flex items-center gap-2 font-ui text-sm text-[#5C4A32] hover:text-[#2D1F0E] transition-colors"
+            className="inline-flex items-center gap-2 font-ui text-sm text-ink-light hover:text-ink transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             <span className="font-display font-semibold">{activeProfileName}</span>
@@ -234,18 +234,18 @@ export default function StylePage() {
 
         {/* Card container */}
         <div className="flex-1 max-w-6xl mx-auto w-full px-6 pb-6">
-          <div className="bg-white rounded-lg shadow-sm border border-[#e8e0d4] overflow-hidden flex flex-col" style={{ minHeight: "70vh" }}>
+          <div className="bg-white rounded-lg shadow-sm border border-sandy-soft overflow-hidden flex flex-col" style={{ minHeight: "70vh" }}>
             <Tabs defaultValue={view === "analyze" ? "analyze" : "chat"} className="flex flex-col flex-1 min-h-0">
-              <TabsList className="w-full shrink-0 rounded-none border-b border-[#e8e0d4] bg-[#faf8f5]">
+              <TabsList className="w-full shrink-0 rounded-none border-b border-sandy-soft bg-[#faf8f5]">
                 <TabsTrigger
                   value={view === "analyze" ? "analyze" : "chat"}
-                  className="flex-1 font-ui text-sm data-[state=active]:text-[#2D1F0E] data-[state=active]:border-b-2 data-[state=active]:border-[#C9A84C]"
+                  className="flex-1 font-ui text-sm data-[state=active]:text-ink data-[state=active]:border-b-2 data-[state=active]:border-gold"
                 >
                   {view === "analyze" ? "Analyze" : "Chat"}
                 </TabsTrigger>
                 <TabsTrigger
                   value="profile"
-                  className="flex-1 font-ui text-sm data-[state=active]:text-[#2D1F0E] data-[state=active]:border-b-2 data-[state=active]:border-[#C9A84C]"
+                  className="flex-1 font-ui text-sm data-[state=active]:text-ink data-[state=active]:border-b-2 data-[state=active]:border-gold"
                 >
                   Profile
                 </TabsTrigger>
@@ -270,7 +270,7 @@ export default function StylePage() {
       <div className="max-w-6xl mx-auto w-full px-6 py-4">
         <button
           onClick={handleBackToList}
-          className="inline-flex items-center gap-2 font-ui text-sm text-[#5C4A32] hover:text-[#2D1F0E] transition-colors"
+          className="inline-flex items-center gap-2 font-ui text-sm text-ink-light hover:text-ink transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           <span className="font-display font-semibold">{activeProfileName}</span>
@@ -279,14 +279,14 @@ export default function StylePage() {
 
       {/* Card container with split panel */}
       <div className="flex-1 max-w-6xl mx-auto w-full px-6 pb-6">
-        <div className="bg-white rounded-lg shadow-sm border border-[#e8e0d4] overflow-hidden" style={{ height: "calc(100vh - 140px)" }}>
+        <div className="bg-white rounded-lg shadow-sm border border-sandy-soft overflow-hidden" style={{ height: "calc(100vh - 140px)" }}>
           <PanelGroup orientation="horizontal">
             <Panel id="main" minSize={30} defaultSize={55}>
               {leftPanel}
             </Panel>
             <PanelResizeHandle
               style={{ width: 1, flexShrink: 0 }}
-              className="bg-[#e8e0d4] hover:bg-[#C9A84C]/40 transition-colors cursor-col-resize"
+              className="bg-sandy-soft hover:bg-gold/40 transition-colors cursor-col-resize"
             />
             <Panel id="preview" minSize={25} defaultSize={45}>
               {rightPanel}

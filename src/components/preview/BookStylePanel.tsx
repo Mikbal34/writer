@@ -370,15 +370,15 @@ function BundleCard({
       } ${
         selected
           ? "border-forest/50 bg-forest/5 shadow-sm ring-1 ring-forest/20"
-          : "border-[#d4c9b5] bg-white hover:border-[#c9bfad]"
+          : "border-sandy bg-white hover:border-sandy"
       }`}
     >
       {/* Mini page preview */}
       <div
         className={`${
           compact
-            ? "p-2 bg-[#faf7f0] flex items-center justify-center shrink-0"
-            : "p-3 bg-[#faf7f0] flex items-center justify-center border-b border-[#e5ddc8]"
+            ? "p-2 bg-page flex items-center justify-center shrink-0"
+            : "p-3 bg-page flex items-center justify-center border-b border-[#e5ddc8]"
         }`}
       >
         <MiniPagePreview
@@ -409,7 +409,7 @@ function BundleCard({
           {bundle.traits.slice(0, compact ? 2 : 4).map((trait) => (
             <span
               key={trait}
-              className="inline-flex items-center px-1.5 py-0.5 rounded-sm bg-[#e8dfd0]/60 text-[9px] font-ui text-ink-light leading-none"
+              className="inline-flex items-center px-1.5 py-0.5 rounded-sm bg-sandy-soft/60 text-[9px] font-ui text-ink-light leading-none"
             >
               {trait}
             </span>

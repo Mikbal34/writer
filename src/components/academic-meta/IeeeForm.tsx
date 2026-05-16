@@ -115,7 +115,7 @@ export default function IeeeForm({
                   placeholder="0000-0000-0000-0000"
                 />
               </div>
-              <label className="flex items-center gap-2 text-[11px] text-[#5C4A32]">
+              <label className="flex items-center gap-2 text-[11px] text-ink-light">
                 <input
                   type="radio"
                   name="corresponding"

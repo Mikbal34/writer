@@ -75,7 +75,7 @@ function highlightQuote(content: string, quote: string | null): React.ReactNode 
   return (
     <>
       {content.slice(0, idx)}
-      <mark className="bg-[#C9A84C]/30 px-0.5 rounded-sm">
+      <mark className="bg-gold/30 px-0.5 rounded-sm">
         {content.slice(idx, idx + quote.length)}
       </mark>
       {content.slice(idx + quote.length)}
@@ -132,21 +132,21 @@ export default function CitationVerifyPanel({
     <div className="h-full overflow-y-auto bg-white">
       <div className="max-w-3xl mx-auto px-6 py-6">
         {/* Header */}
-        <div className="border-b border-[#d4c9b5]/50 pb-4 mb-4">
-          <div className="font-ui text-xs text-[#8a7a65] mb-1">
+        <div className="border-b border-sandy/50 pb-4 mb-4">
+          <div className="font-ui text-xs text-ink-light mb-1">
             {citation.chapterNumber}. {citation.chapterTitle} · {citation.subsectionLabel}{" "}
             {citation.subsectionTitle}
           </div>
-          <h2 className="font-display text-xl font-semibold text-[#2D1F0E]">
+          <h2 className="font-display text-xl font-semibold text-ink">
             {headerTitle}
           </h2>
-          <p className="font-ui text-sm text-[#5C4A32] mt-1">
+          <p className="font-ui text-sm text-ink-light mt-1">
             {headerLabel}
             {citation.volumeNumber !== null && (
-              <span className="text-[#6b5a45]"> · c. {citation.volumeNumber}</span>
+              <span className="text-ink-light"> · c. {citation.volumeNumber}</span>
             )}
             {page !== null && (
-              <span className="text-[#6b5a45]"> · {positionPrefix} {page}</span>
+              <span className="text-ink-light"> · {positionPrefix} {page}</span>
             )}
           </p>
         </div>
@@ -154,14 +154,14 @@ export default function CitationVerifyPanel({
         {/* Yazıdaki bağlam */}
         <section className="mb-5">
           <div className="flex items-center gap-1.5 mb-2">
-            <FileText className="h-3.5 w-3.5 text-[#6b5a45]" />
-            <h3 className="font-ui text-xs uppercase tracking-wider text-[#8a7a65]">
+            <FileText className="h-3.5 w-3.5 text-ink-light" />
+            <h3 className="font-ui text-xs uppercase tracking-wider text-ink-light">
               Yazıdaki bağlam
             </h3>
           </div>
-          <div className="font-body text-sm text-[#2D1F0E] leading-relaxed bg-[#FAF7F0]/60 border border-[#d4c9b5]/40 rounded-sm p-3">
+          <div className="font-body text-sm text-ink leading-relaxed bg-page/60 border border-sandy/40 rounded-sm p-3">
             {citation.contextSnippet || (
-              <span className="text-[#a89880] italic">
+              <span className="text-ink-muted italic">
                 (Bağlam çıkarılamadı)
               </span>
             )}
@@ -172,8 +172,8 @@ export default function CitationVerifyPanel({
         <section className="mb-5">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
-              <BookOpen className="h-3.5 w-3.5 text-[#6b5a45]" />
-              <h3 className="font-ui text-xs uppercase tracking-wider text-[#8a7a65]">
+              <BookOpen className="h-3.5 w-3.5 text-ink-light" />
+              <h3 className="font-ui text-xs uppercase tracking-wider text-ink-light">
                 Kaynak metni {page ? `· ${positionPrefix} ${page}` : ""}
               </h3>
             </div>
@@ -181,7 +181,7 @@ export default function CitationVerifyPanel({
               <button
                 type="button"
                 onClick={() => setShowPdf((v) => !v)}
-                className="flex items-center gap-1 font-ui text-xs px-2.5 py-1 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/70 text-[#5C4A32] hover:bg-[#FAF7F0]"
+                className="flex items-center gap-1 font-ui text-xs px-2.5 py-1 rounded-sm border border-sandy bg-page/70 text-ink-light hover:bg-page"
               >
                 <ExternalLink className="h-3 w-3" />
                 {showPdf ? "PDF'i gizle" : "Orijinal PDF sayfasını aç"}
@@ -190,19 +190,19 @@ export default function CitationVerifyPanel({
           </div>
 
           {!entryId ? (
-            <div className="flex items-center gap-2 p-3 rounded-sm bg-[#FAF7F0]/60 border border-[#d4c9b5]/40 text-[#8a7540] font-body text-sm">
+            <div className="flex items-center gap-2 p-3 rounded-sm bg-page/60 border border-sandy/40 text-gold-dark font-body text-sm">
               <AlertTriangle className="h-4 w-4 shrink-0" />
               Bu kaynak kütüphanedeki bir PDF'e bağlı değil — sadece manuel
               künye girilmiş, içerik doğrulaması yapılamaz.
             </div>
           ) : !page ? (
-            <div className="flex items-center gap-2 p-3 rounded-sm bg-[#FAF7F0]/60 border border-[#d4c9b5]/40 text-[#8a7540] font-body text-sm">
+            <div className="flex items-center gap-2 p-3 rounded-sm bg-page/60 border border-sandy/40 text-gold-dark font-body text-sm">
               <AlertTriangle className="h-4 w-4 shrink-0" />
               Bu atıfa sayfa numarası girilmemiş — düzenlemek için yazma
               ekranına dön.
             </div>
           ) : loading ? (
-            <div className="flex items-center gap-2 py-6 text-[#8a7a65] font-ui text-sm">
+            <div className="flex items-center gap-2 py-6 text-ink-light font-ui text-sm">
               <Loader2 className="h-4 w-4 animate-spin" />
               Sayfa metni yükleniyor...
             </div>
@@ -212,11 +212,11 @@ export default function CitationVerifyPanel({
               Yüklenemedi: {error}
             </div>
           ) : data && data.content ? (
-            <div className="font-body text-sm text-[#2D1F0E] leading-relaxed bg-white border border-[#d4c9b5]/60 rounded-sm p-3 whitespace-pre-wrap">
+            <div className="font-body text-sm text-ink leading-relaxed bg-white border border-sandy/60 rounded-sm p-3 whitespace-pre-wrap">
               {highlightQuote(data.content, citation.quote)}
             </div>
           ) : (
-            <div className="flex items-center gap-2 p-3 rounded-sm bg-[#FAF7F0]/60 border border-[#d4c9b5]/40 text-[#8a7540] font-body text-sm">
+            <div className="flex items-center gap-2 p-3 rounded-sm bg-page/60 border border-sandy/40 text-gold-dark font-body text-sm">
               <AlertTriangle className="h-4 w-4 shrink-0" />
               Bu sayfa için çıkarılmış metin yok. Çıkarma akışı henüz
               tamamlanmamış olabilir.
@@ -228,8 +228,8 @@ export default function CitationVerifyPanel({
         {showPdf && entryId && page && (
           <section>
             <div className="flex items-center gap-1.5 mb-2">
-              <BookOpen className="h-3.5 w-3.5 text-[#6b5a45]" />
-              <h3 className="font-ui text-xs uppercase tracking-wider text-[#8a7a65]">
+              <BookOpen className="h-3.5 w-3.5 text-ink-light" />
+              <h3 className="font-ui text-xs uppercase tracking-wider text-ink-light">
                 Orijinal sayfa
               </h3>
             </div>

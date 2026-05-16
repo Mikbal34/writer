@@ -57,7 +57,7 @@ export default async function PricingPage() {
       <section className="py-20 px-6">
         <div className="max-w-6xl mx-auto">
           <header className="text-center mb-14">
-            <span className="font-ui text-xs text-[#C9A84C] tracking-[0.2em] uppercase">
+            <span className="font-ui text-xs text-gold tracking-[0.2em] uppercase">
               Pricing
             </span>
             <h1 className="font-display text-5xl font-bold text-ink mt-3 mb-4">
@@ -71,15 +71,15 @@ export default async function PricingPage() {
 
           <PricingCards userId={userId} userEmail={userEmail} currentTier={userTier} />
 
-          <div className="rounded-sm bg-[#FAF7F0]/70 border border-[#d4c9b5]/60 overflow-hidden">
-            <header className="px-6 py-4 border-b border-[#d4c9b5]/60">
+          <div className="rounded-sm bg-page/70 border border-sandy/60 overflow-hidden">
+            <header className="px-6 py-4 border-b border-sandy/60">
               <h3 className="font-display text-lg font-semibold text-ink">
                 Compare features
               </h3>
             </header>
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-[#d4c9b5]/40">
+                <tr className="border-b border-sandy/40">
                   <th className="px-6 py-3 font-ui text-xs uppercase tracking-wider text-ink-light">
                     Feature
                   </th>
@@ -89,14 +89,14 @@ export default async function PricingPage() {
                   <th className="px-4 py-3 font-ui text-xs uppercase tracking-wider text-ink-light text-center w-28">
                     Starter
                   </th>
-                  <th className="px-4 py-3 font-ui text-xs uppercase tracking-wider text-[#C9A84C] text-center w-28">
+                  <th className="px-4 py-3 font-ui text-xs uppercase tracking-wider text-gold text-center w-28">
                     Pro
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {FEATURES.map((row) => (
-                  <tr key={row.label} className="border-b border-[#d4c9b5]/30 last:border-0">
+                  <tr key={row.label} className="border-b border-sandy/30 last:border-0">
                     <td className="px-6 py-3 font-ui text-sm text-ink">{row.label}</td>
                     <td className="px-4 py-3 text-center">
                       <FeatureCell value={row.free} />

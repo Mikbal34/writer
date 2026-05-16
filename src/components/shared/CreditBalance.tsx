@@ -55,12 +55,12 @@ export default function CreditBalance() {
     ? "bg-red-100 text-red-700"
     : isLow
       ? "bg-amber-100 text-amber-700"
-      : "bg-[#C9A84C]/15 text-[#8a5a1a]";
+      : "bg-gold/15 text-gold-dark";
 
   return (
     <Link
       href="/account"
-      className="block px-3 py-2.5 hover:bg-[#FAF7F0]/50 transition-colors"
+      className="block px-3 py-2.5 hover:bg-page/50 transition-colors"
       title="Hesabıma git"
     >
       <div className="flex items-center gap-2.5">
@@ -72,11 +72,11 @@ export default function CreditBalance() {
         <div className="min-w-0">
           <div className="font-display text-base font-semibold text-ink tabular-nums leading-tight">
             {balance.toLocaleString("tr-TR")}{" "}
-            <span className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+            <span className="font-ui text-[10px] uppercase tracking-widest text-ink-light">
               credits
             </span>
           </div>
-          <div className="font-ui text-[10px] text-[#8a7a65] mt-0.5 truncate">
+          <div className="font-ui text-[10px] text-ink-light mt-0.5 truncate">
             Bu ay {monthUsage.toLocaleString("tr-TR")} kullanıldı
           </div>
         </div>

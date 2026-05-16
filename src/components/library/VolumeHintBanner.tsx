@@ -59,19 +59,19 @@ export default function VolumeHintBanner({
           return (
             <div
               key={entry.id}
-              className="flex items-start gap-3 p-3 rounded-sm border border-[#C9A84C]/40 bg-[#C9A84C]/8"
+              className="flex items-start gap-3 p-3 rounded-sm border border-gold/40 bg-gold/8"
             >
               <div className="shrink-0 mt-0.5">
-                <BookCopy className="h-4 w-4 text-[#8a5a1a]" />
+                <BookCopy className="h-4 w-4 text-gold-dark" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-body text-sm text-[#2D1F0E]">
+                <div className="font-body text-sm text-ink">
                   <span className="font-semibold">{entry.title}</span> —{" "}
                   &ldquo;{hint.parentWork}&rdquo; eserinin{" "}
                   <span className="font-semibold">Cilt {hint.volumeNumber}</span>{" "}
                   olarak görünüyor.
                 </div>
-                <div className="font-ui text-[11px] text-[#6b5a45] mt-0.5">
+                <div className="font-ui text-[11px] text-ink-light mt-0.5">
                   Multi-volume yapıya dönüştürmek istersen ya da bağımsız bırak.
                 </div>
               </div>
@@ -79,7 +79,7 @@ export default function VolumeHintBanner({
                 <button
                   type="button"
                   onClick={() => setPromoteEntry(entry)}
-                  className="font-ui text-xs font-semibold px-3 py-1.5 rounded-sm bg-[#C9A84C] text-[#1A0F05] hover:bg-[#d4b85a]"
+                  className="font-ui text-xs font-semibold px-3 py-1.5 rounded-sm bg-gold text-ink hover:bg-gold-hover"
                 >
                   Cilt olarak ekle
                 </button>
@@ -88,7 +88,7 @@ export default function VolumeHintBanner({
                   onClick={() => dismiss(entry.id)}
                   disabled={dismissingId === entry.id}
                   title="Önerme, bağımsız bırak"
-                  className="flex items-center justify-center h-7 w-7 rounded-sm hover:bg-[#C9A84C]/15 text-[#5C4A32] disabled:opacity-50"
+                  className="flex items-center justify-center h-7 w-7 rounded-sm hover:bg-gold/15 text-ink-light disabled:opacity-50"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>

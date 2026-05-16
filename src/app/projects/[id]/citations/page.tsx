@@ -35,9 +35,9 @@ function statusFor(c: CitationRecord): StatusKind {
 }
 
 function StatusIcon({ kind }: { kind: StatusKind }) {
-  if (kind === "pdf") return <BookOpen className="h-3.5 w-3.5 text-[#2D8B4E]" />;
-  if (kind === "chunks") return <FileText className="h-3.5 w-3.5 text-[#C9A84C]" />;
-  return <Circle className="h-3.5 w-3.5 text-[#a89880]" />;
+  if (kind === "pdf") return <BookOpen className="h-3.5 w-3.5 text-forest-light" />;
+  if (kind === "chunks") return <FileText className="h-3.5 w-3.5 text-gold" />;
+  return <Circle className="h-3.5 w-3.5 text-ink-muted" />;
 }
 
 export default function CitationsPage() {
@@ -90,34 +90,34 @@ export default function CitationsPage() {
     <div className="flex flex-col h-full">
       <FadeUp className="px-6 pt-8 pb-3 text-center">
         <div className="flex items-center justify-center gap-3 mb-3">
-          <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-[#C9A84C]/60" />
-          <BookmarkCheck className="h-5 w-5 text-[#C9A84C]" />
-          <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-[#C9A84C]/60" />
+          <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-gold/60" />
+          <BookmarkCheck className="h-5 w-5 text-gold" />
+          <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-gold/60" />
         </div>
-        <h1 className="font-display text-2xl font-bold text-[#2D1F0E] tracking-tight">
+        <h1 className="font-display text-2xl font-bold text-ink tracking-tight">
           Atıf Doğrulama
         </h1>
-        <p className="font-body text-xs text-[#6b5a45] mt-1.5">
+        <p className="font-body text-xs text-ink-light mt-1.5">
           Yazıdaki her atıfın gerçekten kaynak sayfada yer alıp almadığını kontrol et.
         </p>
-        <Ornament className="w-32 mx-auto text-[#c9bfad] mt-3" />
+        <Ornament className="w-32 mx-auto text-sandy mt-3" />
       </FadeUp>
 
-      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[360px_1fr] gap-0 border-t border-[#d4c9b5]/40">
+      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[360px_1fr] gap-0 border-t border-sandy/40">
         {/* Left: list */}
-        <aside className="border-r border-[#d4c9b5]/40 bg-[#FAF7F0]/60 flex flex-col min-h-0">
-          <div className="p-3 border-b border-[#d4c9b5]/40">
+        <aside className="border-r border-sandy/40 bg-page/60 flex flex-col min-h-0">
+          <div className="p-3 border-b border-sandy/40">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a7a65]" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-light" />
               <input
                 type="text"
                 placeholder="Yazar / başlık / bağlam..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/60"
+                className="w-full pl-9 pr-3 py-2 rounded-sm border border-sandy/60 bg-white font-body text-sm placeholder:text-ink-muted focus:outline-none focus:border-gold/60"
               />
             </div>
-            <div className="font-ui text-[11px] text-[#8a7a65] mt-2">
+            <div className="font-ui text-[11px] text-ink-light mt-2">
               {citations.length} atıf
               {filtered.length !== citations.length && (
                 <span> · {filtered.length} eşleşme</span>
@@ -128,19 +128,19 @@ export default function CitationsPage() {
           <div className="flex-1 overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center py-10 gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-[#C9A84C]" />
-                <span className="font-body text-sm text-[#8a7a65]">Yükleniyor...</span>
+                <Loader2 className="h-4 w-4 animate-spin text-gold" />
+                <span className="font-body text-sm text-ink-light">Yükleniyor...</span>
               </div>
             ) : citations.length === 0 ? (
-              <div className="px-5 py-10 text-center font-body text-sm text-[#8a7a65]">
+              <div className="px-5 py-10 text-center font-body text-sm text-ink-light">
                 Bu projede henüz atıf yok. Yazma editöründe{" "}
-                <kbd className="font-ui text-[10px] px-1 py-0.5 bg-white border border-[#d4c9b5] rounded">
+                <kbd className="font-ui text-[10px] px-1 py-0.5 bg-white border border-sandy rounded">
                   Cmd+Shift+C
                 </kbd>{" "}
                 ile bir kaynak ekle.
               </div>
             ) : filtered.length === 0 ? (
-              <div className="px-5 py-10 text-center font-body text-sm text-[#8a7a65]">
+              <div className="px-5 py-10 text-center font-body text-sm text-ink-light">
                 Eşleşen atıf yok.
               </div>
             ) : (
@@ -164,27 +164,27 @@ export default function CitationsPage() {
                       <button
                         type="button"
                         onClick={() => setActiveKey(c.key)}
-                        className={`w-full text-left px-3 py-2.5 flex items-start gap-2 border-b border-[#d4c9b5]/30 transition-colors ${
+                        className={`w-full text-left px-3 py-2.5 flex items-start gap-2 border-b border-sandy/30 transition-colors ${
                           isActive
-                            ? "bg-[#C9A84C]/10"
-                            : "hover:bg-[#FAF7F0]/90"
+                            ? "bg-gold/10"
+                            : "hover:bg-page/90"
                         }`}
                       >
                         <span className="mt-0.5 shrink-0">
                           <StatusIcon kind={st} />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <div className="font-body text-sm text-[#2D1F0E] truncate">
+                          <div className="font-body text-sm text-ink truncate">
                             {author}
                             {year}
-                            <span className="text-[#6b5a45]">{volumeStr}{pageStr}</span>
+                            <span className="text-ink-light">{volumeStr}{pageStr}</span>
                           </div>
-                          <div className="font-ui text-[11px] text-[#8a7a65] truncate">
+                          <div className="font-ui text-[11px] text-ink-light truncate">
                             {c.chapterNumber}. {c.chapterTitle} ·{" "}
                             {c.subsectionLabel} {c.subsectionTitle}
                           </div>
                           {c.contextSnippet && (
-                            <div className="font-body text-xs text-[#6b5a45] mt-1 line-clamp-2">
+                            <div className="font-body text-xs text-ink-light mt-1 line-clamp-2">
                               {c.contextSnippet}
                             </div>
                           )}
@@ -203,7 +203,7 @@ export default function CitationsPage() {
           {active ? (
             <CitationVerifyPanel citation={active} />
           ) : (
-            <div className="h-full flex items-center justify-center font-body text-sm text-[#8a7a65]">
+            <div className="h-full flex items-center justify-center font-body text-sm text-ink-light">
               Solda bir atıf seç.
             </div>
           )}

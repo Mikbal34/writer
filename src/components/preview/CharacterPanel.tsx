@@ -40,7 +40,7 @@ export default function CharacterPanel({ characters, isLoading }: CharacterPanel
   return (
     <div className="p-3 space-y-3">
       {characters.map((char) => (
-        <div key={char.id} className="border border-[#d4c9b5]/50 rounded-md p-3 bg-white/50">
+        <div key={char.id} className="border border-sandy/50 rounded-md p-3 bg-white/50">
           <div className="flex gap-3">
             {/* Portrait */}
             <div className="shrink-0 w-16 h-16 rounded-md overflow-hidden bg-muted/30 flex items-center justify-center">

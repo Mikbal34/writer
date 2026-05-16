@@ -101,14 +101,14 @@ export default function EntryDetailPanel({
   }
 
   return (
-    <aside className="relative h-full w-[380px] shrink-0 border-l border-[#d4c9b5] bg-[#FAF7F0]/40 flex flex-col">
+    <aside className="relative h-full w-[380px] shrink-0 border-l border-sandy bg-page/40 flex flex-col">
       {/* Close button — pinned upper-right so the V3 header below
           doesn't crowd it. */}
       <div className="absolute right-2 top-2 z-10">
         <button
           type="button"
           onClick={onClose}
-          className="h-7 w-7 flex items-center justify-center rounded-sm text-[#8a7a65] hover:text-ink hover:bg-[#FAF7F0]"
+          className="h-7 w-7 flex items-center justify-center rounded-sm text-ink-light hover:text-ink hover:bg-page"
           aria-label="Paneli kapat"
         >
           <X className="h-4 w-4" />
@@ -122,7 +122,7 @@ export default function EntryDetailPanel({
       />
 
       {/* Tabs */}
-      <div className="px-2 pt-2 flex items-center gap-1 border-b border-[#d4c9b5]/60">
+      <div className="px-2 pt-2 flex items-center gap-1 border-b border-sandy/60">
         <TabButton
           active={tab === "notes"}
           onClick={() => setTab("notes")}
@@ -165,7 +165,7 @@ export default function EntryDetailPanel({
               <>
                 {hasVolumes && volumes.length > 1 && (
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+                    <span className="font-ui text-[10px] uppercase tracking-widest text-ink-light">
                       Cilt
                     </span>
                     <select
@@ -173,7 +173,7 @@ export default function EntryDetailPanel({
                       onChange={(e) =>
                         setActiveVolumeId(e.target.value || null)
                       }
-                      className="px-1.5 py-0.5 rounded-sm border border-[#d4c9b5] bg-white font-ui text-xs text-[#2D1F0E]"
+                      className="px-1.5 py-0.5 rounded-sm border border-sandy bg-white font-ui text-xs text-ink"
                     >
                       {volumes.map((v) => (
                         <option key={v.id} value={v.id}>
@@ -194,7 +194,7 @@ export default function EntryDetailPanel({
                 />
               </>
             ) : (
-              <div className="py-8 text-center font-body text-sm text-[#8a7a65]">
+              <div className="py-8 text-center font-body text-sm text-ink-light">
                 Bu kaynak için yüklü bir PDF yok.
               </div>
             )}
@@ -222,8 +222,8 @@ function TabButton({
       onClick={onClick}
       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-t-sm font-ui text-xs transition-colors ${
         active
-          ? "bg-white text-[#2D1F0E] border border-[#d4c9b5] border-b-transparent -mb-px"
-          : "text-[#5C4A32] hover:bg-[#FAF7F0]"
+          ? "bg-white text-ink border border-sandy border-b-transparent -mb-px"
+          : "text-ink-light hover:bg-page"
       }`}
     >
       {icon}

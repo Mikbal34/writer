@@ -159,10 +159,10 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
       {/* TOP BANNER — Smart suggestion + Saved status side by side */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Smart suggestion */}
-        <div className="bg-[#FAF7F0] border border-[#d4c9b5] rounded-sm p-4">
+        <div className="bg-page border border-sandy rounded-sm p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="h-3.5 w-3.5 text-[#C9A84C]" />
-            <span className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65]" style={{ letterSpacing: "0.14em" }}>
+            <Sparkles className="h-3.5 w-3.5 text-gold" />
+            <span className="font-ui text-[11px] uppercase tracking-widest text-ink-light" style={{ letterSpacing: "0.14em" }}>
               Akıllı Öneri
             </span>
           </div>
@@ -173,7 +173,7 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
               value={field}
               onChange={(e) => setField(e.target.value)}
               placeholder="Alanını yaz: örn. Psikoloji"
-              className="flex-1 px-3 py-2 border border-[#d4c9b5] rounded-sm bg-white font-ui text-sm text-[#2D1F0E] placeholder:text-[#a89a82] focus:outline-none focus:border-[#C9A84C]"
+              className="flex-1 px-3 py-2 border border-sandy rounded-sm bg-white font-ui text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold"
             />
             <datalist id="citation-common-fields">
               {COMMON_FIELDS.map((f) => (
@@ -184,45 +184,45 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
               <button
                 type="button"
                 onClick={() => setSelected(suggestion.format)}
-                className="shrink-0 px-3 py-2 rounded-sm font-ui text-xs bg-[#C9A84C] hover:bg-[#b5943d] text-[#1A0F05] transition-colors"
+                className="shrink-0 px-3 py-2 rounded-sm font-ui text-xs bg-gold hover:bg-gold-dark text-ink transition-colors"
               >
                 {CITATION_FORMAT_META[suggestion.format].displayName} kullan
               </button>
             )}
           </div>
           {suggestion ? (
-            <p className="font-body text-[11px] text-[#6b5a45] leading-snug">
+            <p className="font-body text-[11px] text-ink-light leading-snug">
               <span className="font-semibold">
                 {CITATION_FORMAT_META[suggestion.format].displayName}
               </span>{" "}
               öneriliyor — {suggestion.reason}
             </p>
           ) : field ? (
-            <p className="font-body text-[11px] text-[#6b5a45]">
+            <p className="font-body text-[11px] text-ink-light">
               Bu alan için özel öneri yok. Aşağıdan karşılaştırabilirsin.
             </p>
           ) : (
-            <p className="font-body text-[11px] text-[#a89a82]">
+            <p className="font-body text-[11px] text-ink-muted">
               Çalıştığın alanı yaz, sana uygun formatı önereyim.
             </p>
           )}
         </div>
 
         {/* Saved-status card */}
-        <div className="bg-[#FAF7F0] border border-[#d4c9b5] rounded-sm p-4 flex items-center justify-between gap-3">
+        <div className="bg-page border border-sandy rounded-sm p-4 flex items-center justify-between gap-3">
           <div>
-            <div className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] mb-1" style={{ letterSpacing: "0.14em" }}>
+            <div className="font-ui text-[11px] uppercase tracking-widest text-ink-light mb-1" style={{ letterSpacing: "0.14em" }}>
               Kayıtlı Format
             </div>
-            <div className="font-display text-base font-bold text-[#2D1F0E]">
+            <div className="font-display text-base font-bold text-ink">
               {CITATION_FORMAT_META[saved].displayName}
               {CITATION_FORMAT_META[saved].version && (
-                <span className="font-ui text-xs text-[#8a7a65] ml-1.5">
+                <span className="font-ui text-xs text-ink-light ml-1.5">
                   {CITATION_FORMAT_META[saved].version}
                 </span>
               )}
             </div>
-            <p className="font-body text-[11px] text-[#8a7a65] mt-0.5">
+            <p className="font-body text-[11px] text-ink-light mt-0.5">
               Tüm metin bu formatta oluşturulur.
             </p>
           </div>
@@ -239,10 +239,10 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
       {/* MIDDLE — Format cards */}
       <section className="lg:col-span-8">
         <div className="mb-3 flex items-center justify-between">
-          <span className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65]" style={{ letterSpacing: "0.14em" }}>
+          <span className="font-ui text-[11px] uppercase tracking-widest text-ink-light" style={{ letterSpacing: "0.14em" }}>
             Formatlar
           </span>
-          <span className="font-ui text-[10px] text-[#a89a82]">9 seçenek</span>
+          <span className="font-ui text-[10px] text-ink-muted">9 seçenek</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {ORDER.map((fmt) => {
@@ -258,7 +258,7 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
                 onClick={() => setSelected(fmt)}
                 className={`relative text-left p-3.5 rounded-sm border transition-all ${
                   isSelected
-                    ? "ring-2 ring-[#C9A84C] ring-offset-1 ring-offset-[#FAF7F0]"
+                    ? "ring-2 ring-gold ring-offset-1 ring-offset-[#FAF7F0]"
                     : ""
                 }`}
                 style={{
@@ -268,7 +268,7 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
                 }}
               >
                 {isSelected && (
-                  <Check className="absolute top-2 right-2 h-4 w-4 text-[#C9A84C]" />
+                  <Check className="absolute top-2 right-2 h-4 w-4 text-gold" />
                 )}
                 <div className="flex items-center gap-2 mb-1.5 pr-5">
                   <div
@@ -280,20 +280,20 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
                     <Icon className="h-3.5 w-3.5" style={{ color: isSelected ? "#8a5a1a" : "#8a7a65" }} />
                   </div>
                   <div className="flex items-baseline gap-1.5 min-w-0">
-                    <span className="font-display text-sm font-bold text-[#2D1F0E] truncate">
+                    <span className="font-display text-sm font-bold text-ink truncate">
                       {meta.displayName}
                     </span>
                     {meta.version && (
-                      <span className="font-ui text-[10px] text-[#8a7a65] shrink-0">
+                      <span className="font-ui text-[10px] text-ink-light shrink-0">
                         {meta.version}
                       </span>
                     )}
                   </div>
                 </div>
-                <p className="font-ui text-[9px] italic uppercase tracking-wider text-[#a89a82] mb-1.5">
+                <p className="font-ui text-[9px] italic uppercase tracking-wider text-ink-muted mb-1.5">
                   {INLINE_STYLE_LABEL[meta.inlineStyle]}
                 </p>
-                <p className="font-body text-[11px] text-[#6b5a45] leading-snug mb-2 line-clamp-2">
+                <p className="font-body text-[11px] text-ink-light leading-snug mb-2 line-clamp-2">
                   {meta.description}
                 </p>
                 <div className="flex flex-wrap gap-1">
@@ -326,17 +326,17 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
         <div className="sticky top-24">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <Eye className="h-3.5 w-3.5 text-[#8a7a65]" />
-              <span className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65]" style={{ letterSpacing: "0.14em" }}>
+              <Eye className="h-3.5 w-3.5 text-ink-light" />
+              <span className="font-ui text-[11px] uppercase tracking-widest text-ink-light" style={{ letterSpacing: "0.14em" }}>
                 Canlı Önizleme
               </span>
             </div>
-            <div className="font-display text-sm font-bold text-[#2D1F0E]">
+            <div className="font-display text-sm font-bold text-ink">
               {selectedMeta.displayName}
             </div>
           </div>
 
-          <div className="bg-white border border-[#d4c9b5] rounded-sm overflow-hidden">
+          <div className="bg-white border border-sandy rounded-sm overflow-hidden">
             {/* Gold top rule */}
             <div
               style={{
@@ -345,27 +345,27 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
               }}
             />
             <div className="p-4">
-              <div className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65] mb-2" style={{ letterSpacing: "0.14em" }}>
+              <div className="font-ui text-[10px] uppercase tracking-widest text-ink-light mb-2" style={{ letterSpacing: "0.14em" }}>
                 Metin İçinde
               </div>
               {loadingPreview && !preview ? (
-                <div className="flex items-center gap-2 text-[#8a7a65]">
+                <div className="flex items-center gap-2 text-ink-light">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   <span className="font-body text-xs">Önizleme yükleniyor…</span>
                 </div>
               ) : (
                 <>
                   <p
-                    className="font-serif text-sm leading-relaxed text-[#2D1F0E]"
+                    className="font-serif text-sm leading-relaxed text-ink"
                     dangerouslySetInnerHTML={{ __html: highlightInline(preview?.sampleSentence ?? "") }}
                   />
                   {preview?.sampleFootnotes && preview.sampleFootnotes.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-dashed border-[#d4c9b5]">
-                      <div className="font-ui text-[9px] uppercase tracking-widest text-[#a89a82] mb-1">
+                    <div className="mt-3 pt-3 border-t border-dashed border-sandy">
+                      <div className="font-ui text-[9px] uppercase tracking-widest text-ink-muted mb-1">
                         Dipnotlar
                       </div>
                       {preview.sampleFootnotes.map((fn, i) => (
-                        <p key={i} className="font-serif text-[11px] text-[#6b5a45] leading-snug mb-1">
+                        <p key={i} className="font-serif text-[11px] text-ink-light leading-snug mb-1">
                           <sup>{i + 1}</sup>
                           {" "}
                           {fn}
@@ -378,7 +378,7 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
             </div>
           </div>
 
-          <div className="mt-4 bg-white border border-[#d4c9b5] rounded-sm overflow-hidden">
+          <div className="mt-4 bg-white border border-sandy rounded-sm overflow-hidden">
             <div
               style={{
                 height: 2,
@@ -386,7 +386,7 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
               }}
             />
             <div className="p-4">
-              <div className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65] mb-3" style={{ letterSpacing: "0.14em" }}>
+              <div className="font-ui text-[10px] uppercase tracking-widest text-ink-light mb-3" style={{ letterSpacing: "0.14em" }}>
                 Kaynakçada
               </div>
               <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
@@ -400,15 +400,15 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
                 }))).map((s) => {
                   const EntryIcon = ENTRY_TYPE_ICONS[s.entryType] ?? FileText;
                   return (
-                    <div key={s.entryId} className="pb-3 border-b border-[#d4c9b5]/40 last:border-b-0 last:pb-0">
+                    <div key={s.entryId} className="pb-3 border-b border-sandy/40 last:border-b-0 last:pb-0">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <EntryIcon className="h-3 w-3 text-[#8a7a65]" />
-                        <span className="font-ui text-[9px] uppercase tracking-wider text-[#a89a82]">
+                        <EntryIcon className="h-3 w-3 text-ink-light" />
+                        <span className="font-ui text-[9px] uppercase tracking-wider text-ink-muted">
                           {ENTRY_TYPE_LABELS[s.entryType] ?? s.entryType}
                         </span>
                       </div>
                       <p
-                        className="font-serif text-[11px] leading-snug text-[#2D1F0E]"
+                        className="font-serif text-[11px] leading-snug text-ink"
                         dangerouslySetInnerHTML={{ __html: renderItalic(s.bibliography) }}
                       />
                     </div>
@@ -420,7 +420,7 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
 
           {/* Apply bar */}
           {isDirty && (
-            <div className="mt-4 p-3 rounded-sm bg-[#2D1F0E] text-[#F5EDE0]">
+            <div className="mt-4 p-3 rounded-sm bg-ink text-page">
               <div className="font-body text-xs mb-2">
                 <strong>{selectedMeta.displayName}</strong> formatı henüz kaydedilmedi.
                 Tüm kitap yeni formata dönüşecek.
@@ -430,7 +430,7 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
                   type="button"
                   onClick={handleApply}
                   disabled={saving}
-                  className="flex-1 px-3 py-1.5 rounded-sm font-ui text-xs bg-[#C9A84C] hover:bg-[#b5943d] text-[#1A0F05] transition-colors disabled:opacity-50"
+                  className="flex-1 px-3 py-1.5 rounded-sm font-ui text-xs bg-gold hover:bg-gold-dark text-ink transition-colors disabled:opacity-50"
                 >
                   {saving ? (
                     <span className="flex items-center justify-center gap-1.5">
@@ -444,7 +444,7 @@ export default function CitationFormatPicker({ projectId, initialFormat, onChang
                 <button
                   type="button"
                   onClick={() => setSelected(saved)}
-                  className="px-3 py-1.5 rounded-sm font-ui text-xs border border-[#c9bfad]/40 hover:bg-[#F5EDE0]/10 transition-colors"
+                  className="px-3 py-1.5 rounded-sm font-ui text-xs border border-sandy/40 hover:bg-page/10 transition-colors"
                 >
                   İptal
                 </button>

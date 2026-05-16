@@ -66,7 +66,7 @@ export default function NewProfileDialog({ onCreated }: NewProfileDialogProps) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 font-ui text-xs px-3 py-2 rounded-sm border border-[#C9A84C]/30 bg-[#2D1F0E] text-[#C9A84C] hover:bg-[#3a2910] transition-colors"
+        className="flex items-center gap-1.5 font-ui text-xs px-3 py-2 rounded-sm border border-gold/30 bg-ink text-gold hover:bg-[#3a2910] transition-colors"
       >
         <Plus className="h-3.5 w-3.5" />
         New Profile
@@ -79,12 +79,12 @@ export default function NewProfileDialog({ onCreated }: NewProfileDialogProps) {
           if (!isOpen) resetForm();
         }}
       >
-        <DialogContent className="sm:max-w-md bg-[#FAF7F0] border-[#d4c9b5]">
+        <DialogContent className="sm:max-w-md bg-page border-sandy">
           <DialogHeader>
-            <DialogTitle className="font-display text-[#2D1F0E]">
+            <DialogTitle className="font-display text-ink">
               New Style Profile
             </DialogTitle>
-            <DialogDescription className="font-body text-[#8a7a65]">
+            <DialogDescription className="font-body text-ink-light">
               Create a Writing Twin profile through conversation or writing
               sample analysis.
             </DialogDescription>
@@ -92,7 +92,7 @@ export default function NewProfileDialog({ onCreated }: NewProfileDialogProps) {
 
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="profile-name" className="font-ui text-sm text-[#2D1F0E]">
+              <Label htmlFor="profile-name" className="font-ui text-sm text-ink">
                 Profile Name
               </Label>
               <Input
@@ -108,21 +108,21 @@ export default function NewProfileDialog({ onCreated }: NewProfileDialogProps) {
             </div>
 
             <div className="space-y-2">
-              <Label className="font-ui text-sm text-[#2D1F0E]">Method</Label>
+              <Label className="font-ui text-sm text-ink">Method</Label>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setMethod("chat")}
                   className={`p-3 rounded-sm border text-left transition-all ${
                     method === "chat"
-                      ? "border-[#C9A84C] bg-[#C9A84C]/5"
-                      : "border-[#d4c9b5]/60 hover:border-[#d4c9b5]"
+                      ? "border-gold bg-gold/5"
+                      : "border-sandy/60 hover:border-sandy"
                   }`}
                 >
-                  <p className="font-display text-sm font-semibold text-[#2D1F0E]">
+                  <p className="font-display text-sm font-semibold text-ink">
                     Chat Interview
                   </p>
-                  <p className="font-body text-[11px] text-[#8a7a65] mt-1">
+                  <p className="font-body text-[11px] text-ink-light mt-1">
                     Build your profile through a guided conversation.
                   </p>
                 </button>
@@ -131,14 +131,14 @@ export default function NewProfileDialog({ onCreated }: NewProfileDialogProps) {
                   onClick={() => setMethod("analyze")}
                   className={`p-3 rounded-sm border text-left transition-all ${
                     method === "analyze"
-                      ? "border-[#C9A84C] bg-[#C9A84C]/5"
-                      : "border-[#d4c9b5]/60 hover:border-[#d4c9b5]"
+                      ? "border-gold bg-gold/5"
+                      : "border-sandy/60 hover:border-sandy"
                   }`}
                 >
-                  <p className="font-display text-sm font-semibold text-[#2D1F0E]">
+                  <p className="font-display text-sm font-semibold text-ink">
                     Writing Sample
                   </p>
-                  <p className="font-body text-[11px] text-[#8a7a65] mt-1">
+                  <p className="font-body text-[11px] text-ink-light mt-1">
                     Analyze a sample of your writing to extract style.
                   </p>
                 </button>

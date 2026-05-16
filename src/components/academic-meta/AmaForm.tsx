@@ -164,7 +164,7 @@ export default function AmaForm({
             <button
               type="button"
               onClick={onAutoFillCorresponding}
-              className="text-[11px] text-[#5C4A32] hover:underline"
+              className="text-[11px] text-ink-light hover:underline"
             >
               ✨ Copy from first author
             </button>
@@ -207,7 +207,7 @@ export default function AmaForm({
               type="button"
               onClick={onGenerateKeyPoints}
               disabled={generatingKeyPoints}
-              className="text-[11px] text-[#5C4A32] hover:underline disabled:opacity-50"
+              className="text-[11px] text-ink-light hover:underline disabled:opacity-50"
             >
               {generatingKeyPoints ? "Generating…" : "✨ Generate Key Points"}
             </button>
@@ -243,7 +243,7 @@ export default function AmaForm({
               type="button"
               onClick={onGenerateStructuredAbstract}
               disabled={generatingAbstract}
-              className="text-[11px] text-[#5C4A32] hover:underline disabled:opacity-50"
+              className="text-[11px] text-ink-light hover:underline disabled:opacity-50"
             >
               {generatingAbstract ? "Generating…" : "✨ Generate all sections"}
             </button>

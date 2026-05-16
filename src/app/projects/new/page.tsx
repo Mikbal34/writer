@@ -182,9 +182,9 @@ export default function NewProjectPage() {
                       className={cn(
                         "flex h-9 w-9 items-center justify-center rounded-full border-2 text-sm font-medium transition-all",
                         isCompleted
-                          ? "border-indigo-600 bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
+                          ? "border-forest bg-forest text-page cursor-pointer hover:bg-forest/90"
                           : isActive
-                          ? "border-indigo-600 bg-background text-indigo-600"
+                          ? "border-forest bg-background text-forest"
                           : "border-border bg-background text-muted-foreground cursor-not-allowed"
                       )}
                       aria-label={`Step ${step.id}: ${step.label}`}
@@ -206,7 +206,7 @@ export default function NewProjectPage() {
                     <div
                       className={cn(
                         "flex-1 h-0.5 mt-4 mx-2 transition-colors",
-                        isCompleted ? "bg-indigo-600" : "bg-border"
+                        isCompleted ? "bg-forest" : "bg-border"
                       )}
                     />
                   )}
@@ -297,7 +297,7 @@ export default function NewProjectPage() {
               <Button
                 onClick={handleNext}
                 disabled={!canProceed()}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="bg-forest hover:bg-forest/90 text-page"
               >
                 Continue
               </Button>
@@ -305,7 +305,7 @@ export default function NewProjectPage() {
               <Button
                 onClick={handleCreate}
                 disabled={isCreating}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+                className="bg-forest hover:bg-forest/90 text-page gap-2"
               >
                 {isCreating ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

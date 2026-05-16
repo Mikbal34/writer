@@ -58,9 +58,9 @@ function getStatusProgress(status: string): number {
 function OrnamentDots() {
   return (
     <div className="flex items-center justify-center gap-2 my-3" aria-hidden="true">
-      <div className="w-1.5 h-1.5 rounded-full bg-[#C9A84C]/60" />
-      <div className="w-2 h-2 rounded-full bg-[#C9A84C]" />
-      <div className="w-1.5 h-1.5 rounded-full bg-[#C9A84C]/60" />
+      <div className="w-1.5 h-1.5 rounded-full bg-gold/60" />
+      <div className="w-2 h-2 rounded-full bg-gold" />
+      <div className="w-1.5 h-1.5 rounded-full bg-gold/60" />
     </div>
   );
 }
@@ -402,17 +402,17 @@ export default async function HomePage() {
                 <section key={series.id}>
                   <div className="flex items-baseline justify-between mb-4">
                     <div>
-                      <h2 className="font-display text-xl font-semibold text-[#2D1F0E]">
+                      <h2 className="font-display text-xl font-semibold text-ink">
                         {series.name}
                       </h2>
-                      <p className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] mt-0.5">
+                      <p className="font-ui text-[11px] uppercase tracking-widest text-ink-light mt-0.5">
                         Seri · {volumes.length} cilt
                       </p>
                     </div>
                   </div>
                   {volumes.length === 0 ? (
-                    <div className="rounded-sm border border-dashed border-[#d4c9b5] bg-[#FAF7F0]/40 px-4 py-6 text-center">
-                      <p className="font-body text-xs text-[#8a7a65]">
+                    <div className="rounded-sm border border-dashed border-sandy bg-page/40 px-4 py-6 text-center">
+                      <p className="font-body text-xs text-ink-light">
                         Henüz bu seride cilt yok. Yeni proje oluştururken bu seriyi seçebilirsin.
                       </p>
                     </div>
@@ -433,10 +433,10 @@ export default async function HomePage() {
                 {seriesList.length > 0 && (
                   <div className="flex items-baseline justify-between mb-4">
                     <div>
-                      <h2 className="font-display text-xl font-semibold text-[#2D1F0E]">
+                      <h2 className="font-display text-xl font-semibold text-ink">
                         Bağımsız projeler
                       </h2>
-                      <p className="font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] mt-0.5">
+                      <p className="font-ui text-[11px] uppercase tracking-widest text-ink-light mt-0.5">
                         {standaloneProjects.length} kitap
                       </p>
                     </div>
@@ -635,7 +635,7 @@ function LandingPage() {
       }}
     >
       {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-[#1a0f05]/60 backdrop-blur-md border-b border-[#C9A84C]/15">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-ink/60 backdrop-blur-md border-b border-gold/15">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
             <img src="/images/quilpen-logo-horizontal.png" alt="Quilpen" className="h-20 animate-logo-in" style={{ filter: "brightness(0) invert(1)" }} />
@@ -643,19 +643,19 @@ function LandingPage() {
           <div className="flex items-center gap-6">
             <Link
               href="/pricing"
-              className="font-ui text-sm text-[#e8dfd0]/70 hover:text-[#FAF7F0] transition-colors"
+              className="font-ui text-sm text-sandy-soft/70 hover:text-page transition-colors"
             >
               Pricing
             </Link>
             <Link
               href="/api/auth/signin"
-              className="font-ui text-sm text-[#e8dfd0]/70 hover:text-[#FAF7F0] transition-colors"
+              className="font-ui text-sm text-sandy-soft/70 hover:text-page transition-colors"
             >
               Sign In
             </Link>
             <Link
               href="/api/auth/signin"
-              className="font-ui text-sm font-medium px-4 py-2 bg-[#C9A84C] text-[#1a0f05] rounded-sm hover:bg-[#d4b85a] transition-colors"
+              className="font-ui text-sm font-medium px-4 py-2 bg-gold text-ink rounded-sm hover:bg-gold-hover transition-colors"
             >
               Get Started
             </Link>
@@ -675,25 +675,25 @@ function LandingPage() {
           sizes="100vw"
           className="object-cover object-center"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#1a0f05]/85 via-[#1a0f05]/70 to-[#1a0f05]/30" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#1a0f05]/60 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-ink/85 via-ink/70 to-ink/30" />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink/60 via-transparent to-transparent" />
 
         <div className="relative z-10 max-w-6xl mx-auto px-6 py-20">
           <FadeUpLarge className="max-w-2xl">
             <div className="flex items-center gap-3 mb-6">
-              <div className="h-px w-8 bg-[#C9A84C]" />
-              <span className="font-ui text-xs text-[#C9A84C] tracking-[0.2em] uppercase">
+              <div className="h-px w-8 bg-gold" />
+              <span className="font-ui text-xs text-gold tracking-[0.2em] uppercase">
                 AI-Powered Book Writing
               </span>
             </div>
 
-            <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-bold text-[#FAF7F0] leading-[1.1] mb-6">
+            <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-bold text-page leading-[1.1] mb-6">
               Write Your
               <br />
-              <em className="text-[#C9A84C] not-italic">Book.</em>
+              <em className="text-gold not-italic">Book.</em>
             </h1>
 
-            <p className="font-body text-xl text-[#e8dfd0]/90 leading-relaxed mb-8 max-w-lg">
+            <p className="font-body text-xl text-sandy-soft/90 leading-relaxed mb-8 max-w-lg">
               An AI-powered writing experience from roadmap to final page.
               Designed for academic books, research works, and long-form content.
             </p>
@@ -701,29 +701,29 @@ function LandingPage() {
             <div className="flex flex-wrap gap-4">
               <Link
                 href="/api/auth/signin"
-                className="flex items-center gap-2 font-ui text-sm font-semibold px-6 py-3 bg-[#C9A84C] text-[#1a0f05] rounded-sm hover:bg-[#d4b85a] transition-all duration-200 group"
+                className="flex items-center gap-2 font-ui text-sm font-semibold px-6 py-3 bg-gold text-ink rounded-sm hover:bg-gold-hover transition-all duration-200 group"
               >
                 Start Free
                 <BookOpen className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
               <Link
                 href="/api/auth/signin"
-                className="flex items-center gap-2 font-ui text-sm font-medium px-6 py-3 border border-[#FAF7F0]/40 text-[#FAF7F0] rounded-sm hover:bg-[#FAF7F0]/10 transition-all duration-200"
+                className="flex items-center gap-2 font-ui text-sm font-medium px-6 py-3 border border-page/40 text-page rounded-sm hover:bg-page/10 transition-all duration-200"
               >
                 Sign In
               </Link>
             </div>
 
             {/* Social proof */}
-            <div className="flex items-center gap-6 mt-10 pt-8 border-t border-[#FAF7F0]/20">
+            <div className="flex items-center gap-6 mt-10 pt-8 border-t border-page/20">
               {[
                 { value: "2,400+", label: "Active Writers" },
                 { value: "18,000+", label: "Pages Written" },
                 { value: "340+", label: "Books Completed" },
               ].map((stat, i) => (
                 <div key={i} className="text-center">
-                  <p className="font-display text-2xl font-bold text-[#C9A84C]">{stat.value}</p>
-                  <p className="font-ui text-xs text-[#e8dfd0]/70 mt-0.5">{stat.label}</p>
+                  <p className="font-display text-2xl font-bold text-gold">{stat.value}</p>
+                  <p className="font-ui text-xs text-sandy-soft/70 mt-0.5">{stat.label}</p>
                 </div>
               ))}
             </div>
@@ -731,14 +731,14 @@ function LandingPage() {
         </div>
 
         {/* Bottom fade to parchment */}
-        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#FAF7F0] to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-page to-transparent" />
       </section>
 
       {/* Features — light parchment section */}
       <section className="py-20 px-6">
         <div className="max-w-6xl mx-auto">
           <ScrollFadeUp className="text-center mb-14">
-            <svg viewBox="0 0 120 20" className="w-24 mx-auto text-[#C9A84C] mb-6 opacity-60" fill="currentColor">
+            <svg viewBox="0 0 120 20" className="w-24 mx-auto text-gold mb-6 opacity-60" fill="currentColor">
               <path d="M0 10 Q30 2 60 10 Q90 18 120 10" stroke="currentColor" strokeWidth="1" fill="none" />
               <circle cx="60" cy="10" r="3" />
               <circle cx="20" cy="8" r="1.5" />
@@ -758,7 +758,7 @@ function LandingPage() {
               <ScrollFadeUp
                 key={title}
                 delay={i * 0.1}
-                className="bg-[#FAF7F0]/70 border border-[#d4c9b5]/60 rounded-sm p-6 hover:shadow-md hover:border-[#C9A84C]/40 transition-all duration-300 group"
+                className="bg-page/70 border border-sandy/60 rounded-sm p-6 hover:shadow-md hover:border-gold/40 transition-all duration-300 group"
               >
                 <div className="w-10 h-10 rounded-sm bg-forest/8 flex items-center justify-center mb-4 group-hover:bg-forest/15 transition-colors">
                   <Icon className="w-5 h-5 text-forest" />
@@ -772,7 +772,7 @@ function LandingPage() {
       </section>
 
       {/* How it works — subtle tinted section */}
-      <section className="py-20 px-6 bg-[#2D1F0E]/5">
+      <section className="py-20 px-6 bg-ink/5">
         <div className="max-w-4xl mx-auto">
           <ScrollFadeIn className="text-center mb-14">
             <h2 className="font-display text-4xl font-bold text-ink mb-4">How It Works</h2>
@@ -781,7 +781,7 @@ function LandingPage() {
 
           <div className="relative">
             {/* Connecting line */}
-            <div className="absolute left-1/2 top-8 bottom-8 w-px bg-gradient-to-b from-[#C9A84C]/40 via-[#C9A84C]/20 to-transparent hidden md:block" />
+            <div className="absolute left-1/2 top-8 bottom-8 w-px bg-gradient-to-b from-gold/40 via-gold/20 to-transparent hidden md:block" />
 
             <div className="space-y-8">
               {LANDING_HOW_IT_WORKS.map((item, i) => (
@@ -790,8 +790,8 @@ function LandingPage() {
                   delay={i * 0.15}
                   className={`flex items-start gap-6 ${i % 2 === 1 ? "md:flex-row-reverse md:text-right" : ""}`}
                 >
-                  <div className="shrink-0 w-16 h-16 rounded-sm bg-[#FAF7F0] border border-[#d4c9b5]/60 flex items-center justify-center shadow-sm">
-                    <span className="font-display text-xl font-bold text-[#C9A84C]">{item.step}</span>
+                  <div className="shrink-0 w-16 h-16 rounded-sm bg-page border border-sandy/60 flex items-center justify-center shadow-sm">
+                    <span className="font-display text-xl font-bold text-gold">{item.step}</span>
                   </div>
                   <div className="flex-1 pt-2">
                     <h3 className="font-display text-xl font-semibold text-ink mb-2">{item.title}</h3>
@@ -815,11 +815,11 @@ function LandingPage() {
               <ScrollFadeUp
                 key={t.author}
                 delay={i * 0.1}
-                className="bg-[#FAF7F0]/70 border border-[#d4c9b5]/60 rounded-sm p-6"
+                className="bg-page/70 border border-sandy/60 rounded-sm p-6"
               >
-                <div className="text-[#C9A84C] text-4xl font-display leading-none mb-4">&ldquo;</div>
+                <div className="text-gold text-4xl font-display leading-none mb-4">&ldquo;</div>
                 <p className="font-body text-ink leading-relaxed mb-6 italic">{t.quote}</p>
-                <div className="border-t border-[#d4c9b5]/40 pt-4">
+                <div className="border-t border-sandy/40 pt-4">
                   <p className="font-display text-sm font-semibold text-ink">{t.author}</p>
                   <p className="font-ui text-xs text-muted-foreground mt-0.5">{t.role}</p>
                 </div>
@@ -830,10 +830,10 @@ function LandingPage() {
       </section>
 
       {/* Pricing */}
-      <section className="py-20 px-6 bg-[#2D1F0E]/5">
+      <section className="py-20 px-6 bg-ink/5">
         <div className="max-w-5xl mx-auto">
           <ScrollFadeIn className="text-center mb-14">
-            <svg viewBox="0 0 120 20" className="w-24 mx-auto text-[#C9A84C] mb-6 opacity-60" fill="currentColor">
+            <svg viewBox="0 0 120 20" className="w-24 mx-auto text-gold mb-6 opacity-60" fill="currentColor">
               <path d="M0 10 Q30 2 60 10 Q90 18 120 10" stroke="currentColor" strokeWidth="1" fill="none" />
               <circle cx="60" cy="10" r="3" />
               <circle cx="20" cy="8" r="1.5" />
@@ -854,14 +854,14 @@ function LandingPage() {
                 delay={i * 0.1}
                 className={`relative rounded-sm p-6 flex flex-col ${
                   plan.popular
-                    ? "bg-[#2D1F0E] border-2 border-[#C9A84C]/60 shadow-lg"
-                    : "bg-[#FAF7F0]/70 border border-[#d4c9b5]/60"
+                    ? "bg-ink border-2 border-gold/60 shadow-lg"
+                    : "bg-page/70 border border-sandy/60"
                 }`}
               >
                 {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1 bg-[#C9A84C] rounded-sm">
-                    <Crown className="w-3 h-3 text-[#1a0f05]" />
-                    <span className="font-ui text-[10px] font-bold text-[#1a0f05] uppercase tracking-wider">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1 bg-gold rounded-sm">
+                    <Crown className="w-3 h-3 text-ink" />
+                    <span className="font-ui text-[10px] font-bold text-ink uppercase tracking-wider">
                       Popular
                     </span>
                   </div>
@@ -869,12 +869,12 @@ function LandingPage() {
 
                 <div className="mb-5">
                   <h3 className={`font-display text-lg font-bold mb-1 ${
-                    plan.popular ? "text-[#FAF7F0]" : "text-ink"
+                    plan.popular ? "text-page" : "text-ink"
                   }`}>
                     {plan.name}
                   </h3>
                   <p className={`font-body text-xs ${
-                    plan.popular ? "text-[#e8dfd0]/60" : "text-ink-light"
+                    plan.popular ? "text-sandy-soft/60" : "text-ink-light"
                   }`}>
                     {plan.tagline}
                   </p>
@@ -883,20 +883,20 @@ function LandingPage() {
                 <div className="mb-5">
                   <div className="flex items-baseline gap-1">
                     <span className={`font-display text-3xl font-bold ${
-                      plan.popular ? "text-[#C9A84C]" : "text-ink"
+                      plan.popular ? "text-gold" : "text-ink"
                     }`}>
                       {plan.price === 0 ? "Free" : `$${plan.price}`}
                     </span>
                     {plan.price > 0 && (
                       <span className={`font-ui text-xs ${
-                        plan.popular ? "text-[#e8dfd0]/50" : "text-ink-light"
+                        plan.popular ? "text-sandy-soft/50" : "text-ink-light"
                       }`}>
                         one-time
                       </span>
                     )}
                   </div>
                   <p className={`font-ui text-xs mt-1 ${
-                    plan.popular ? "text-[#C9A84C]/80" : "text-[#C9A84C]"
+                    plan.popular ? "text-gold/80" : "text-gold"
                   }`}>
                     {plan.credits.toLocaleString()} credits
                   </p>
@@ -906,10 +906,10 @@ function LandingPage() {
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-2">
                       <Check className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${
-                        plan.popular ? "text-[#C9A84C]" : "text-forest"
+                        plan.popular ? "text-gold" : "text-forest"
                       }`} />
                       <span className={`font-ui text-xs leading-relaxed ${
-                        plan.popular ? "text-[#e8dfd0]/80" : "text-ink-light"
+                        plan.popular ? "text-sandy-soft/80" : "text-ink-light"
                       }`}>
                         {feature}
                       </span>
@@ -921,8 +921,8 @@ function LandingPage() {
                   href="/api/auth/signin"
                   className={`flex items-center justify-center gap-2 font-ui text-sm font-semibold px-4 py-2.5 rounded-sm transition-all duration-200 ${
                     plan.popular
-                      ? "bg-[#C9A84C] text-[#1a0f05] hover:bg-[#d4b85a]"
-                      : "border border-[#d4c9b5]/60 text-ink hover:border-[#C9A84C]/60 hover:bg-[#C9A84C]/5"
+                      ? "bg-gold text-ink hover:bg-gold-hover"
+                      : "border border-sandy/60 text-ink hover:border-gold/60 hover:bg-gold/5"
                   }`}
                 >
                   {plan.price === 0 ? "Start Free" : "Get Started"}
@@ -942,30 +942,30 @@ function LandingPage() {
       {/* CTA */}
       <section className="py-20 px-6">
         <div className="max-w-3xl mx-auto">
-          <ScrollFadeUp className="bg-[#2D1F0E] rounded-sm p-12 text-center relative overflow-hidden">
+          <ScrollFadeUp className="bg-ink rounded-sm p-12 text-center relative overflow-hidden">
             {/* Decorative corners */}
-            <div className="absolute top-4 left-4 w-8 h-8 border-t border-l border-[#C9A84C]/40" />
-            <div className="absolute top-4 right-4 w-8 h-8 border-t border-r border-[#C9A84C]/40" />
-            <div className="absolute bottom-4 left-4 w-8 h-8 border-b border-l border-[#C9A84C]/40" />
-            <div className="absolute bottom-4 right-4 w-8 h-8 border-b border-r border-[#C9A84C]/40" />
+            <div className="absolute top-4 left-4 w-8 h-8 border-t border-l border-gold/40" />
+            <div className="absolute top-4 right-4 w-8 h-8 border-t border-r border-gold/40" />
+            <div className="absolute bottom-4 left-4 w-8 h-8 border-b border-l border-gold/40" />
+            <div className="absolute bottom-4 right-4 w-8 h-8 border-b border-r border-gold/40" />
 
-            <h2 className="font-display text-4xl font-bold text-[#FAF7F0] mb-4">
+            <h2 className="font-display text-4xl font-bold text-page mb-4">
               Ready to Write Your Book?
             </h2>
-            <p className="font-body text-lg text-[#e8dfd0]/80 mb-8 leading-relaxed">
+            <p className="font-body text-lg text-sandy-soft/80 mb-8 leading-relaxed">
               Start for free. No credit card required.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 href="/api/auth/signin"
-                className="flex items-center justify-center gap-2 font-ui text-sm font-semibold px-8 py-3.5 bg-[#C9A84C] text-[#1a0f05] rounded-sm hover:bg-[#d4b85a] transition-all group"
+                className="flex items-center justify-center gap-2 font-ui text-sm font-semibold px-8 py-3.5 bg-gold text-ink rounded-sm hover:bg-gold-hover transition-all group"
               >
                 Start Now
                 <BookOpen className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
               <Link
                 href="/api/auth/signin"
-                className="flex items-center justify-center gap-2 font-ui text-sm font-medium px-8 py-3.5 border border-[#FAF7F0]/30 text-[#FAF7F0] rounded-sm hover:bg-[#FAF7F0]/10 transition-all"
+                className="flex items-center justify-center gap-2 font-ui text-sm font-medium px-8 py-3.5 border border-page/30 text-page rounded-sm hover:bg-page/10 transition-all"
               >
                 Sign In
               </Link>
@@ -973,8 +973,8 @@ function LandingPage() {
             <div className="flex items-center justify-center gap-6 mt-8 flex-wrap">
               {["Free plan available", "AI-powered", "DOCX & PDF export"].map((item, i) => (
                 <div key={i} className="flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5 text-[#C9A84C]" />
-                  <span className="font-ui text-xs text-[#e8dfd0]/70">{item}</span>
+                  <Shield className="w-3.5 h-3.5 text-gold" />
+                  <span className="font-ui text-xs text-sandy-soft/70">{item}</span>
                 </div>
               ))}
             </div>
@@ -983,7 +983,7 @@ function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-[#d4c9b5]/40 py-8 px-6">
+      <footer className="border-t border-sandy/40 py-8 px-6">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <img src="/images/quilpen-logo-horizontal.png" alt="Quilpen" className="h-14" />

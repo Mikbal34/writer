@@ -296,7 +296,7 @@ export default function PreviewChat({
             <StaggerItem key={i} index={i} baseDelay={0.05} stagger={0.03}>
               <div className="flex gap-2.5 items-start">
                 {msg.role === "user" ? (
-                  <User className="h-7 w-7 shrink-0 text-[#8a7a65]" />
+                  <User className="h-7 w-7 shrink-0 text-ink-light" />
                 ) : (
                   <img src="/images/quilpen-icon.png" alt="Q" className="h-7 w-7 shrink-0 rounded-lg" />
                 )}

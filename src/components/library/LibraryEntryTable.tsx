@@ -223,8 +223,8 @@ export default function LibraryEntryTable({
  if (entries.length === 0) {
   return (
    <div className="text-center py-12">
-    <BookOpen className="h-8 w-8 text-[#c9bfad] mx-auto mb-3" />
-    <p className="font-body text-sm text-[#8a7a65]">
+    <BookOpen className="h-8 w-8 text-sandy mx-auto mb-3" />
+    <p className="font-body text-sm text-ink-light">
      Your library is empty.
     </p>
    </div>
@@ -423,7 +423,7 @@ export default function LibraryEntryTable({
         handleRowActivate(entry);
        }
       }}
-      className="group flex items-center gap-3 py-3.5 border-b border-dashed border-[#d4c9b5]/40 hover:bg-[#e8dfd0]/15 px-4 w-full text-left transition-colors last:border-b-0 cursor-pointer"
+      className="group flex items-center gap-3 py-3.5 border-b border-dashed border-sandy/40 hover:bg-sandy-soft/15 px-4 w-full text-left transition-colors last:border-b-0 cursor-pointer"
      >
       {/* Vertical accent bar */}
       <div
@@ -462,7 +462,7 @@ export default function LibraryEntryTable({
         </div>
        ) : (
         <div
-         className="w-5 h-5 rounded-sm border-2 border-[#d4c9b5]/60 shrink-0"
+         className="w-5 h-5 rounded-sm border-2 border-sandy/60 shrink-0"
          title={title}
          aria-label={title}
         />
@@ -474,15 +474,15 @@ export default function LibraryEntryTable({
        <div className="flex items-baseline gap-2 flex-wrap">
         <span
          dir="auto"
-         className="font-body text-sm font-semibold text-[#2D1F0E]"
+         className="font-body text-sm font-semibold text-ink"
         >
          {entry.authorSurname}
          {entry.authorName ? `, ${entry.authorName}` : ""}
         </span>
-        <span className="text-[#a89880]">—</span>
+        <span className="text-ink-muted">—</span>
         <span
          dir="auto"
-         className="font-body text-sm italic text-[#6b5a45] truncate"
+         className="font-body text-sm italic text-ink-light truncate"
         >
          {entry.title}
         </span>
@@ -492,7 +492,7 @@ export default function LibraryEntryTable({
          {entry.tags.map((t) => (
           <span
            key={t.tag.id}
-           className="font-ui text-[10px] bg-[#e8dfd0] text-[#5C4A32] px-1.5 py-0.5 rounded-sm"
+           className="font-ui text-[10px] bg-sandy-soft text-ink-light px-1.5 py-0.5 rounded-sm"
           >
            {t.tag.name}
           </span>
@@ -502,12 +502,12 @@ export default function LibraryEntryTable({
       </div>
 
       {/* Year */}
-      <span className="font-display text-sm text-[#8a7a65] tabular-nums shrink-0">
+      <span className="font-display text-sm text-ink-light tabular-nums shrink-0">
        {entry.year ?? "—"}
       </span>
 
       {/* Type badge */}
-      <span className="font-ui text-[10px] px-2 py-0.5 bg-[#e8dfd0] text-[#5C4A32] rounded-sm tracking-wider uppercase shrink-0">
+      <span className="font-ui text-[10px] px-2 py-0.5 bg-sandy-soft text-ink-light rounded-sm tracking-wider uppercase shrink-0">
        {ENTRY_TYPE_LABELS[entry.entryType] ?? entry.entryType}
       </span>
 
@@ -524,7 +524,7 @@ export default function LibraryEntryTable({
           folders contain it. */}
       {(entry._count?.notes ?? 0) > 0 && (
        <span
-        className="flex items-center gap-0.5 font-ui text-[10px] text-[#5C4A32] shrink-0"
+        className="flex items-center gap-0.5 font-ui text-[10px] text-ink-light shrink-0"
         title={`${entry._count!.notes} not`}
        >
         <FileText className="h-3 w-3" />
@@ -533,7 +533,7 @@ export default function LibraryEntryTable({
       )}
       {(entry._count?.collections ?? 0) > 0 && (
        <span
-        className="flex items-center gap-0.5 font-ui text-[10px] text-[#C9A84C] shrink-0"
+        className="flex items-center gap-0.5 font-ui text-[10px] text-gold shrink-0"
         title={`${entry._count!.collections} klasör`}
        >
         <FolderClosed className="h-3 w-3" />
@@ -559,7 +559,7 @@ export default function LibraryEntryTable({
          return (
           <span
            title={`${failed}/${total} cilt başarısız — ciltler dialog'undan yeniden işle`}
-           className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#c44] bg-[#c44]/10 font-ui text-[10px]"
+           className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-destructive bg-destructive/10 font-ui text-[10px]"
           >
            <AlertTriangle className="h-3 w-3" />
            {failed}/{total}
@@ -570,7 +570,7 @@ export default function LibraryEntryTable({
          return (
           <span
            title={`${inProgress}/${total} cilt işleniyor`}
-           className="shrink-0 inline-flex items-center gap-1 text-[#8a7a65] font-ui text-[10px]"
+           className="shrink-0 inline-flex items-center gap-1 text-ink-light font-ui text-[10px]"
           >
            <Loader2 className="h-3 w-3 animate-spin" />
            {ready}/{total}
@@ -581,7 +581,7 @@ export default function LibraryEntryTable({
          return (
           <span
            title={`${total} cilt hazır`}
-           className="shrink-0 text-[#2D8B4E]"
+           className="shrink-0 text-forest-light"
           >
            <FileCheck className="h-3.5 w-3.5" />
           </span>
@@ -590,11 +590,11 @@ export default function LibraryEntryTable({
         return null;
        })()
       ) : entry.pdfStatus === "ready" ? (
-       <span title="RAG için hazır" className="shrink-0 text-[#2D8B4E]">
+       <span title="RAG için hazır" className="shrink-0 text-forest-light">
         <FileCheck className="h-3.5 w-3.5" />
        </span>
       ) : ["downloading", "pending", "extracting", "embedding"].includes(entry.pdfStatus ?? "") ? (
-       <span title={`İşleniyor: ${entry.pdfStatus}`} className="shrink-0 text-[#8a7a65]">
+       <span title={`İşleniyor: ${entry.pdfStatus}`} className="shrink-0 text-ink-light">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
        </span>
       ) : entry.pdfStatus === "failed" ? (
@@ -606,7 +606,7 @@ export default function LibraryEntryTable({
           e.stopPropagation();
           setFindMenuOpenId((prev) => (prev === entry.id ? null : entry.id));
          }}
-         className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#8a5a1a] bg-[#C9A84C]/15 hover:bg-[#C9A84C]/30 cursor-pointer transition-colors"
+         className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-gold-dark bg-gold/15 hover:bg-gold/30 cursor-pointer transition-colors"
         >
          <SearchIcon className="h-3 w-3" />
          <span className="font-ui text-[10px]">PDF Bul</span>
@@ -628,7 +628,7 @@ export default function LibraryEntryTable({
            fileInputRef.current?.click();
           }
          }}
-         className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[#2D8B4E] bg-[#2D8B4E]/10 hover:bg-[#2D8B4E]/20 cursor-pointer transition-colors"
+         className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-forest-light bg-forest-light/10 hover:bg-forest-light/20 cursor-pointer transition-colors"
         >
          {uploadingId === entry.id ? (
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -655,7 +655,7 @@ export default function LibraryEntryTable({
           fileInputRef.current?.click();
          }
         }}
-        className="flex items-center gap-1 px-1.5 py-0.5 shrink-0 rounded-sm text-[#c44] bg-[#c44]/10 hover:bg-[#c44]/20 cursor-pointer transition-colors"
+        className="flex items-center gap-1 px-1.5 py-0.5 shrink-0 rounded-sm text-destructive bg-destructive/10 hover:bg-destructive/20 cursor-pointer transition-colors"
        >
         {uploadingId === entry.id ? (
          <Loader2 className="h-3 w-3 animate-spin" />
@@ -685,9 +685,9 @@ export default function LibraryEntryTable({
           window.open(`/api/library/${entry.id}/pdf`, "_blank", "noopener,noreferrer");
          }
         }}
-        className="flex items-center justify-center h-6 w-6 shrink-0 rounded-sm hover:bg-[#C9A84C]/15 transition-colors cursor-pointer"
+        className="flex items-center justify-center h-6 w-6 shrink-0 rounded-sm hover:bg-gold/15 transition-colors cursor-pointer"
        >
-        <ExternalLink className="h-3.5 w-3.5 text-[#5C4A32]" />
+        <ExternalLink className="h-3.5 w-3.5 text-ink-light" />
        </div>
       )}
 
@@ -713,11 +713,11 @@ export default function LibraryEntryTable({
          setVolumesEntry(entry);
         }
        }}
-       className="flex items-center gap-1 px-1.5 py-0.5 shrink-0 rounded-sm hover:bg-[#C9A84C]/15 cursor-pointer transition-colors"
+       className="flex items-center gap-1 px-1.5 py-0.5 shrink-0 rounded-sm hover:bg-gold/15 cursor-pointer transition-colors"
       >
-       <BookCopy className="h-3.5 w-3.5 text-[#5C4A32]" />
+       <BookCopy className="h-3.5 w-3.5 text-ink-light" />
        {(entry._count?.volumes ?? 0) > 0 && (
-        <span className="font-ui text-[10px] text-[#5C4A32]">
+        <span className="font-ui text-[10px] text-ink-light">
          {entry._count?.volumes}
         </span>
        )}

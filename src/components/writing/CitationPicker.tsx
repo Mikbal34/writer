@@ -177,37 +177,37 @@ export default function CitationPicker({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col bg-[#FAF7F0] border-[#d4c9b5]">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col bg-page border-sandy">
         <DialogHeader>
-          <DialogTitle className="font-display text-[#2D1F0E]">
+          <DialogTitle className="font-display text-ink">
             Kaynak Ekle
           </DialogTitle>
         </DialogHeader>
-        <div className="h-px bg-[#d4c9b5]/50" />
+        <div className="h-px bg-sandy/50" />
 
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a7a65]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-light" />
           <input
             type="text"
             placeholder="Yazar / başlık / yıl ara..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-3 py-2.5 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/60"
+            className="w-full pl-10 pr-3 py-2.5 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/60"
           />
         </div>
 
         {/* List */}
-        <div className="flex-1 min-h-[180px] max-h-[300px] overflow-y-auto border border-[#d4c9b5]/40 rounded-sm bg-white">
+        <div className="flex-1 min-h-[180px] max-h-[300px] overflow-y-auto border border-sandy/40 rounded-sm bg-white">
           {loading ? (
             <div className="flex items-center justify-center py-10 gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-[#C9A84C]" />
-              <span className="font-body text-sm text-[#8a7a65]">
+              <Loader2 className="h-4 w-4 animate-spin text-gold" />
+              <span className="font-body text-sm text-ink-light">
                 Yükleniyor...
               </span>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex items-center justify-center py-10 font-body text-sm text-[#8a7a65]">
+            <div className="flex items-center justify-center py-10 font-body text-sm text-ink-light">
               {entries.length === 0
                 ? "Bu projenin bibliyografyası boş. Önce kaynak ekle."
                 : "Eşleşen kaynak yok."}
@@ -222,10 +222,10 @@ export default function CitationPicker({
                     <button
                       type="button"
                       onClick={() => setSelected(b)}
-                      className={`w-full text-left px-3 py-2 flex items-start gap-2.5 border-b border-[#d4c9b5]/30 last:border-0 transition-colors ${
+                      className={`w-full text-left px-3 py-2 flex items-start gap-2.5 border-b border-sandy/30 last:border-0 transition-colors ${
                         isActive
-                          ? "bg-[#C9A84C]/10"
-                          : "hover:bg-[#FAF7F0]/60"
+                          ? "bg-gold/10"
+                          : "hover:bg-page/60"
                       }`}
                     >
                       <span
@@ -239,18 +239,18 @@ export default function CitationPicker({
                         }
                       >
                         {st === "pdf" ? (
-                          <BookOpen className="h-3.5 w-3.5 text-[#2D8B4E]" />
+                          <BookOpen className="h-3.5 w-3.5 text-forest-light" />
                         ) : st === "chunks" ? (
-                          <FileText className="h-3.5 w-3.5 text-[#C9A84C]" />
+                          <FileText className="h-3.5 w-3.5 text-gold" />
                         ) : (
-                          <Circle className="h-3.5 w-3.5 text-[#a89880]" />
+                          <Circle className="h-3.5 w-3.5 text-ink-muted" />
                         )}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="font-body text-sm text-[#2D1F0E] truncate">
+                        <div className="font-body text-sm text-ink truncate">
                           {b.title}
                         </div>
-                        <div className="font-ui text-xs text-[#6b5a45] truncate">
+                        <div className="font-ui text-xs text-ink-light truncate">
                           {shortLabel(b)}
                         </div>
                       </div>
@@ -265,13 +265,13 @@ export default function CitationPicker({
         {/* Volume picker — only for multi-volume entries */}
         {selected && (volumes.length > 0 || loadingVolumes) && (
           <div>
-            <label className="block font-ui text-[11px] uppercase tracking-widest text-[#8a7a65] mb-1.5">
+            <label className="block font-ui text-[11px] uppercase tracking-widest text-ink-light mb-1.5">
               Cilt
             </label>
             <select
               value={volumeId}
               onChange={(e) => setVolumeId(e.target.value)}
-              className="w-full px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] focus:outline-none focus:border-[#C9A84C]/60"
+              className="w-full px-3 py-2 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink focus:outline-none focus:border-gold/60"
             >
               <option value="">Cilt seç...</option>
               {volumes.map((v) => (
@@ -299,7 +299,7 @@ export default function CitationPicker({
             value={page}
             onChange={(e) => setPage(e.target.value)}
             disabled={!selected}
-            className="px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/60 disabled:bg-[#FAF7F0]/40"
+            className="px-3 py-2 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/60 disabled:bg-page/40"
           />
           <input
             type="text"
@@ -307,7 +307,7 @@ export default function CitationPicker({
             value={quote}
             onChange={(e) => setQuote(e.target.value)}
             disabled={!selected}
-            className="px-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-white font-body text-sm text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/60 disabled:bg-[#FAF7F0]/40"
+            className="px-3 py-2 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/60 disabled:bg-page/40"
           />
         </div>
 
@@ -316,7 +316,7 @@ export default function CitationPicker({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="px-3 py-1.5 rounded-sm border border-[#d4c9b5] font-ui text-xs text-[#5C4A32] hover:bg-[#FAF7F0]"
+            className="px-3 py-1.5 rounded-sm border border-sandy font-ui text-xs text-ink-light hover:bg-page"
           >
             İptal
           </button>
@@ -324,7 +324,7 @@ export default function CitationPicker({
             type="button"
             onClick={handleInsert}
             disabled={!selected}
-            className="px-3 py-1.5 rounded-sm bg-[#2D1F0E] text-[#FAF7F0] font-ui text-xs hover:opacity-90 disabled:opacity-40"
+            className="px-3 py-1.5 rounded-sm bg-ink text-page font-ui text-xs hover:opacity-90 disabled:opacity-40"
           >
             Atıfı ekle
           </button>

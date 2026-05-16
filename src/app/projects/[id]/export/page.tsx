@@ -219,26 +219,26 @@ export default function ExportPage() {
             subtitle="Generate DOCX or PDF files from your writing."
           />
         </FadeUp>
-        <Ornament className="w-40 mx-auto text-[#c9bfad] mb-8" />
+        <Ornament className="w-40 mx-auto text-sandy mb-8" />
 
-        <FadeUp delay={0.2} className="border border-[#d4c9b5]/60 rounded-sm bg-[#FAF7F0]/80 p-6 md:p-8">
+        <FadeUp delay={0.2} className="border border-sandy/60 rounded-sm bg-page/80 p-6 md:p-8">
           <SectionTitle className="mb-6">Export Settings</SectionTitle>
 
           {isLoading ? (
             <div className="space-y-4 animate-pulse">
-              <div className="h-3 w-24 bg-[#d4c9b5]/40 rounded" />
+              <div className="h-3 w-24 bg-sandy/40 rounded" />
               <div className="grid grid-cols-3 gap-2">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-16 rounded-sm bg-[#d4c9b5]/20 border border-[#d4c9b5]/30" />
+                  <div key={i} className="h-16 rounded-sm bg-sandy/20 border border-sandy/30" />
                 ))}
               </div>
-              <div className="h-3 w-28 bg-[#d4c9b5]/40 rounded mt-4" />
+              <div className="h-3 w-28 bg-sandy/40 rounded mt-4" />
               <div className="grid grid-cols-2 gap-2">
                 {[1, 2].map((i) => (
-                  <div key={i} className="h-16 rounded-sm bg-[#d4c9b5]/20 border border-[#d4c9b5]/30" />
+                  <div key={i} className="h-16 rounded-sm bg-sandy/20 border border-sandy/30" />
                 ))}
               </div>
-              <div className="h-10 w-full bg-[#d4c9b5]/20 rounded-sm mt-4" />
+              <div className="h-10 w-full bg-sandy/20 rounded-sm mt-4" />
               <div className="h-12 w-full bg-[#1C1410]/10 rounded-sm mt-2" />
             </div>
           ) : (
@@ -246,7 +246,7 @@ export default function ExportPage() {
 
           {/* Export Scope */}
           <div className="space-y-2 mb-5">
-            <label className="font-ui text-xs uppercase tracking-widest text-[#5C4A32]">
+            <label className="font-ui text-xs uppercase tracking-widest text-ink-light">
               Scope
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -257,29 +257,29 @@ export default function ExportPage() {
                   onClick={() => setScope(s)}
                   className={`rounded-sm border p-3 text-center transition-all ${
                     scope === s
-                      ? "border-[#2C5F2E] bg-[#2C5F2E]/10"
-                      : "border-[#d4c9b5]/60 hover:border-[#d4c9b5]"
+                      ? "border-forest bg-forest/10"
+                      : "border-sandy/60 hover:border-sandy"
                   }`}
                 >
                   <div className="flex flex-col items-center gap-1.5">
                     {s === "full" && (
                       <BookOpen
-                        className={`h-5 w-5 ${scope === s ? "text-[#2C5F2E]" : "text-[#8a7a65]"}`}
+                        className={`h-5 w-5 ${scope === s ? "text-forest" : "text-ink-light"}`}
                       />
                     )}
                     {s === "chapter" && (
                       <Hash
-                        className={`h-5 w-5 ${scope === s ? "text-[#2C5F2E]" : "text-[#8a7a65]"}`}
+                        className={`h-5 w-5 ${scope === s ? "text-forest" : "text-ink-light"}`}
                       />
                     )}
                     {s === "subsection" && (
                       <FileText
-                        className={`h-5 w-5 ${scope === s ? "text-[#2C5F2E]" : "text-[#8a7a65]"}`}
+                        className={`h-5 w-5 ${scope === s ? "text-forest" : "text-ink-light"}`}
                       />
                     )}
                     <span
                       className={`font-ui text-[11px] ${
-                        scope === s ? "text-[#2C5F2E]" : "text-[#8a7a65]"
+                        scope === s ? "text-forest" : "text-ink-light"
                       }`}
                     >
                       {SCOPE_LABELS[s]}
@@ -295,7 +295,7 @@ export default function ExportPage() {
             <div className="space-y-2 mb-5">
               <label
                 htmlFor="chapter-select"
-                className="font-ui text-xs uppercase tracking-widest text-[#5C4A32]"
+                className="font-ui text-xs uppercase tracking-widest text-ink-light"
               >
                 Select Chapter
               </label>
@@ -306,7 +306,7 @@ export default function ExportPage() {
                   setSelectedChapterId(e.target.value);
                   setSelectedSubsectionId("");
                 }}
-                className="w-full bg-[#FAF7F0] border border-[#d4c9b5]/60 font-body text-sm text-[#2D1F0E] rounded-sm px-3 py-2.5 focus:outline-none focus:border-[#C9A84C]/50"
+                className="w-full bg-page border border-sandy/60 font-body text-sm text-ink rounded-sm px-3 py-2.5 focus:outline-none focus:border-gold/50"
               >
                 {chapters.map((ch) => (
                   <option key={ch.id} value={ch.id}>
@@ -322,7 +322,7 @@ export default function ExportPage() {
             <div className="space-y-2 mb-5">
               <label
                 htmlFor="sub-select"
-                className="font-ui text-xs uppercase tracking-widest text-[#5C4A32]"
+                className="font-ui text-xs uppercase tracking-widest text-ink-light"
               >
                 Select Subsection
               </label>
@@ -330,7 +330,7 @@ export default function ExportPage() {
                 id="sub-select"
                 value={selectedSubsectionId}
                 onChange={(e) => setSelectedSubsectionId(e.target.value)}
-                className="w-full bg-[#FAF7F0] border border-[#d4c9b5]/60 font-body text-sm text-[#2D1F0E] rounded-sm px-3 py-2.5 focus:outline-none focus:border-[#C9A84C]/50"
+                className="w-full bg-page border border-sandy/60 font-body text-sm text-ink rounded-sm px-3 py-2.5 focus:outline-none focus:border-gold/50"
               >
                 <option value="">Select subsection...</option>
                 {selectedChapter.subsections.map((sub) => (
@@ -344,7 +344,7 @@ export default function ExportPage() {
 
           {/* File Format */}
           <div className="space-y-2 mb-5">
-            <label className="font-ui text-xs uppercase tracking-widest text-[#5C4A32]">
+            <label className="font-ui text-xs uppercase tracking-widest text-ink-light">
               File Format
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -355,17 +355,17 @@ export default function ExportPage() {
                   onClick={() => setFileType(ft)}
                   className={`rounded-sm border p-3 text-center transition-all ${
                     fileType === ft
-                      ? "border-[#2C5F2E] bg-[#2C5F2E]/10"
-                      : "border-[#d4c9b5]/60 hover:border-[#d4c9b5]"
+                      ? "border-forest bg-forest/10"
+                      : "border-sandy/60 hover:border-sandy"
                   }`}
                 >
                   <div className="flex flex-col items-center gap-1.5">
                     <FileDown
-                      className={`h-5 w-5 ${fileType === ft ? "text-[#2C5F2E]" : "text-[#8a7a65]"}`}
+                      className={`h-5 w-5 ${fileType === ft ? "text-forest" : "text-ink-light"}`}
                     />
                     <span
                       className={`font-ui text-[11px] uppercase ${
-                        fileType === ft ? "text-[#2C5F2E]" : "text-[#8a7a65]"
+                        fileType === ft ? "text-forest" : "text-ink-light"
                       }`}
                     >
                       {ft}
@@ -375,7 +375,7 @@ export default function ExportPage() {
               ))}
             </div>
             {fileType === "epub" && (
-              <p className="font-body text-[11px] text-[#8a7a65] mt-1">
+              <p className="font-body text-[11px] text-ink-light mt-1">
                 Kindle, Apple Books, Kobo'ya yükleme için hazır dosya.
               </p>
             )}
@@ -385,7 +385,7 @@ export default function ExportPage() {
           {fileType === "pdf" && (
             <div className="space-y-2 mb-5">
               <label
-                className="flex items-start gap-3 p-3 rounded-sm border border-[#d4c9b5]/60 hover:border-[#d4c9b5] cursor-pointer transition-colors"
+                className="flex items-start gap-3 p-3 rounded-sm border border-sandy/60 hover:border-sandy cursor-pointer transition-colors"
               >
                 <input
                   type="checkbox"
@@ -394,10 +394,10 @@ export default function ExportPage() {
                   className="mt-0.5 h-4 w-4"
                 />
                 <div className="flex-1">
-                  <div className="font-ui text-xs font-medium text-[#2D1F0E]">
+                  <div className="font-ui text-xs font-medium text-ink">
                     Matbaaya hazır PDF (bleed + crop marks)
                   </div>
-                  <div className="font-body text-[11px] text-[#8a7a65] leading-snug mt-0.5">
+                  <div className="font-body text-[11px] text-ink-light leading-snug mt-0.5">
                     3mm taşma + köşe kesim işaretleri. KDP / IngramSpark /
                     yerel matbaa için yükleme hazır.
                   </div>
@@ -408,10 +408,10 @@ export default function ExportPage() {
 
           {/* Citation format shortcut — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-            <div className="border-t border-[#d4c9b5]/40 pt-4 mb-6">
+            <div className="border-t border-sandy/40 pt-4 mb-6">
               <a
                 href={`/projects/${projectId}/settings/citations`}
-                className="flex items-center justify-between p-3 rounded-sm border border-[#d4c9b5] hover:border-[#C9A84C] hover:bg-[#FAF3E3] transition-colors"
+                className="flex items-center justify-between p-3 rounded-sm border border-sandy hover:border-gold hover:bg-page transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <div
@@ -421,25 +421,25 @@ export default function ExportPage() {
                     <BookOpen className="h-4 w-4" style={{ color: "#8a5a1a" }} />
                   </div>
                   <div>
-                    <div className="font-ui text-xs font-medium text-[#2D1F0E]">
+                    <div className="font-ui text-xs font-medium text-ink">
                       Atıf Formatı
                     </div>
-                    <div className="font-ui text-[11px] text-[#8a7a65] mt-0.5">
+                    <div className="font-ui text-[11px] text-ink-light mt-0.5">
                       Enstitü/dergi formatına uyarla — canlı önizleme
                     </div>
                   </div>
                 </div>
-                <span className="font-ui text-[10px] text-[#8a5a1a]">Aç →</span>
+                <span className="font-ui text-[10px] text-gold-dark">Aç →</span>
               </a>
             </div>
           )}
 
           {/* Academic metadata shortcut — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-            <div className="border-t border-[#d4c9b5]/40 pt-4 mb-4">
+            <div className="border-t border-sandy/40 pt-4 mb-4">
               <a
                 href={`/projects/${projectId}/settings/academic`}
-                className="flex items-center justify-between p-3 rounded-sm border border-[#d4c9b5] hover:border-[#C9A84C] hover:bg-[#FAF3E3] transition-colors"
+                className="flex items-center justify-between p-3 rounded-sm border border-sandy hover:border-gold hover:bg-page transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <div
@@ -449,39 +449,39 @@ export default function ExportPage() {
                     <BookOpen className="h-4 w-4" style={{ color: "#8a5a1a" }} />
                   </div>
                   <div>
-                    <div className="font-ui text-xs font-medium text-[#2D1F0E]">
+                    <div className="font-ui text-xs font-medium text-ink">
                       Akademik Metadata
                     </div>
-                    <div className="font-ui text-[11px] text-[#8a7a65] mt-0.5">
+                    <div className="font-ui text-[11px] text-ink-light mt-0.5">
                       Yazar, kurum, özet, anahtar kelimeler, önsöz — kapak ve ön sayfaları doldur
                     </div>
                   </div>
                 </div>
-                <span className="font-ui text-[10px] text-[#8a5a1a]">Aç →</span>
+                <span className="font-ui text-[10px] text-gold-dark">Aç →</span>
               </a>
             </div>
           )}
 
           {/* Structural toggle — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-            <div className="border-t border-[#d4c9b5]/40 pt-4 mb-4">
+            <div className="border-t border-sandy/40 pt-4 mb-4">
               <button
                 type="button"
                 onClick={() => setIncludeStructural((v) => !v)}
                 className="flex items-center justify-between w-full group"
               >
                 <div className="text-left">
-                  <span className="font-ui text-xs uppercase tracking-widest text-[#5C4A32] block">
+                  <span className="font-ui text-xs uppercase tracking-widest text-ink-light block">
                     Include Title Page + Abstract + TOC
                   </span>
-                  <span className="font-body text-xs text-[#8a7a65] mt-0.5 block">
+                  <span className="font-body text-xs text-ink-light mt-0.5 block">
                     Formata uygun kapak, özet/abstract, içindekiler ve bölüm açılışları
                   </span>
                 </div>
                 {includeStructural ? (
-                  <ToggleRight className="h-6 w-6 text-[#2C5F2E] shrink-0 ml-3" />
+                  <ToggleRight className="h-6 w-6 text-forest shrink-0 ml-3" />
                 ) : (
-                  <ToggleLeft className="h-6 w-6 text-[#8a7a65] shrink-0 ml-3" />
+                  <ToggleLeft className="h-6 w-6 text-ink-light shrink-0 ml-3" />
                 )}
               </button>
             </div>
@@ -489,24 +489,24 @@ export default function ExportPage() {
 
           {/* Bibliography toggle — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-          <div className="border-t border-[#d4c9b5]/40 pt-4 mb-6">
+          <div className="border-t border-sandy/40 pt-4 mb-6">
             <button
               type="button"
               onClick={() => setIncludeBibliography((v) => !v)}
               className="flex items-center justify-between w-full group"
             >
               <div className="text-left">
-                <span className="font-ui text-xs uppercase tracking-widest text-[#5C4A32] block">
+                <span className="font-ui text-xs uppercase tracking-widest text-ink-light block">
                   Include Bibliography
                 </span>
-                <span className="font-body text-xs text-[#8a7a65] mt-0.5 block">
+                <span className="font-body text-xs text-ink-light mt-0.5 block">
                   Appends a formatted bibliography at the end of the file
                 </span>
               </div>
               {includeBibliography ? (
-                <ToggleRight className="h-6 w-6 text-[#2C5F2E] shrink-0 ml-3" />
+                <ToggleRight className="h-6 w-6 text-forest shrink-0 ml-3" />
               ) : (
-                <ToggleLeft className="h-6 w-6 text-[#8a7a65] shrink-0 ml-3" />
+                <ToggleLeft className="h-6 w-6 text-ink-light shrink-0 ml-3" />
               )}
             </button>
           </div>
@@ -514,24 +514,24 @@ export default function ExportPage() {
 
           {/* Illustrations toggle — only for non-academic */}
           {projectTypeState !== "ACADEMIC" && hasIllustrations && (
-            <div className="border-t border-[#d4c9b5]/40 pt-4 mb-6">
+            <div className="border-t border-sandy/40 pt-4 mb-6">
               <button
                 type="button"
                 onClick={() => setIncludeIllustrations((v) => !v)}
                 className="flex items-center justify-between w-full group"
               >
                 <div className="text-left">
-                  <span className="font-ui text-xs uppercase tracking-widest text-[#5C4A32] block">
+                  <span className="font-ui text-xs uppercase tracking-widest text-ink-light block">
                     Include Illustrations
                   </span>
-                  <span className="font-body text-xs text-[#8a7a65] mt-0.5 block">
+                  <span className="font-body text-xs text-ink-light mt-0.5 block">
                     Adds AI-generated images as full pages in the PDF
                   </span>
                 </div>
                 {includeIllustrations ? (
-                  <ToggleRight className="h-6 w-6 text-[#2C5F2E] shrink-0 ml-3" />
+                  <ToggleRight className="h-6 w-6 text-forest shrink-0 ml-3" />
                 ) : (
-                  <ToggleLeft className="h-6 w-6 text-[#8a7a65] shrink-0 ml-3" />
+                  <ToggleLeft className="h-6 w-6 text-ink-light shrink-0 ml-3" />
                 )}
               </button>
             </div>
@@ -542,7 +542,7 @@ export default function ExportPage() {
             type="button"
             onClick={handleExport}
             disabled={isExportDisabled}
-            className="w-full bg-[#1C1410] text-[#F5EDE0] font-ui text-sm uppercase tracking-widest rounded-sm px-4 py-3 flex items-center justify-center gap-2 transition-opacity disabled:opacity-40 hover:opacity-90"
+            className="w-full bg-[#1C1410] text-page font-ui text-sm uppercase tracking-widest rounded-sm px-4 py-3 flex items-center justify-center gap-2 transition-opacity disabled:opacity-40 hover:opacity-90"
           >
             {isExporting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -570,24 +570,24 @@ export default function ExportPage() {
       <SpineShadow />
 
       {/* RIGHT PAGE — Export History */}
-      <div className="flex-1 p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0 border-t lg:border-t-0 border-[#d4c9b5]/40">
+      <div className="flex-1 p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0 border-t lg:border-t-0 border-sandy/40">
         <FadeRight delay={0.3}>
           <SectionTitle className="mb-6">
-            <BookMarked className="h-4 w-4 text-[#8a7a65]" />
+            <BookMarked className="h-4 w-4 text-ink-light" />
             History
           </SectionTitle>
         </FadeRight>
 
-        <div className="border border-[#d4c9b5]/60 rounded-sm bg-[#FAF7F0]/80 overflow-hidden">
+        <div className="border border-sandy/60 rounded-sm bg-page/80 overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center py-10 gap-2">
-              <Loader2 className="h-5 w-5 animate-spin text-[#2C5F2E]" />
+              <Loader2 className="h-5 w-5 animate-spin text-forest" />
             </div>
           ) : outputs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center px-6">
-              <FileDown className="h-8 w-8 text-[#c9bfad] mb-3" />
-              <p className="font-body text-sm text-[#8a7a65]">No exports yet.</p>
-              <p className="font-body text-xs text-[#a89880] mt-1">
+              <FileDown className="h-8 w-8 text-sandy mb-3" />
+              <p className="font-body text-sm text-ink-light">No exports yet.</p>
+              <p className="font-body text-xs text-ink-muted mt-1">
                 Use the settings on the left to generate your first file.
               </p>
             </div>
@@ -598,30 +598,30 @@ export default function ExportPage() {
                   key={output.id}
                   className={`flex items-center gap-3 px-4 py-3 ${
                     idx !== outputs.length - 1
-                      ? "border-b border-dashed border-[#d4c9b5]/50"
+                      ? "border-b border-dashed border-sandy/50"
                       : ""
                   }`}
                 >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-[#e8dfd0]/50">
-                    <FileText className="h-4 w-4 text-[#5C4A32]" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-sandy-soft/50">
+                    <FileText className="h-4 w-4 text-ink-light" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-ui text-[10px] uppercase tracking-wider text-[#5C4A32] bg-[#e8dfd0]/50 px-1.5 py-0.5 rounded-sm">
+                      <span className="font-ui text-[10px] uppercase tracking-wider text-ink-light bg-sandy-soft/50 px-1.5 py-0.5 rounded-sm">
                         {SCOPE_LABELS[output.scope] ?? output.scope}
                       </span>
-                      <span className="font-ui text-[10px] uppercase tracking-wider text-[#8a7a65] bg-[#e8dfd0]/30 px-1.5 py-0.5 rounded-sm">
+                      <span className="font-ui text-[10px] uppercase tracking-wider text-ink-light bg-sandy-soft/30 px-1.5 py-0.5 rounded-sm">
                         {output.fileType}
                       </span>
                       {output.subsection && (
-                        <span className="font-body text-xs text-[#8a7a65] truncate max-w-[150px]">
+                        <span className="font-body text-xs text-ink-light truncate max-w-[150px]">
                           {output.subsection.title}
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <Clock className="h-3 w-3 text-[#a89880]" />
-                      <span className="font-ui text-[10px] text-[#a89880]">
+                      <Clock className="h-3 w-3 text-ink-muted" />
+                      <span className="font-ui text-[10px] text-ink-muted">
                         {new Date(output.createdAt).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
@@ -638,22 +638,22 @@ export default function ExportPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label="Open in Google Drive"
-                        className="flex h-8 w-8 items-center justify-center rounded-sm hover:bg-[#e8dfd0]/50 transition-colors"
+                        className="flex h-8 w-8 items-center justify-center rounded-sm hover:bg-sandy-soft/50 transition-colors"
                       >
-                        <CheckCircle2 className="h-4 w-4 text-[#2C5F2E]" />
+                        <CheckCircle2 className="h-4 w-4 text-forest" />
                       </a>
                     ) : (
                       <button
                         type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-sm hover:bg-[#e8dfd0]/50 transition-colors disabled:opacity-40"
+                        className="flex h-8 w-8 items-center justify-center rounded-sm hover:bg-sandy-soft/50 transition-colors disabled:opacity-40"
                         disabled={uploadingDriveId === output.id}
                         onClick={() => handleDriveUpload(output.id)}
                         aria-label="Upload to Google Drive"
                       >
                         {uploadingDriveId === output.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-[#8a7a65]" />
+                          <Loader2 className="h-4 w-4 animate-spin text-ink-light" />
                         ) : (
-                          <CloudUpload className="h-4 w-4 text-[#8a7a65]" />
+                          <CloudUpload className="h-4 w-4 text-ink-light" />
                         )}
                       </button>
                     )}
@@ -662,9 +662,9 @@ export default function ExportPage() {
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label="Download this export"
-                      className="flex h-8 w-8 items-center justify-center rounded-sm hover:bg-[#e8dfd0]/50 transition-colors"
+                      className="flex h-8 w-8 items-center justify-center rounded-sm hover:bg-sandy-soft/50 transition-colors"
                     >
-                      <Download className="h-4 w-4 text-[#8a7a65]" />
+                      <Download className="h-4 w-4 text-ink-light" />
                     </a>
                   </div>
                 </div>

@@ -392,14 +392,14 @@ export default function LibraryChat() {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Compact ornament header */}
-      <div className="px-6 pt-5 pb-3 border-b border-[#d4c9b5]/40">
+      <div className="px-6 pt-5 pb-3 border-b border-sandy/40">
         <div className="flex items-center gap-2 mb-1">
-          <Sparkles className="h-4 w-4 text-[#C9A84C]" />
-          <h1 className="font-display text-lg font-semibold text-[#2D1F0E]">
+          <Sparkles className="h-4 w-4 text-gold" />
+          <h1 className="font-display text-lg font-semibold text-ink">
             Kütüphane Sohbeti
           </h1>
         </div>
-        <p className="font-body text-xs text-[#6b5a45]">
+        <p className="font-body text-xs text-ink-light">
           PDF&apos;lerine sor — yanıt başlık ve sayfa numarasıyla alıntılansın.
         </p>
       </div>
@@ -407,20 +407,20 @@ export default function LibraryChat() {
       {/* 3-column content */}
       <div className="flex-1 grid grid-cols-[200px_1fr_260px] min-h-0 px-3 py-3 gap-3">
         {/* Left: sessions */}
-        <aside className="rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/85 backdrop-blur-sm shadow-sm flex flex-col overflow-hidden">
-          <div className="p-3 border-b border-[#d4c9b5]/60 bg-[#FAF7F0]/90">
+        <aside className="rounded-sm border border-sandy/60 bg-page/85 backdrop-blur-sm shadow-sm flex flex-col overflow-hidden">
+          <div className="p-3 border-b border-sandy/60 bg-page/90">
             <button
               type="button"
               onClick={startNewSession}
-              className="w-full flex items-center justify-center gap-1.5 font-ui text-xs font-semibold px-3 py-2 rounded-sm bg-[#C9A84C] text-[#1A0F05] hover:bg-[#d4b85a] transition-colors shadow-sm"
+              className="w-full flex items-center justify-center gap-1.5 font-ui text-xs font-semibold px-3 py-2 rounded-sm bg-gold text-ink hover:bg-gold-hover transition-colors shadow-sm"
             >
               <Plus className="h-3.5 w-3.5" />
               Yeni sohbet
             </button>
           </div>
-          <div className="px-3 py-2 border-b border-[#d4c9b5]/40 bg-[#FAF7F0]/60">
+          <div className="px-3 py-2 border-b border-sandy/40 bg-page/60">
             <span
-              className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]"
+              className="font-ui text-[10px] uppercase tracking-widest text-ink-light"
               style={{ letterSpacing: "0.16em" }}
             >
               Önceki Sohbetler
@@ -428,7 +428,7 @@ export default function LibraryChat() {
           </div>
           <div className="flex-1 overflow-y-auto py-2">
             {sessions.length === 0 ? (
-              <p className="text-center font-body italic text-xs text-[#a89a82] mt-4 px-3">
+              <p className="text-center font-body italic text-xs text-ink-muted mt-4 px-3">
                 Henüz sohbet yok.
               </p>
             ) : (
@@ -441,13 +441,13 @@ export default function LibraryChat() {
                       className={cn(
                         "w-full text-left px-2.5 py-2 rounded-sm transition-colors border-l-2",
                         currentSessionId === s.sessionId
-                          ? "bg-[#FAF3E3] border-[#C9A84C]"
-                          : "hover:bg-[#d4c9b5]/30 border-transparent",
+                          ? "bg-page border-gold"
+                          : "hover:bg-sandy/30 border-transparent",
                       )}
                     >
                       <div className="flex items-start gap-1.5">
-                        <MessageSquare className="h-3 w-3 mt-0.5 text-[#8a7a65] shrink-0" />
-                        <span className="font-body text-xs text-[#2D1F0E] line-clamp-2 leading-snug">
+                        <MessageSquare className="h-3 w-3 mt-0.5 text-ink-light shrink-0" />
+                        <span className="font-body text-xs text-ink line-clamp-2 leading-snug">
                           {s.preview || "(Boş sohbet)"}
                         </span>
                       </div>
@@ -460,10 +460,10 @@ export default function LibraryChat() {
         </aside>
 
         {/* Middle: thread */}
-        <section className="flex flex-col rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/90 backdrop-blur-sm shadow-sm min-w-0 overflow-hidden">
+        <section className="flex flex-col rounded-sm border border-sandy/60 bg-page/90 backdrop-blur-sm shadow-sm min-w-0 overflow-hidden">
           <div ref={threadRef} className="flex-1 overflow-y-auto px-8 py-6">
             {isLoadingHistory ? (
-              <div className="flex justify-center py-12 text-[#8a7a65]">
+              <div className="flex justify-center py-12 text-ink-light">
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 <span className="font-body italic text-xs">Yükleniyor…</span>
               </div>
@@ -486,7 +486,7 @@ export default function LibraryChat() {
           </div>
 
           {/* Input bar */}
-          <div className="border-t border-[#d4c9b5]/60 bg-[#FAF7F0]/95 px-8 py-3">
+          <div className="border-t border-sandy/60 bg-page/95 px-8 py-3">
             <div className="max-w-3xl mx-auto flex items-end gap-2">
               <textarea
                 value={input}
@@ -504,7 +504,7 @@ export default function LibraryChat() {
                 }
                 disabled={isStreaming}
                 rows={1}
-                className="flex-1 resize-none font-body text-sm px-3 py-2 rounded-sm border border-[#d4c9b5] bg-white text-[#2D1F0E] placeholder:text-[#a89a82] focus:outline-none focus:border-[#C9A84C] disabled:opacity-60"
+                className="flex-1 resize-none font-body text-sm px-3 py-2 rounded-sm border border-sandy bg-white text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold disabled:opacity-60"
                 style={{ maxHeight: 200 }}
               />
               {isStreaming ? (
@@ -521,7 +521,7 @@ export default function LibraryChat() {
                   type="button"
                   onClick={sendMessage}
                   disabled={!input.trim()}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-sm bg-[#C9A84C] text-[#1A0F05] font-ui text-xs font-semibold hover:bg-[#d4b85a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-sm bg-gold text-ink font-ui text-xs font-semibold hover:bg-gold-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="h-3 w-3" />
                   Gönder
@@ -534,12 +534,12 @@ export default function LibraryChat() {
         {/* Right: full library — pick zero for "ask everything",
             tick boxes to scope the chat to specific entries. The
             old radio-based scope toggle was redundant. */}
-        <aside className="rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/85 backdrop-blur-sm shadow-sm flex flex-col overflow-hidden">
-          <div className="p-3 border-b border-[#d4c9b5]/60 bg-[#FAF7F0]/90">
+        <aside className="rounded-sm border border-sandy/60 bg-page/85 backdrop-blur-sm shadow-sm flex flex-col overflow-hidden">
+          <div className="p-3 border-b border-sandy/60 bg-page/90">
             <div className="flex items-center gap-1.5 mb-2">
-              <LibraryIcon className="h-3.5 w-3.5 text-[#8a7a65]" />
+              <LibraryIcon className="h-3.5 w-3.5 text-ink-light" />
               <span
-                className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]"
+                className="font-ui text-[10px] uppercase tracking-widest text-ink-light"
                 style={{ letterSpacing: "0.16em" }}
               >
                 Kütüphane
@@ -548,19 +548,19 @@ export default function LibraryChat() {
                 <button
                   type="button"
                   onClick={clearSelection}
-                  className="ml-auto font-ui text-[10px] uppercase tracking-wider text-[#8a5a1a] hover:text-[#2D1F0E]"
+                  className="ml-auto font-ui text-[10px] uppercase tracking-wider text-gold-dark hover:text-ink"
                 >
                   Temizle
                 </button>
               )}
             </div>
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded-sm border border-[#d4c9b5] bg-white">
-              <Search className="h-3 w-3 text-[#a89a82]" />
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-sm border border-sandy bg-white">
+              <Search className="h-3 w-3 text-ink-muted" />
               <input
                 value={librarySearch}
                 onChange={(e) => setLibrarySearch(e.target.value)}
                 placeholder="Ara…"
-                className="flex-1 bg-transparent outline-none font-ui text-xs text-[#2D1F0E] placeholder:text-[#a89a82]"
+                className="flex-1 bg-transparent outline-none font-ui text-xs text-ink placeholder:text-ink-muted"
               />
             </div>
             {/* Folder + tag scope chips (set via deep-link, e.g.
@@ -572,7 +572,7 @@ export default function LibraryChat() {
                 {activeCollectionIds.map((cid) => (
                   <span
                     key={`col-${cid}`}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-[#C9A84C]/15 border border-[#C9A84C]/40 font-ui text-[10px] text-[#5C4A32]"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-gold/15 border border-gold/40 font-ui text-[10px] text-ink-light"
                   >
                     📁 {scopeLabels.collections[cid] ?? "klasör"}
                     <button
@@ -580,7 +580,7 @@ export default function LibraryChat() {
                       onClick={() =>
                         setActiveCollectionIds((p) => p.filter((x) => x !== cid))
                       }
-                      className="text-[#8a7a65] hover:text-red-700 ml-0.5"
+                      className="text-ink-light hover:text-red-700 ml-0.5"
                       aria-label="Klasörü kaldır"
                     >
                       ×
@@ -590,7 +590,7 @@ export default function LibraryChat() {
                 {activeTagIds.map((tid) => (
                   <span
                     key={`tag-${tid}`}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-[#e8dfd0] border border-[#d4c9b5] font-ui text-[10px] text-[#5C4A32]"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-sandy-soft border border-sandy font-ui text-[10px] text-ink-light"
                   >
                     #{scopeLabels.tags[tid] ?? "etiket"}
                     <button
@@ -598,7 +598,7 @@ export default function LibraryChat() {
                       onClick={() =>
                         setActiveTagIds((p) => p.filter((x) => x !== tid))
                       }
-                      className="text-[#8a7a65] hover:text-red-700 ml-0.5"
+                      className="text-ink-light hover:text-red-700 ml-0.5"
                       aria-label="Etiketi kaldır"
                     >
                       ×
@@ -608,7 +608,7 @@ export default function LibraryChat() {
               </div>
             )}
 
-            <p className="font-body text-[10px] text-[#a89a82] mt-2 leading-snug">
+            <p className="font-body text-[10px] text-ink-muted mt-2 leading-snug">
               {selectedIds.size === 0 && activeCollectionIds.length === 0 && activeTagIds.length === 0
                 ? "Hiç seçim yoksa tüm kütüphaneye sorulur."
                 : selectedIds.size > 0
@@ -619,11 +619,11 @@ export default function LibraryChat() {
 
           <div className="flex-1 overflow-y-auto py-1.5 px-2">
             {isLoadingLibrary ? (
-              <div className="flex justify-center py-8 text-[#8a7a65]">
+              <div className="flex justify-center py-8 text-ink-light">
                 <Loader2 className="h-4 w-4 animate-spin" />
               </div>
             ) : filteredEntries.length === 0 ? (
-              <p className="text-center font-ui text-[11px] text-[#a89a82] py-8">
+              <p className="text-center font-ui text-[11px] text-ink-muted py-8">
                 {allEntries.length === 0
                   ? "Kütüphanen boş."
                   : "Eşleşme yok."}
@@ -638,22 +638,22 @@ export default function LibraryChat() {
                         className={cn(
                           "flex items-start gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-colors border-l-2",
                           isSelected
-                            ? "bg-[#FAF3E3] border-[#C9A84C]"
-                            : "hover:bg-[#d4c9b5]/30 border-transparent",
+                            ? "bg-page border-gold"
+                            : "hover:bg-sandy/30 border-transparent",
                         )}
                       >
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleEntry(e.id)}
-                          className="mt-0.5 h-3 w-3 accent-[#C9A84C] shrink-0"
+                          className="mt-0.5 h-3 w-3 accent-gold shrink-0"
                         />
-                        <BookOpen className="h-3 w-3 mt-0.5 text-[#8a7a65] shrink-0" />
+                        <BookOpen className="h-3 w-3 mt-0.5 text-ink-light shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="font-body text-[11px] text-[#2D1F0E] line-clamp-2 leading-snug">
+                          <div className="font-body text-[11px] text-ink line-clamp-2 leading-snug">
                             {e.title}
                           </div>
-                          <div className="font-ui text-[10px] text-[#8a7a65] truncate">
+                          <div className="font-ui text-[10px] text-ink-light truncate">
                             {e.authorSurname}
                             {e.year ? `, ${e.year}` : ""}
                           </div>
@@ -678,21 +678,21 @@ function EmptyState() {
     <div className="max-w-md mx-auto text-center py-20">
       {/* Ornament block */}
       <div className="flex items-center justify-center gap-3 mb-5">
-        <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-[#C9A84C]/60" />
+        <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-gold/60" />
         <div
-          className="w-12 h-12 rounded-full flex items-center justify-center border border-[#C9A84C]/40"
+          className="w-12 h-12 rounded-full flex items-center justify-center border border-gold/40"
           style={{ backgroundColor: "rgba(201,168,76,0.12)" }}
         >
           <Sparkles className="h-5 w-5" style={{ color: "#8a5a1a" }} />
         </div>
-        <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-[#C9A84C]/60" />
+        <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-gold/60" />
       </div>
-      <h2 className="font-display text-xl font-semibold text-[#2D1F0E] mb-2">
+      <h2 className="font-display text-xl font-semibold text-ink mb-2">
         Kütüphanenle konuş
       </h2>
-      <p className="font-body text-sm text-[#6b5a45] leading-relaxed">
+      <p className="font-body text-sm text-ink-light leading-relaxed">
         Yüklediğin PDF&apos;lere sor. Yanıt, kullandığı kaynaklardan{" "}
-        <span className="font-medium text-[#8a5a1a]">başlık + sayfa</span> ile alıntılanır.
+        <span className="font-medium text-gold-dark">başlık + sayfa</span> ile alıntılanır.
         Sağdan kapsamı seç, alt kutuya yaz, Enter ile gönder.
       </p>
     </div>
@@ -725,22 +725,22 @@ function MessageBubble({
     <div className="flex gap-3 items-start">
       {isUser ? (
         <div
-          className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center border border-[#d4c9b5]/60 bg-[#FAF3E3]"
+          className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center border border-sandy/60 bg-page"
           aria-hidden
         >
-          <User className="h-4 w-4 text-[#8a7a65]" />
+          <User className="h-4 w-4 text-ink-light" />
         </div>
       ) : (
         <img
           src="/images/quilpen-icon.png"
           alt="Q"
-          className="h-8 w-8 shrink-0 rounded-md border border-[#d4c9b5]/60 bg-white/70"
+          className="h-8 w-8 shrink-0 rounded-md border border-sandy/60 bg-white/70"
         />
       )}
       <div className="flex-1 min-w-0">
         {!isUser && message.scope && (
           <div
-            className="font-ui text-[10px] uppercase tracking-widest text-[#8a5a1a] mb-1"
+            className="font-ui text-[10px] uppercase tracking-widest text-gold-dark mb-1"
             style={{ letterSpacing: "0.16em" }}
           >
             {message.scope === "all"
@@ -750,8 +750,8 @@ function MessageBubble({
         )}
         <div
           className={cn(
-            "prose-chat font-body text-sm break-words text-[#2D1F0E]",
-            isUser && "italic text-[#5C4A32]",
+            "prose-chat font-body text-sm break-words text-ink",
+            isUser && "italic text-ink-light",
           )}
         >
           {message.content ? (
@@ -765,7 +765,7 @@ function MessageBubble({
             </span>
           )}
           {showCursor && (
-            <span className="inline-block w-1.5 h-4 bg-[#2D1F0E]/60 animate-pulse ml-0.5 align-middle" />
+            <span className="inline-block w-1.5 h-4 bg-ink/60 animate-pulse ml-0.5 align-middle" />
           )}
         </div>
         {showPin && (
@@ -785,7 +785,7 @@ function MessageBubble({
           </div>
         )}
         {!isUser && message.sources && message.sources.length > 0 && (
-          <div className="mt-3 pt-2 border-t border-[#d4c9b5]/40 flex flex-wrap gap-1.5">
+          <div className="mt-3 pt-2 border-t border-sandy/40 flex flex-wrap gap-1.5">
             {message.sources.map((src) => {
               const isNote = src.kind === "note";
               return (
@@ -793,8 +793,8 @@ function MessageBubble({
                   key={`${src.entryId}-${src.marker}-${isNote ? "n" : "c"}`}
                   className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm font-ui text-[10px] ${
                     isNote
-                      ? "bg-[#e8dfd0] border border-[#d4c9b5] text-[#5C4A32]"
-                      : "bg-[#FAF3E3] border border-[#C9A84C]/30 text-[#8a5a1a]"
+                      ? "bg-sandy-soft border border-sandy text-ink-light"
+                      : "bg-page border border-gold/30 text-gold-dark"
                   }`}
                   title={`${src.title}${src.noteTitle ? ` — ${src.noteTitle}` : ""}${
                     src.page !== null ? ` (s. ${src.page})` : ""

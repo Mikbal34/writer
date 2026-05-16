@@ -94,7 +94,7 @@ function AttachmentChip({
   return (
     <span
       onClick={(e) => e.stopPropagation()}
-      className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#e8dfd0]/50 border border-[#d4c9b5] rounded-sm text-[11px] font-ui text-ink-light max-w-[260px]"
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-sandy-soft/50 border border-sandy rounded-sm text-[11px] font-ui text-ink-light max-w-[260px]"
     >
       <FileText className="h-3 w-3 shrink-0 text-ink-light" />
       <span className="truncate" title={filename}>
@@ -225,7 +225,7 @@ export default function SourcesPage() {
         <div className="flex gap-2">
           <button
             onClick={() => setShowLibraryPicker(true)}
-            className="flex items-center gap-2 px-3 py-1.5 border border-[#d4c9b5] rounded-sm font-ui text-xs text-ink hover:bg-[#e8dfd0]/30 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 border border-sandy rounded-sm font-ui text-xs text-ink hover:bg-sandy-soft/30 transition-colors"
           >
             <BookMarked className="h-3.5 w-3.5" />
             Add from Library
@@ -235,7 +235,7 @@ export default function SourcesPage() {
               setEditingBiblio(null);
               setShowKunyeDialog(true);
             }}
-            className="flex items-center gap-2 px-3 py-1.5 bg-forest text-[#F5EDE0] rounded-sm font-ui text-xs hover:bg-forest/90 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 bg-forest text-page rounded-sm font-ui text-xs hover:bg-forest/90 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
             Add Entry
@@ -250,13 +250,13 @@ export default function SourcesPage() {
           <span className="font-display text-lg font-bold text-ink">{allBibliography.length}</span>
           <span className="font-ui text-xs text-muted-foreground">References</span>
         </div>
-        <div className="h-4 w-px bg-[#d4c9b5]" />
+        <div className="h-4 w-px bg-sandy" />
         <button
           onClick={() => setBibFilter(bibFilter === "complete" ? "all" : "complete")}
           className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full transition-colors ${
             bibFilter === "complete"
-              ? "bg-[#e8dfd0] text-forest font-medium"
-              : "text-muted-foreground hover:bg-[#e8dfd0]/40"
+              ? "bg-sandy-soft text-forest font-medium"
+              : "text-muted-foreground hover:bg-sandy-soft/40"
           }`}
         >
           <span className="h-2 w-2 rounded-full bg-forest" />
@@ -266,8 +266,8 @@ export default function SourcesPage() {
           onClick={() => setBibFilter(bibFilter === "incomplete" ? "all" : "incomplete")}
           className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full transition-colors ${
             bibFilter === "incomplete"
-              ? "bg-[#e8dfd0] text-gold-dark font-medium"
-              : "text-muted-foreground hover:bg-[#e8dfd0]/40"
+              ? "bg-sandy-soft text-gold-dark font-medium"
+              : "text-muted-foreground hover:bg-sandy-soft/40"
           }`}
         >
           <span className="h-2 w-2 rounded-full bg-gold-dark" />
@@ -279,13 +279,13 @@ export default function SourcesPage() {
             placeholder="Search references..."
             value={bibSearch}
             onChange={(e) => setBibSearch(e.target.value)}
-            className="pl-8 h-8 w-56 bg-[#FAF7F0] border-[#d4c9b5] font-ui text-xs"
+            className="pl-8 h-8 w-56 bg-page border-sandy font-ui text-xs"
           />
         </div>
       </FadeIn>
 
       {/* Ornament divider */}
-      <Ornament className="w-48 mx-auto text-[#c9bfad] mb-4" />
+      <Ornament className="w-48 mx-auto text-sandy mb-4" />
 
       {/* Bibliography table */}
       <div className="flex-1 px-4">
@@ -320,7 +320,7 @@ export default function SourcesPage() {
                   index={bibIndex}
                   baseDelay={0.3}
                   stagger={0.08}
-                  className="group flex flex-col py-4 border-b border-[#d4c9b5]/40 hover:bg-[#e8dfd0]/15 px-4 -mx-4 transition-colors last:border-b-0 cursor-pointer"
+                  className="group flex flex-col py-4 border-b border-sandy/40 hover:bg-sandy-soft/15 px-4 -mx-4 transition-colors last:border-b-0 cursor-pointer"
                   onClick={() => {
                     setEditingBiblio(bib);
                     setShowKunyeDialog(true);
@@ -361,7 +361,7 @@ export default function SourcesPage() {
                     </span>
 
                     {/* Type badge */}
-                    <span className="font-ui text-[10px] px-2 py-0.5 bg-[#e8dfd0] text-ink-light rounded-sm tracking-wider shrink-0">
+                    <span className="font-ui text-[10px] px-2 py-0.5 bg-sandy-soft text-ink-light rounded-sm tracking-wider shrink-0">
                       {bib.entryType}
                     </span>
 
@@ -413,14 +413,14 @@ export default function SourcesPage() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-[#FAF7F0] border border-[#d4c9b5]">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-page border border-sandy">
           <DialogHeader>
             <DialogTitle className="font-display text-ink">
               {editingBiblio ? "Edit Bibliography Entry" : "Add Bibliography Entry"}
             </DialogTitle>
           </DialogHeader>
 
-          <Separator className="my-3 bg-[#d4c9b5]" />
+          <Separator className="my-3 bg-sandy" />
 
           <KunyeForm
             projectId={projectId}

@@ -260,7 +260,7 @@ export default function FolderChips({
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs transition-colors ${
           selection.kind === "all"
             ? "bg-ink text-paper"
-            : "bg-[#FAF7F0] border border-[#C9A84C]/30 text-ink hover:bg-[#FAF7F0]/70"
+            : "bg-page border border-gold/30 text-ink hover:bg-page/70"
         }`}
       >
         <Library className="h-3 w-3" />
@@ -269,7 +269,7 @@ export default function FolderChips({
           className={`tabular-nums ${
             selection.kind === "all"
               ? "text-paper/70"
-              : "text-[#8a7a65]"
+              : "text-ink-light"
           }`}
         >
           {totalEntries}
@@ -299,7 +299,7 @@ export default function FolderChips({
                   if (e.key === "Escape") setEditingId(null);
                 }}
                 onBlur={() => renameCollection(c.id, editingDraft, c.name)}
-                className="px-3 py-1.5 rounded-sm border border-[#C9A84C]/60 bg-white font-ui text-xs text-ink focus:outline-none focus:border-[#C9A84C]"
+                className="px-3 py-1.5 rounded-sm border border-gold/60 bg-white font-ui text-xs text-ink focus:outline-none focus:border-gold"
               />
             );
           }
@@ -318,19 +318,19 @@ export default function FolderChips({
                 isSelected
                   ? "bg-ink text-paper"
                   : isHover
-                    ? "bg-[#C9A84C]/30 border border-[#C9A84C]"
-                    : "bg-[#FAF7F0] border border-[#C9A84C]/30 text-ink hover:bg-[#FAF7F0]/70"
+                    ? "bg-gold/30 border border-gold"
+                    : "bg-page border border-gold/30 text-ink hover:bg-page/70"
               }`}
             >
               <Folder
                 className={`h-3 w-3 ${
-                  isSelected ? "text-paper" : "text-[#C9A84C]"
+                  isSelected ? "text-paper" : "text-gold"
                 }`}
               />
               {c.name}
               <span
                 className={`tabular-nums ${
-                  isSelected ? "text-paper/70" : "text-[#8a7a65]"
+                  isSelected ? "text-paper/70" : "text-ink-light"
                 }`}
               >
                 {c.entryCount}
@@ -349,7 +349,7 @@ export default function FolderChips({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align="end"
-                    className="w-44 bg-[#FAF7F0] border-[#d4c9b5]"
+                    className="w-44 bg-page border-sandy"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <DropdownMenuItem
@@ -384,7 +384,7 @@ export default function FolderChips({
         <button
           type="button"
           onClick={startCreate}
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-sm font-ui text-xs text-[#5C4A32] border border-dashed border-[#d4c9b5] hover:border-[#C9A84C] hover:text-ink transition-colors"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-sm font-ui text-xs text-ink-light border border-dashed border-sandy hover:border-gold hover:text-ink transition-colors"
         >
           <Plus className="h-3 w-3" />
           klasör
@@ -406,7 +406,7 @@ export default function FolderChips({
             else setCreateDraft(null);
           }}
           placeholder="Klasör adı..."
-          className="px-3 py-1.5 rounded-sm border border-[#C9A84C]/60 bg-white font-ui text-xs text-ink placeholder:text-[#a89a82] focus:outline-none focus:border-[#C9A84C]"
+          className="px-3 py-1.5 rounded-sm border border-gold/60 bg-white font-ui text-xs text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold"
         />
       )}
 
@@ -414,7 +414,7 @@ export default function FolderChips({
       {selection.kind === "collection" && (
         <Link
           href={`/library/ask?collectionId=${selection.collectionId}`}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs text-[#5C4A32] hover:text-ink hover:bg-[#FAF7F0] transition-colors ml-auto"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs text-ink-light hover:text-ink hover:bg-page transition-colors ml-auto"
         >
           <MessageSquare className="h-3 w-3" />
           Bu klasöre sor

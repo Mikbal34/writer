@@ -135,11 +135,11 @@ export default function PdfDropZone({ onUploaded }: PdfDropZoneProps) {
         onDragLeave={handleDragLeave}
         className={`group relative flex items-center gap-4 px-5 py-5 rounded-sm border-2 border-dashed transition-all ${
           isDragOver
-            ? "border-[#C9A84C] bg-[#C9A84C]/10 scale-[1.005]"
-            : "border-[#C9A84C]/50 bg-[#FAF7F0]/60 hover:border-[#C9A84C]/80 hover:bg-[#FAF7F0]"
+            ? "border-gold bg-gold/10 scale-[1.005]"
+            : "border-gold/50 bg-page/60 hover:border-gold/80 hover:bg-page"
         }`}
       >
-        <div className="flex items-center justify-center h-12 w-12 rounded-sm bg-[#C9A84C]/15 text-[#C9A84C] shrink-0">
+        <div className="flex items-center justify-center h-12 w-12 rounded-sm bg-gold/15 text-gold shrink-0">
           {uploading > 0 ? (
             <Loader2 className="h-6 w-6 animate-spin" />
           ) : (
@@ -147,12 +147,12 @@ export default function PdfDropZone({ onUploaded }: PdfDropZoneProps) {
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-display text-base font-semibold text-[#2D1F0E]">
+          <div className="font-display text-base font-semibold text-ink">
             {uploading > 0
               ? `${uploading} dosya işleniyor…`
               : "PDF / EPUB / DOCX sürükle"}
           </div>
-          <div className="font-body text-xs text-[#6b5a45] mt-0.5">
+          <div className="font-body text-xs text-ink-light mt-0.5">
             Tek kitap için sürükle · birden fazla dosya gruplama için
             modal açılır · 50MB&apos;a kadar
           </div>
@@ -160,7 +160,7 @@ export default function PdfDropZone({ onUploaded }: PdfDropZoneProps) {
         <button
           type="button"
           onClick={openEmptyBulk}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-sm bg-[#C9A84C] text-[#1A0F05] font-ui text-xs font-semibold hover:bg-[#d4b85a] transition-colors shrink-0"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-sm bg-gold text-ink font-ui text-xs font-semibold hover:bg-gold-hover transition-colors shrink-0"
         >
           <Plus className="h-3.5 w-3.5" />
           Yeni kaynak ekle

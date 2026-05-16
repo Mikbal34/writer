@@ -87,7 +87,7 @@ function ImageCard({
   }
 
   return (
-    <div className="rounded-md overflow-hidden border border-[#d4c9b5]/40 bg-white/50 group relative">
+    <div className="rounded-md overflow-hidden border border-sandy/40 bg-white/50 group relative">
       {/* Image */}
       <div className="relative">
         <img
@@ -104,7 +104,7 @@ function ImageCard({
             {canMoveUp ? (
               <button
                 onClick={() => onMoveUp(img.id)}
-                className="p-1 bg-white/80 rounded text-[#5C4A32] hover:bg-white transition-colors"
+                className="p-1 bg-white/80 rounded text-ink-light hover:bg-white transition-colors"
                 title="Move up"
               >
                 <ChevronUp className="h-3 w-3" />
@@ -124,10 +124,10 @@ function ImageCard({
           {/* Bottom: chapter assignment */}
           <div className="relative">
             {chapterOpen ? (
-              <div className="bg-white rounded border border-[#d4c9b5]/60 p-1 shadow-md max-h-32 overflow-y-auto">
+              <div className="bg-white rounded border border-sandy/60 p-1 shadow-md max-h-32 overflow-y-auto">
                 <button
                   onClick={() => handleAssignChapter(null)}
-                  className="w-full text-left font-ui text-[10px] px-1.5 py-1 hover:bg-[#f5f0e8] rounded transition-colors"
+                  className="w-full text-left font-ui text-[10px] px-1.5 py-1 hover:bg-page rounded transition-colors"
                 >
                   No chapter
                 </button>
@@ -135,7 +135,7 @@ function ImageCard({
                   <button
                     key={ch.id}
                     onClick={() => handleAssignChapter(ch.id)}
-                    className="w-full text-left font-ui text-[10px] px-1.5 py-1 hover:bg-[#f5f0e8] rounded truncate transition-colors"
+                    className="w-full text-left font-ui text-[10px] px-1.5 py-1 hover:bg-page rounded truncate transition-colors"
                   >
                     Ch {ch.number}: {ch.title}
                   </button>
@@ -289,7 +289,7 @@ export default function ScenePanel({
             {coverImages.map((img) => (
               <div
                 key={img.id}
-                className="rounded-md overflow-hidden border-2 border-[#C9A84C]/50 bg-white/50 relative group"
+                className="rounded-md overflow-hidden border-2 border-gold/50 bg-white/50 relative group"
               >
                 <img
                   src={img.url}

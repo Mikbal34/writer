@@ -107,7 +107,7 @@ export default function RoadmapPage() {
       {/* Ornament + Tree */}
       {!isLoading && chapters.length > 0 && (
         <>
-          <Ornament className="w-40 mx-auto text-[#c9bfad] mb-6" />
+          <Ornament className="w-40 mx-auto text-sandy mb-6" />
           <StructureTree
             projectId={projectId}
             chapters={chapters}
@@ -164,7 +164,7 @@ export default function RoadmapPage() {
     return (
       <div className="h-full flex flex-col overflow-hidden">
         <Tabs defaultValue="chat" className="flex flex-col h-full">
-          <TabsList className="w-full shrink-0 rounded-none bg-[#F5F0E6] border-b border-[#d4c9b5]/40">
+          <TabsList className="w-full shrink-0 rounded-none bg-page border-b border-sandy/40">
             <TabsTrigger
               value="chat"
               className="flex-1 font-ui text-sm data-[state=active]:text-forest data-[state=active]:border-b-2 data-[state=active]:border-forest"
@@ -201,9 +201,9 @@ export default function RoadmapPage() {
         </Panel>
         <PanelResizeHandle
           style={{ width: 6, flexShrink: 0 }}
-          className="bg-[#d4c9b5]/40 hover:bg-[#d4c9b5] transition-colors cursor-col-resize"
+          className="bg-sandy/40 hover:bg-sandy transition-colors cursor-col-resize"
         >
-          <div className="h-full w-px mx-auto bg-[#d4c9b5]" />
+          <div className="h-full w-px mx-auto bg-sandy" />
         </PanelResizeHandle>
         <Panel id="roadmap" minSize="30%">
           {roadmapContent}
@@ -216,7 +216,7 @@ export default function RoadmapPage() {
 function EmptyRoadmap() {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#e8dfd0] mb-5">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-sandy-soft mb-5">
         <Bot className="h-8 w-8 text-forest" />
       </div>
       <h2 className="font-display text-xl font-semibold mb-2">

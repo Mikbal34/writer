@@ -459,7 +459,7 @@ export default function AdminPanel() {
             </p>
           </div>
           {loading && (
-            <div className="w-4 h-4 border-2 border-[#C9A84C] border-t-transparent rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-gold border-t-transparent rounded-full animate-spin" />
           )}
         </div>
 
@@ -657,7 +657,7 @@ export default function AdminPanel() {
                               <th
                                 key={col.key}
                                 onClick={() => toggleUserSort(col.key)}
-                                className={`text-${col.align} font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider cursor-pointer select-none hover:bg-[#C9A84C]/[0.08] transition-colors`}
+                                className={`text-${col.align} font-ui text-[10px] font-semibold py-2.5 px-4 uppercase tracking-wider cursor-pointer select-none hover:bg-gold/[0.08] transition-colors`}
                                 style={{ color: active ? "#2D1F0E" : "#8a7a65" }}
                               >
                                 <span className={`inline-flex items-center gap-1 ${col.align === "right" ? "justify-end w-full" : ""}`}>
@@ -677,7 +677,7 @@ export default function AdminPanel() {
                         {filteredSortedUsers.map((u) => (
                           <tr
                             key={u.id}
-                            className="border-t cursor-pointer hover:bg-[#C9A84C]/[0.03] transition-colors"
+                            className="border-t cursor-pointer hover:bg-gold/[0.03] transition-colors"
                             style={{ borderColor: "#f0ebe2" }}
                             onClick={() => { setSelectedUserId(u.id); setTab("genel") }}
                           >
@@ -762,7 +762,7 @@ export default function AdminPanel() {
                         {paginatedRecent.map((t) => {
                           const isGrant = t.amount > 0
                           return (
-                            <tr key={t.id} className="border-t hover:bg-[#C9A84C]/[0.03] transition-colors" style={{ borderColor: "#f0ebe2" }}>
+                            <tr key={t.id} className="border-t hover:bg-gold/[0.03] transition-colors" style={{ borderColor: "#f0ebe2" }}>
                               <td className="font-ui text-xs py-2.5 px-4" style={{ color: "#6b5a45" }}>
                                 {new Date(t.createdAt).toLocaleDateString("tr-TR", { day: "2-digit", month: "short" })}
                                 {" "}
@@ -807,7 +807,7 @@ export default function AdminPanel() {
                         <button
                           onClick={() => setTxPage((p) => Math.max(1, p - 1))}
                           disabled={currentTxPage <= 1}
-                          className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[#C9A84C]/10 transition-colors"
+                          className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gold/10 transition-colors"
                           style={{ color: "#6b5a45" }}
                         >
                           <ChevronLeft className="h-4 w-4" />
@@ -818,7 +818,7 @@ export default function AdminPanel() {
                         <button
                           onClick={() => setTxPage((p) => Math.min(txPageCount, p + 1))}
                           disabled={currentTxPage >= txPageCount}
-                          className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[#C9A84C]/10 transition-colors"
+                          className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gold/10 transition-colors"
                           style={{ color: "#6b5a45" }}
                         >
                           <ChevronRight className="h-4 w-4" />

@@ -370,7 +370,7 @@ export default function AcademicSettingsPage() {
         className="min-h-screen flex items-center justify-center"
         style={{ backgroundColor: "#F5F0E6" }}
       >
-        <Loader2 className="h-6 w-6 animate-spin text-[#2C5F2E]" />
+        <Loader2 className="h-6 w-6 animate-spin text-forest" />
       </div>
     )
   }
@@ -381,11 +381,11 @@ export default function AcademicSettingsPage() {
         <div className="max-w-3xl mx-auto px-6 py-8">
           <Link
             href={`/projects/${projectId}/export`}
-            className="inline-flex items-center gap-1.5 text-sm text-[#8a7a65] hover:text-[#2D1F0E] mb-6"
+            className="inline-flex items-center gap-1.5 text-sm text-ink-light hover:text-ink mb-6"
           >
             <ChevronLeft className="h-4 w-4" /> Back to export
           </Link>
-          <p className="font-body text-[#6b5a45]">
+          <p className="font-body text-ink-light">
             Academic metadata applies only to projects that use an academic
             citation format (APA, MLA, Chicago, Turabian, Harvard, IEEE,
             Vancouver, AMA, ISNAD).
@@ -402,28 +402,28 @@ export default function AcademicSettingsPage() {
       <div className="max-w-3xl mx-auto px-6 py-8">
         <Link
           href={`/projects/${projectId}/export`}
-          className="inline-flex items-center gap-1.5 text-sm text-[#8a7a65] hover:text-[#2D1F0E] mb-6"
+          className="inline-flex items-center gap-1.5 text-sm text-ink-light hover:text-ink mb-6"
         >
           <ChevronLeft className="h-4 w-4" /> Back to export
         </Link>
 
         <FadeUp>
           <div className="flex items-center gap-3 mb-2">
-            <GraduationCap className="h-6 w-6 text-[#8a5a1a]" />
-            <h1 className="font-display text-2xl font-bold text-[#2D1F0E]">
+            <GraduationCap className="h-6 w-6 text-gold-dark" />
+            <h1 className="font-display text-2xl font-bold text-ink">
               Academic metadata · {citationFormat}
             </h1>
           </div>
-          <p className="font-body text-sm text-[#6b5a45] mb-8">
+          <p className="font-body text-sm text-ink-light mb-8">
             These fields populate the title page, abstract, running head, and
             other structural parts of the export. {projectTitle}.
           </p>
         </FadeUp>
 
-        <div className="bg-[#FAF7F0] border border-[#d4c9b5] rounded-sm p-6">
+        <div className="bg-page border border-sandy rounded-sm p-6">
           <MetaFormRouter meta={meta} onChange={setMeta} {...handlers} />
 
-          <div className="flex justify-end pt-6 mt-6 border-t border-[#d4c9b5]">
+          <div className="flex justify-end pt-6 mt-6 border-t border-sandy">
             <Button onClick={save} disabled={saving} className="gap-2">
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

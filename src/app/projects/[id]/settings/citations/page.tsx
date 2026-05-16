@@ -41,7 +41,7 @@ export default function CitationSettingsPage() {
             kullanıcı oradan geldiyse oraya dönmek doğru olur. */}
         <Link
           href={`/projects/${projectId}/export`}
-          className="inline-flex items-center gap-1 font-ui text-xs text-[#8a7a65] hover:text-[#2D1F0E] mb-4 transition-colors"
+          className="inline-flex items-center gap-1 font-ui text-xs text-ink-light hover:text-ink mb-4 transition-colors"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
           Export sayfasına dön
@@ -57,10 +57,10 @@ export default function CitationSettingsPage() {
               <BookOpen className="h-5 w-5" style={{ color: "#8a5a1a" }} />
             </div>
             <div>
-              <h1 className="font-display text-3xl font-bold text-[#2D1F0E]">
+              <h1 className="font-display text-3xl font-bold text-ink">
                 Atıf Formatı
               </h1>
-              <p className="font-body text-sm text-[#6b5a45] mt-1 max-w-2xl">
+              <p className="font-body text-sm text-ink-light mt-1 max-w-2xl">
                 Enstitünün veya derginin istediği formatı seç. Değişiklik uygulandığında
                 yazılmış tüm metin ve kaynakça yeni formata dönüşür; export da aynı formatta çıkar.
               </p>
@@ -70,7 +70,7 @@ export default function CitationSettingsPage() {
 
         {/* Picker */}
         {loading || !initialFormat ? (
-          <div className="flex items-center justify-center py-24 text-[#8a7a65]">
+          <div className="flex items-center justify-center py-24 text-ink-light">
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
             <span className="font-ui text-xs">Yükleniyor…</span>
           </div>

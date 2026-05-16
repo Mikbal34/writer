@@ -276,7 +276,7 @@ export default function LibraryEntryForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {isAutoEnriching && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded border border-[#d4c9b5] bg-[#FAF3E3] text-[11px] text-[#8a5a1a]">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded border border-sandy bg-page text-[11px] text-gold-dark">
           <Sparkles className="h-3 w-3 animate-pulse" />
           <span>PDF'ten boş alanlar tamamlanıyor…</span>
         </div>
@@ -328,7 +328,7 @@ export default function LibraryEntryForm({
           2nd…Nth in publication order. */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-xs uppercase tracking-wide text-[#5C4A32]">
+          <Label className="text-xs uppercase tracking-wide text-ink-light">
             Co-authors
           </Label>
           <Button
@@ -342,7 +342,7 @@ export default function LibraryEntryForm({
           </Button>
         </div>
         {form.coAuthors.length === 0 ? (
-          <p className="text-[10px] text-[#8a7a65] italic">
+          <p className="text-[10px] text-ink-light italic">
             No co-authors. The first author above is sufficient for single-author
             works; add co-authors for multi-author papers so the bibliography
             output applies the format-specific “et al.” rule.

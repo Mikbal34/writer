@@ -1355,7 +1355,7 @@ export default function ContentEditor({
                       }
                     }}
                     placeholder="Örn. daha kısa yap, dipnot ekle, …"
-                    className="flex-1 px-2 py-1 text-xs font-ui rounded-sm border border-border bg-background focus:outline-none focus:border-[#C9A84C]"
+                    className="flex-1 px-2 py-1 text-xs font-ui rounded-sm border border-border bg-background focus:outline-none focus:border-gold"
                     disabled={rewriteBusy}
                   />
                   <button
@@ -1365,7 +1365,7 @@ export default function ContentEditor({
                       runRewrite("custom", customRewritePrompt.trim())
                     }
                     disabled={rewriteBusy || !customRewritePrompt.trim()}
-                    className="px-2 py-1 text-xs font-ui font-medium bg-[#C9A84C] text-[#1A0F05] rounded-sm hover:bg-[#b5943d] disabled:opacity-50 transition-colors"
+                    className="px-2 py-1 text-xs font-ui font-medium bg-gold text-ink rounded-sm hover:bg-gold-dark disabled:opacity-50 transition-colors"
                   >
                     {rewriteBusy ? "…" : "Uygula"}
                   </button>
@@ -1576,19 +1576,19 @@ function RewriteReviewCard({
         zIndex: 50,
         maxWidth: 460,
       }}
-      className="rounded-md border border-[#d4c9b5] bg-[#FAF7F0] shadow-xl overflow-hidden"
+      className="rounded-md border border-sandy bg-page shadow-xl overflow-hidden"
     >
       {/* Header strip — small label of which action ran */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#d4c9b5]/60 bg-[#FAF3E3]">
-        <Wand2 className="h-3.5 w-3.5 text-[#8a5a1a]" />
-        <span className="font-ui text-[11px] uppercase tracking-widest text-[#8a5a1a]">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-sandy/60 bg-page">
+        <Wand2 className="h-3.5 w-3.5 text-gold-dark" />
+        <span className="font-ui text-[11px] uppercase tracking-widest text-gold-dark">
           {ACTION_LABELS[review.action]} uygulandı
         </span>
       </div>
 
       {/* Diff popover (in-card, below header) */}
       {showDiff && (
-        <div className="px-3 py-2.5 border-b border-[#d4c9b5]/40 max-h-44 overflow-y-auto bg-white text-[13px] leading-relaxed font-serif text-ink">
+        <div className="px-3 py-2.5 border-b border-sandy/40 max-h-44 overflow-y-auto bg-white text-[13px] leading-relaxed font-serif text-ink">
           {diffWords(review.originalText, review.rewriteText).map((op, i) => {
             if (op.type === "equal") return <span key={i}>{op.text}</span>;
             if (op.type === "delete") {
@@ -1622,8 +1622,8 @@ function RewriteReviewCard({
           className={cn(
             "flex items-center justify-center h-7 w-7 rounded-sm transition-colors",
             showDiff
-              ? "bg-[#C9A84C]/20 text-[#8a5a1a]"
-              : "text-ink-light hover:text-ink hover:bg-[#d4c9b5]/40",
+              ? "bg-gold/20 text-gold-dark"
+              : "text-ink-light hover:text-ink hover:bg-sandy/40",
           )}
           title="Karşılaştırma"
           aria-label="Karşılaştırma"
@@ -1634,7 +1634,7 @@ function RewriteReviewCard({
           type="button"
           onClick={onRegenerate}
           disabled={rewriteBusy}
-          className="flex items-center justify-center h-7 w-7 rounded-sm text-ink-light hover:text-ink hover:bg-[#d4c9b5]/40 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+          className="flex items-center justify-center h-7 w-7 rounded-sm text-ink-light hover:text-ink hover:bg-sandy/40 transition-colors disabled:opacity-40 disabled:pointer-events-none"
           title="Başka versiyon"
           aria-label="Başka versiyon"
         >
@@ -1647,7 +1647,7 @@ function RewriteReviewCard({
         <button
           type="button"
           onClick={onRevert}
-          className="font-ui text-xs px-2.5 py-1 rounded-sm text-ink-light hover:text-ink hover:bg-[#d4c9b5]/40 transition-colors"
+          className="font-ui text-xs px-2.5 py-1 rounded-sm text-ink-light hover:text-ink hover:bg-sandy/40 transition-colors"
         >
           Geri al
         </button>
@@ -1655,7 +1655,7 @@ function RewriteReviewCard({
         <button
           type="button"
           onClick={onApply}
-          className="font-ui text-xs font-semibold px-3 py-1 rounded-sm bg-[#C9A84C] text-[#1A0F05] hover:bg-[#d4b85a] transition-colors"
+          className="font-ui text-xs font-semibold px-3 py-1 rounded-sm bg-gold text-ink hover:bg-gold-hover transition-colors"
         >
           Tamam
         </button>

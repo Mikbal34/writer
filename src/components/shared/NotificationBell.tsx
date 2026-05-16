@@ -164,12 +164,12 @@ export default function NotificationBell({ tone = "dark" }: { tone?: "dark" | "l
                 borderRadius: "6px 6px 0 0",
               }}
             />
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#d4c9b5]/60">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-sandy/60">
               <div>
-                <div className="font-ui text-xs uppercase tracking-widest text-[#8a7a65]" style={{ letterSpacing: "0.14em" }}>
+                <div className="font-ui text-xs uppercase tracking-widest text-ink-light" style={{ letterSpacing: "0.14em" }}>
                   Bildirimler
                 </div>
-                <div className="font-ui text-[10px] text-[#a89a82] mt-0.5">
+                <div className="font-ui text-[10px] text-ink-muted mt-0.5">
                   {running.length > 0 ? `${running.length} çalışıyor` : "Arka planda iş yok"}
                   {unreadFinished.length > 0 && ` · ${unreadFinished.length} yeni`}
                 </div>
@@ -178,7 +178,7 @@ export default function NotificationBell({ tone = "dark" }: { tone?: "dark" | "l
                 <button
                   type="button"
                   onClick={ackAll}
-                  className="font-ui text-[10px] text-[#8a5a1a] hover:underline"
+                  className="font-ui text-[10px] text-gold-dark hover:underline"
                 >
                   Hepsini işaretle
                 </button>
@@ -187,7 +187,7 @@ export default function NotificationBell({ tone = "dark" }: { tone?: "dark" | "l
 
             <div className="max-h-[400px] overflow-y-auto">
               {jobs.length === 0 && (
-                <div className="px-4 py-8 text-center font-ui text-xs text-[#8a7a65]">
+                <div className="px-4 py-8 text-center font-ui text-xs text-ink-light">
                   Henüz arka plan görevi yok.
                 </div>
               )}
@@ -210,7 +210,7 @@ function JobRow({ job, onAck, onNavigate }: { job: Job; onAck: () => void; onNav
 
   const body = (
     <div
-      className="flex items-start gap-3 px-4 py-3 border-b border-[#d4c9b5]/40 hover:bg-[#e8dfd0]/30 transition-colors"
+      className="flex items-start gap-3 px-4 py-3 border-b border-sandy/40 hover:bg-sandy-soft/30 transition-colors"
       style={{ opacity: dimmed ? 0.55 : 1 }}
     >
       <div className="mt-0.5 shrink-0">
@@ -219,11 +219,11 @@ function JobRow({ job, onAck, onNavigate }: { job: Job; onAck: () => void; onNav
         {isFailed && <AlertCircle className="h-4 w-4" style={{ color: "#c96748" }} />}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-ui text-xs font-medium text-[#2D1F0E] truncate">
+        <div className="font-ui text-xs font-medium text-ink truncate">
           {jobTypeLabel(job.type)} · {job.title}
         </div>
         {job.message && (
-          <div className="font-ui text-[10px] text-[#8a7a65] mt-0.5 truncate">{job.message}</div>
+          <div className="font-ui text-[10px] text-ink-light mt-0.5 truncate">{job.message}</div>
         )}
         {isFailed && job.error && (
           <div className="font-ui text-[10px] text-[#c96748] mt-0.5 line-clamp-2">{job.error}</div>
@@ -236,7 +236,7 @@ function JobRow({ job, onAck, onNavigate }: { job: Job; onAck: () => void; onNav
             />
           </div>
         )}
-        <div className="font-ui text-[10px] text-[#a89a82] mt-1">{formatRelative(job.startedAt)} önce</div>
+        <div className="font-ui text-[10px] text-ink-muted mt-1">{formatRelative(job.startedAt)} önce</div>
       </div>
       {!isRunning && !job.acknowledged && (
         <button
@@ -246,10 +246,10 @@ function JobRow({ job, onAck, onNavigate }: { job: Job; onAck: () => void; onNav
             e.stopPropagation();
             onAck();
           }}
-          className="shrink-0 p-1 rounded hover:bg-[#d4c9b5]/50"
+          className="shrink-0 p-1 rounded hover:bg-sandy/50"
           aria-label="Okundu işaretle"
         >
-          <X className="h-3 w-3 text-[#8a7a65]" />
+          <X className="h-3 w-3 text-ink-light" />
         </button>
       )}
     </div>

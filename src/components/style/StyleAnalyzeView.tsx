@@ -113,22 +113,22 @@ export default function StyleAnalyzeView({
     return (
       <div className="flex flex-col h-full">
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-12">
-          <div className="w-16 h-16 rounded-full bg-[#C9A84C]/15 flex items-center justify-center mb-5">
-            <CheckCircle2 className="h-9 w-9 text-[#C9A84C]" strokeWidth={1.5} />
+          <div className="w-16 h-16 rounded-full bg-gold/15 flex items-center justify-center mb-5">
+            <CheckCircle2 className="h-9 w-9 text-gold" strokeWidth={1.5} />
           </div>
-          <h2 className="font-display text-xl font-bold italic text-[#2D1F0E] mb-2">
+          <h2 className="font-display text-xl font-bold italic text-ink mb-2">
             Analiz tamamlandı
           </h2>
-          <p className="font-body text-sm text-[#8a7a65] max-w-sm mb-6 leading-relaxed">
+          <p className="font-body text-sm text-ink-light max-w-sm mb-6 leading-relaxed">
             Writing Twin profilin oluşturuldu. Yan paneldeki özetten kontrol
             edebilirsin.
           </p>
           {stats && (
-            <details className="w-full max-w-sm text-left rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0]/40 p-3 text-xs mb-4">
-              <summary className="cursor-pointer font-ui uppercase tracking-wider text-[#8a7a65]">
+            <details className="w-full max-w-sm text-left rounded-sm border border-sandy/60 bg-page/40 p-3 text-xs mb-4">
+              <summary className="cursor-pointer font-ui uppercase tracking-wider text-ink-light">
                 Ölçtüklerimiz
               </summary>
-              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 font-body text-[#5C4A32]">
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 font-body text-ink-light">
                 <Stat k="Kelime" v={stats.wordCount} />
                 <Stat k="Cümle" v={stats.sentenceCount} />
                 <Stat k="Ort. cümle (kelime)" v={stats.avgSentenceWords} />
@@ -159,10 +159,10 @@ export default function StyleAnalyzeView({
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
-        <h2 className="font-display text-xl font-bold italic text-[#2D1F0E] mb-2">
+        <h2 className="font-display text-xl font-bold italic text-ink mb-2">
           Yazı örneklerini analiz et
         </h2>
-        <p className="font-body text-sm text-[#8a7a65] mb-6">
+        <p className="font-body text-sm text-ink-light mb-6">
           1-{MAX_SAMPLES} farklı yazı örneği yapıştır. Birden fazla örnek
           verirsen Twin sadece <em>tüm örneklerde</em> tutarlı çıkan
           özelliklere kararlı muamelesi yapar.
@@ -175,7 +175,7 @@ export default function StyleAnalyzeView({
             return (
               <div key={i} className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-ui uppercase tracking-wider text-[#8a7a65]">
+                  <span className="font-ui uppercase tracking-wider text-ink-light">
                     Örnek {i + 1}
                     {charCount >= MIN_CHARS && (
                       <span className="ml-2 text-green-700">✓ {charCount}</span>
@@ -190,7 +190,7 @@ export default function StyleAnalyzeView({
                     <button
                       type="button"
                       onClick={() => removeSample(i)}
-                      className="text-[#8a7a65] hover:text-red-600 transition-colors"
+                      className="text-ink-light hover:text-red-600 transition-colors"
                       aria-label={`Örnek ${i + 1} sil`}
                     >
                       <X className="h-3.5 w-3.5" />
@@ -205,7 +205,7 @@ export default function StyleAnalyzeView({
                       ? "Daha önce yazdığın bir parça..."
                       : "Farklı bir metin daha (örn. başka projeden)..."
                   }
-                  className="w-full rounded-sm border border-[#e0d8cc] bg-[#fdfcfa] px-4 py-3 font-body text-sm text-[#2D1F0E] placeholder:text-[#b8ad9e] focus:outline-none focus:border-[#C9A84C]/60 focus:ring-1 focus:ring-[#C9A84C]/20 transition-all resize-y"
+                  className="w-full rounded-sm border border-[#e0d8cc] bg-[#fdfcfa] px-4 py-3 font-body text-sm text-ink placeholder:text-[#b8ad9e] focus:outline-none focus:border-gold/60 focus:ring-1 focus:ring-gold/20 transition-all resize-y"
                   style={{ minHeight: "140px", maxHeight: "320px" }}
                   disabled={isAnalyzing}
                 />
@@ -228,13 +228,13 @@ export default function StyleAnalyzeView({
         </div>
 
         <div className="flex items-center justify-between mt-6">
-          <span className="font-ui text-xs text-[#a89880]">
+          <span className="font-ui text-xs text-ink-muted">
             {validSampleCount} geçerli örnek
           </span>
           <Button
             onClick={handleAnalyze}
             disabled={validSampleCount === 0 || isAnalyzing}
-            className="gap-2 bg-[#2D1F0E] hover:bg-[#3a2910] text-[#F5EDE0]"
+            className="gap-2 bg-ink hover:bg-[#3a2910] text-page"
           >
             {isAnalyzing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -254,8 +254,8 @@ export default function StyleAnalyzeView({
 function Stat({ k, v }: { k: string; v: string | number }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <span className="text-[#8a7a65]">{k}:</span>
-      <span className="font-medium text-[#2D1F0E]">{v}</span>
+      <span className="text-ink-light">{k}:</span>
+      <span className="font-medium text-ink">{v}</span>
     </div>
   );
 }

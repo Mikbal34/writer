@@ -62,8 +62,8 @@ function ToolbarButton({
       title={title}
       className={`h-7 w-7 flex items-center justify-center rounded-sm transition-colors ${
         active
-          ? "bg-[#2D1F0E] text-[#F5EDE0]"
-          : "text-[#5C4A32] hover:bg-[#C9A84C]/15"
+          ? "bg-ink text-page"
+          : "text-ink-light hover:bg-gold/15"
       }`}
     >
       {children}
@@ -99,7 +99,7 @@ export default function NoteEditor({
         // Tailwind prose with our ink/parchment palette. min-h gives the
         // editor a comfortable target before the user starts typing.
         class:
-          "prose prose-sm max-w-none focus:outline-none min-h-[160px] text-[#2D1F0E] [&_p]:my-2 [&_h2]:font-display [&_h2]:text-base [&_h2]:font-semibold [&_h3]:font-display [&_h3]:text-sm [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-[#C9A84C] [&_blockquote]:pl-3 [&_blockquote]:italic [&_mark]:bg-[#FFEB3B]/60 [&_mark]:px-0.5",
+          "prose prose-sm max-w-none focus:outline-none min-h-[160px] text-ink [&_p]:my-2 [&_h2]:font-display [&_h2]:text-base [&_h2]:font-semibold [&_h3]:font-display [&_h3]:text-sm [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-gold [&_blockquote]:pl-3 [&_blockquote]:italic [&_mark]:bg-gold/60 [&_mark]:px-0.5",
       },
     },
   });
@@ -118,25 +118,25 @@ export default function NoteEditor({
 
   if (!editor) {
     return (
-      <div className="rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/60 p-4 font-body text-sm text-[#8a7a65]">
+      <div className="rounded-sm border border-sandy bg-page/60 p-4 font-body text-sm text-ink-light">
         Editor yükleniyor...
       </div>
     );
   }
 
   return (
-    <div className="rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/40 p-3 space-y-2">
+    <div className="rounded-sm border border-sandy bg-page/40 p-3 space-y-2">
       {/* Title input */}
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Başlık (opsiyonel)"
-        className="w-full px-2 py-1.5 rounded-sm border border-[#d4c9b5]/60 bg-white font-display text-sm font-semibold text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/60"
+        className="w-full px-2 py-1.5 rounded-sm border border-sandy/60 bg-white font-display text-sm font-semibold text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/60"
       />
 
       {/* Toolbar */}
-      <div className="flex items-center gap-0.5 pb-1 border-b border-[#d4c9b5]/60">
+      <div className="flex items-center gap-0.5 pb-1 border-b border-sandy/60">
         <ToolbarButton
           active={editor.isActive("bold")}
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -165,7 +165,7 @@ export default function NoteEditor({
         >
           <Highlighter className="h-3.5 w-3.5" />
         </ToolbarButton>
-        <span className="w-px h-4 bg-[#d4c9b5] mx-1" />
+        <span className="w-px h-4 bg-sandy mx-1" />
         <ToolbarButton
           active={editor.isActive("heading", { level: 2 })}
           onClick={() =>
@@ -209,7 +209,7 @@ export default function NoteEditor({
       <EditorContent editor={editor as Editor} />
 
       {footerExtras && (
-        <div className="pt-2 border-t border-[#d4c9b5]/60">{footerExtras}</div>
+        <div className="pt-2 border-t border-sandy/60">{footerExtras}</div>
       )}
 
       <div className="flex justify-end gap-2 pt-1">
@@ -217,7 +217,7 @@ export default function NoteEditor({
           type="button"
           onClick={onCancel}
           disabled={saving}
-          className="px-3 py-1.5 rounded-sm border border-[#d4c9b5] font-ui text-xs text-[#5C4A32] hover:bg-[#FAF7F0] disabled:opacity-40"
+          className="px-3 py-1.5 rounded-sm border border-sandy font-ui text-xs text-ink-light hover:bg-page disabled:opacity-40"
         >
           İptal
         </button>
@@ -225,7 +225,7 @@ export default function NoteEditor({
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="px-3 py-1.5 rounded-sm bg-forest text-[#F5EDE0] font-ui text-xs hover:bg-forest/90 disabled:opacity-40"
+          className="px-3 py-1.5 rounded-sm bg-forest text-page font-ui text-xs hover:bg-forest/90 disabled:opacity-40"
         >
           {saving ? "Kaydediliyor..." : "Kaydet"}
         </button>

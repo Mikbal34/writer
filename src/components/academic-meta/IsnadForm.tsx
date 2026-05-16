@@ -108,7 +108,7 @@ export default function IsnadForm({
                 (e.target.value || null) as IsnadDegreeType | null
               )
             }
-            className="w-full h-9 rounded-md border border-[#d4c9b5] bg-white px-2 text-xs font-ui focus:outline-none focus:ring-2 focus:ring-forest/30"
+            className="w-full h-9 rounded-md border border-sandy bg-white px-2 text-xs font-ui focus:outline-none focus:ring-2 focus:ring-forest/30"
           >
             <option value="">Seçiniz…</option>
             {DEGREE_OPTIONS.map((opt) => (

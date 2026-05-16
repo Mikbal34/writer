@@ -113,7 +113,7 @@ export default function ProjectStylePage({ params }: ProjectStylePageProps) {
   if (loading || !project) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-8 flex items-center justify-center min-h-[40vh]">
-        <Loader2 className="h-5 w-5 animate-spin text-[#C9A84C]" />
+        <Loader2 className="h-5 w-5 animate-spin text-gold" />
       </div>
     );
   }
@@ -129,7 +129,7 @@ export default function ProjectStylePage({ params }: ProjectStylePageProps) {
           type="button"
           onClick={handleSave}
           disabled={!dirty || saving}
-          className="flex items-center gap-2 px-3 py-1.5 bg-forest text-[#F5EDE0] rounded-sm font-ui text-xs hover:bg-forest/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-3 py-1.5 bg-forest text-page rounded-sm font-ui text-xs hover:bg-forest/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saving ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -312,8 +312,8 @@ export default function StyleChat({
   return (
     <div className={`flex flex-col h-full ${className ?? ""}`}>
       {/* Header */}
-      <div className="px-6 py-4 border-b border-[#e8e0d4] shrink-0 flex items-center justify-between">
-        <h2 className="font-display text-lg font-bold italic text-[#2D1F0E]">Style Interview</h2>
+      <div className="px-6 py-4 border-b border-sandy-soft shrink-0 flex items-center justify-between">
+        <h2 className="font-display text-lg font-bold italic text-ink">Style Interview</h2>
         <div className="flex items-center gap-1">
           {!isStreaming && (
             <Button
@@ -402,7 +402,7 @@ export default function StyleChat({
             <StaggerItem key={i} index={i} baseDelay={0.1} stagger={0.05}>
               <div className="flex gap-2.5 items-start">
                 {msg.role === "user" ? (
-                  <User className="h-7 w-7 shrink-0 text-[#8a7a65]" />
+                  <User className="h-7 w-7 shrink-0 text-ink-light" />
                 ) : (
                   <img src="/images/quilpen-icon.png" alt="Q" className="h-7 w-7 shrink-0 rounded-lg" />
                 )}

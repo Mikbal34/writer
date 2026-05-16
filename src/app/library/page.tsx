@@ -230,14 +230,14 @@ export default function LibraryPage() {
             {/* Hero — eyebrow, H1, sort/import/add */}
             <header className="flex items-start justify-between gap-4 flex-wrap">
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5 font-ui text-[10px] uppercase tracking-widest text-[#8a7a65] mb-1">
+                <div className="flex items-center gap-1.5 font-ui text-[10px] uppercase tracking-widest text-ink-light mb-1">
                   <Library className="h-3 w-3" />
                   Kütüphane · {total} kaynak
                 </div>
                 <h1 className="font-display text-2xl font-semibold text-ink leading-tight">
                   {selectionLabel}
                 </h1>
-                <p className="font-body text-sm text-[#6b5a45] mt-1 max-w-2xl">
+                <p className="font-body text-sm text-ink-light mt-1 max-w-2xl">
                   {subtitle}
                 </p>
               </div>
@@ -246,7 +246,7 @@ export default function LibraryPage() {
                 <button
                   type="button"
                   onClick={askEntireScope}
-                  className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/70 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
+                  className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-sandy bg-page/70 text-ink-light hover:bg-page transition-colors"
                   title="Bu kapsama sor"
                 >
                   <MessageSquare className="h-3 w-3" />
@@ -257,7 +257,7 @@ export default function LibraryPage() {
                 <button
                   type="button"
                   onClick={() => setShowBibtexDialog(true)}
-                  className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/70 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
+                  className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-sandy bg-page/70 text-ink-light hover:bg-page transition-colors"
                 >
                   <FileUp className="h-3 w-3" />
                   BibTeX
@@ -265,7 +265,7 @@ export default function LibraryPage() {
                 <button
                   type="button"
                   onClick={() => setShowZoteroPanel(!showZoteroPanel)}
-                  className="font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/70 text-[#5C4A32] hover:bg-[#FAF7F0] transition-colors"
+                  className="font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-sandy bg-page/70 text-ink-light hover:bg-page transition-colors"
                 >
                   Zotero
                 </button>
@@ -275,7 +275,7 @@ export default function LibraryPage() {
                     setEditingEntry(null);
                     setShowEntryDialog(true);
                   }}
-                  className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm bg-forest text-[#F5EDE0] hover:bg-forest/90 transition-colors"
+                  className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm bg-forest text-page hover:bg-forest/90 transition-colors"
                 >
                   <Plus className="h-3 w-3" />
                   Kaynak ekle
@@ -286,19 +286,19 @@ export default function LibraryPage() {
             {/* Drop zone + search row */}
             <div className="flex items-center gap-3 flex-wrap">
               <div className="relative flex-1 min-w-[260px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a7a65]" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-light" />
                 <input
                   type="text"
                   placeholder="Yazar veya başlıkta ara..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0] font-body text-sm text-[#2D1F0E] placeholder:text-[#a89880] focus:outline-none focus:border-[#C9A84C]/50 transition-colors"
+                  className="w-full pl-10 pr-3 py-2 rounded-sm border border-sandy/60 bg-page font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/50 transition-colors"
                 />
               </div>
               {/* Inline drop affordance, smaller than the old hero
                   panel; main "+ Kaynak ekle" button is the primary CTA. */}
-              <details className="rounded-sm border border-[#d4c9b5]/60 bg-[#FAF7F0] px-3 py-2 cursor-pointer">
-                <summary className="font-ui text-xs text-[#5C4A32] list-none flex items-center gap-1.5">
+              <details className="rounded-sm border border-sandy/60 bg-page px-3 py-2 cursor-pointer">
+                <summary className="font-ui text-xs text-ink-light list-none flex items-center gap-1.5">
                   <FileUp className="h-3 w-3" />
                   PDF sürükle
                 </summary>
@@ -321,17 +321,17 @@ export default function LibraryPage() {
             {/* Decade shelves */}
             {isLoading ? (
               <div className="flex items-center justify-center py-12 gap-2">
-                <Loader2 className="h-5 w-5 animate-spin text-[#2C5F2E]" />
-                <span className="font-body text-sm text-[#8a7a65]">
+                <Loader2 className="h-5 w-5 animate-spin text-forest" />
+                <span className="font-body text-sm text-ink-light">
                   Yükleniyor...
                 </span>
               </div>
             ) : entries.length === 0 ? (
-              <div className="rounded-sm border border-dashed border-[#d4c9b5] bg-[#FAF7F0]/40 px-6 py-12 text-center">
-                <p className="font-body text-sm text-[#8a7a65] mb-2">
+              <div className="rounded-sm border border-dashed border-sandy bg-page/40 px-6 py-12 text-center">
+                <p className="font-body text-sm text-ink-light mb-2">
                   Bu kapsamda henüz kaynak yok.
                 </p>
-                <p className="font-ui text-xs text-[#a89880]">
+                <p className="font-ui text-xs text-ink-muted">
                   Üstteki <strong>+ Kaynak ekle</strong> ile başla, ya da PDF
                   sürükle.
                 </p>
@@ -352,19 +352,19 @@ export default function LibraryPage() {
                   type="button"
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
-                  className="flex items-center gap-1 font-ui text-xs px-3 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/80 text-[#5C4A32] hover:bg-[#FAF7F0] disabled:opacity-40 transition-colors"
+                  className="flex items-center gap-1 font-ui text-xs px-3 py-1.5 rounded-sm border border-sandy bg-page/80 text-ink-light hover:bg-page disabled:opacity-40 transition-colors"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                   Önceki
                 </button>
-                <span className="font-ui text-xs text-[#8a7a65]">
+                <span className="font-ui text-xs text-ink-light">
                   {page} / {totalPages}
                 </span>
                 <button
                   type="button"
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
-                  className="flex items-center gap-1 font-ui text-xs px-3 py-1.5 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/80 text-[#5C4A32] hover:bg-[#FAF7F0] disabled:opacity-40 transition-colors"
+                  className="flex items-center gap-1 font-ui text-xs px-3 py-1.5 rounded-sm border border-sandy bg-page/80 text-ink-light hover:bg-page disabled:opacity-40 transition-colors"
                 >
                   Sonraki
                   <ChevronRight className="h-3.5 w-3.5" />
@@ -398,13 +398,13 @@ export default function LibraryPage() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-[#FAF7F0] border-[#d4c9b5]">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-page border-sandy">
           <DialogHeader>
-            <DialogTitle className="font-display text-[#2D1F0E]">
+            <DialogTitle className="font-display text-ink">
               {editingEntry ? "Kaynağı düzenle" : "Yeni kaynak ekle"}
             </DialogTitle>
           </DialogHeader>
-          <div className="h-px bg-[#d4c9b5]/50 my-3" />
+          <div className="h-px bg-sandy/50 my-3" />
           <LibraryEntryForm
             entryId={editingEntry?.id}
             initialData={
@@ -436,13 +436,13 @@ export default function LibraryPage() {
 
       {/* Zotero Dialog */}
       <Dialog open={showZoteroPanel} onOpenChange={setShowZoteroPanel}>
-        <DialogContent className="max-w-sm bg-[#FAF7F0] border-[#d4c9b5]">
+        <DialogContent className="max-w-sm bg-page border-sandy">
           <DialogHeader>
-            <DialogTitle className="font-display text-[#2D1F0E]">
+            <DialogTitle className="font-display text-ink">
               Zotero
             </DialogTitle>
           </DialogHeader>
-          <div className="h-px bg-[#d4c9b5]/50 my-3" />
+          <div className="h-px bg-sandy/50 my-3" />
           <ZoteroSettingsCard onSynced={fetchEntries} />
         </DialogContent>
       </Dialog>

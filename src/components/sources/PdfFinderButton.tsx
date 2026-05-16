@@ -76,7 +76,7 @@ export default function PdfFinderButton({
         <button
           onClick={handleClick}
           title={hasSource ? "Başka PDF ekle" : "PDF yükle"}
-          className="w-8 h-8 rounded-sm flex items-center justify-center hover:bg-[#e8dfd0]/50 transition-colors shrink-0"
+          className="w-8 h-8 rounded-sm flex items-center justify-center hover:bg-sandy-soft/50 transition-colors shrink-0"
         >
           <Paperclip
             className={cn(

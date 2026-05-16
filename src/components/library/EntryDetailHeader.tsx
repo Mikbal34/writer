@@ -142,7 +142,7 @@ export default function EntryDetailHeader({
   }, [entry.id, noteCount]);
 
   return (
-    <div className="px-4 pt-4 pb-3 border-b border-[#d4c9b5]/60 space-y-3">
+    <div className="px-4 pt-4 pb-3 border-b border-sandy/60 space-y-3">
       <div className="flex items-start gap-3">
         <BookSpine
           title={entry.title}
@@ -159,7 +159,7 @@ export default function EntryDetailHeader({
           </h2>
           <p
             dir="auto"
-            className="font-body text-xs text-[#5C4A32] line-clamp-2"
+            className="font-body text-xs text-ink-light line-clamp-2"
           >
             {entry.authorSurname}
             {entry.authorName ? `, ${entry.authorName}` : ""}
@@ -168,7 +168,7 @@ export default function EntryDetailHeader({
           <div className="flex items-center gap-1.5 pt-1">
             <Link
               href={`/library/${entry.id}/ask`}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-sm bg-[#C9A84C] text-[#1A0F05] font-ui text-[11px] font-semibold hover:bg-[#d4b85a] transition-colors"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-sm bg-gold text-ink font-ui text-[11px] font-semibold hover:bg-gold-hover transition-colors"
             >
               <MessageSquare className="h-3 w-3" />
               Bu kitaba sor
@@ -176,7 +176,7 @@ export default function EntryDetailHeader({
             <button
               type="button"
               onClick={onEdit}
-              className="inline-flex items-center justify-center h-6 w-6 rounded-sm border border-[#d4c9b5] text-[#5C4A32] hover:bg-white"
+              className="inline-flex items-center justify-center h-6 w-6 rounded-sm border border-sandy text-ink-light hover:bg-white"
               title="Künyeyi düzenle"
             >
               <Pencil className="h-3 w-3" />
@@ -186,7 +186,7 @@ export default function EntryDetailHeader({
                 href={`/api/library/${entry.id}/pdf`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center h-6 w-6 rounded-sm border border-[#d4c9b5] text-[#5C4A32] hover:bg-white"
+                className="inline-flex items-center justify-center h-6 w-6 rounded-sm border border-sandy text-ink-light hover:bg-white"
                 title="PDF'i yeni sekmede aç"
               >
                 <ExternalLink className="h-3 w-3" />
@@ -199,20 +199,20 @@ export default function EntryDetailHeader({
       {/* Stats strip */}
       <div className="flex items-center gap-4 px-1">
         <div className="flex items-center gap-1.5">
-          <FileText className="h-3.5 w-3.5 text-[#8a7a65]" />
+          <FileText className="h-3.5 w-3.5 text-ink-light" />
           <span className="font-display text-base font-semibold text-ink tabular-nums leading-none">
             {noteCount}
           </span>
-          <span className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+          <span className="font-ui text-[10px] uppercase tracking-widest text-ink-light">
             not
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <Highlighter className="h-3.5 w-3.5 text-[#8a7a65]" />
+          <Highlighter className="h-3.5 w-3.5 text-ink-light" />
           <span className="font-display text-base font-semibold text-ink tabular-nums leading-none">
             {highlightCount ?? "—"}
           </span>
-          <span className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+          <span className="font-ui text-[10px] uppercase tracking-widest text-ink-light">
             alıntı
           </span>
         </div>
@@ -221,14 +221,14 @@ export default function EntryDetailHeader({
       {/* Recent highlights — visible only when there are some */}
       {recent.length > 0 && (
         <div className="space-y-1">
-          <div className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65] px-1">
+          <div className="font-ui text-[10px] uppercase tracking-widest text-ink-light px-1">
             Son alıntılar
           </div>
           <ul className="space-y-1">
             {recent.map((h) => (
               <li
                 key={h.id}
-                className="px-2 py-1.5 rounded-sm bg-[#FAF7F0]/60 border border-[#d4c9b5]/40 cursor-pointer hover:bg-[#FAF7F0] transition-colors"
+                className="px-2 py-1.5 rounded-sm bg-page/60 border border-sandy/40 cursor-pointer hover:bg-page transition-colors"
                 onClick={() => onJumpToPage(h.pageNumber)}
               >
                 <p
@@ -237,7 +237,7 @@ export default function EntryDetailHeader({
                 >
                   &ldquo;{h.text}&rdquo;
                 </p>
-                <span className="font-ui text-[10px] text-[#8a7a65]">
+                <span className="font-ui text-[10px] text-ink-light">
                   s.{h.pageNumber}
                 </span>
               </li>

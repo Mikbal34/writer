@@ -155,7 +155,7 @@ export default function ProjectSidebar({
   const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Project header */}
-      <div className="p-4 border-b border-[#d4c9b5]/40 hidden lg:block">
+      <div className="p-4 border-b border-sandy/40 hidden lg:block">
         <Link
           href="/"
           className="flex items-center gap-2 mb-1 hover:opacity-70 transition-opacity"
@@ -169,7 +169,7 @@ export default function ProjectSidebar({
           <img src="/images/quilpen-icon.png" alt="Quilpen" className="w-9 h-9 rounded-lg" />
           <div className="min-w-0 flex-1">
             {seriesName && (
-              <p className="font-ui text-[10px] text-[#8a5a1a] uppercase tracking-wider mb-0.5 truncate">
+              <p className="font-ui text-[10px] text-gold-dark uppercase tracking-wider mb-0.5 truncate">
                 {seriesName}
                 {seriesOrder !== null && seriesOrder !== undefined && (
                   <span className="text-muted-foreground"> · Cilt {seriesOrder}</span>
@@ -206,7 +206,7 @@ export default function ProjectSidebar({
                   "flex items-center gap-2.5 px-5 py-2.5 lg:py-2 font-ui text-sm transition-all duration-200 relative whitespace-nowrap",
                   isActive
                     ? "text-forest font-medium bg-forest/5"
-                    : "text-ink-light hover:text-ink hover:bg-[#e8dfd0]/30"
+                    : "text-ink-light hover:text-ink hover:bg-sandy-soft/30"
                 )}
               >
                 {isActive && (
@@ -235,7 +235,7 @@ export default function ProjectSidebar({
       </div>
 
       {/* Bottom credit balance */}
-      <div className="hidden lg:flex mt-auto p-4 items-center justify-between border-t border-[#d4c9b5]/40">
+      <div className="hidden lg:flex mt-auto p-4 items-center justify-between border-t border-sandy/40">
         <CreditBalance />
       </div>
     </div>
@@ -245,7 +245,7 @@ export default function ProjectSidebar({
     <>
       {/* Mobile toggle */}
       <button
-        className="fixed top-4 left-4 z-50 md:hidden flex h-9 w-9 items-center justify-center rounded-md bg-[#FAF7F0] border border-[#d4c9b5] shadow-sm transition-colors hover:bg-[#e8dfd0]/50"
+        className="fixed top-4 left-4 z-50 md:hidden flex h-9 w-9 items-center justify-center rounded-md bg-page border border-sandy shadow-sm transition-colors hover:bg-sandy-soft/50"
         onClick={() => setMobileOpen(!mobileOpen)}
         aria-label="Toggle sidebar"
       >
@@ -267,7 +267,7 @@ export default function ProjectSidebar({
       {/* Sidebar — mobile drawer + desktop static */}
       <nav
         className={cn(
-          "fixed inset-y-0 left-0 z-40 lg:w-52 w-56 border-b lg:border-b-0 lg:border-r border-[#d4c9b5]/60 bg-[#F5F0E6]/50 flex lg:flex-col shrink-0 transition-transform duration-200 ease-in-out lg:static lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 lg:w-52 w-56 border-b lg:border-b-0 lg:border-r border-sandy/60 bg-page/50 flex lg:flex-col shrink-0 transition-transform duration-200 ease-in-out lg:static lg:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >

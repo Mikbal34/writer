@@ -103,7 +103,7 @@ export default function PinNoteButton({
 
   if (pinned) {
     return (
-      <span className="inline-flex items-center gap-1 font-ui text-[10px] text-[#5C4A32]">
+      <span className="inline-flex items-center gap-1 font-ui text-[10px] text-ink-light">
         <Pin className="h-3 w-3" />
         Nota kaydedildi
       </span>
@@ -115,41 +115,41 @@ export default function PinNoteButton({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm font-ui text-[10px] text-[#5C4A32] hover:bg-[#C9A84C]/15 transition-colors"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm font-ui text-[10px] text-ink-light hover:bg-gold/15 transition-colors"
       >
         <Pin className="h-3 w-3" />
         Nota Kaydet
       </button>
       {open && (
-        <div className="absolute z-30 left-0 mt-1 w-72 rounded-sm border border-[#d4c9b5] bg-white shadow-lg">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-[#d4c9b5]/60">
-            <span className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+        <div className="absolute z-30 left-0 mt-1 w-72 rounded-sm border border-sandy bg-white shadow-lg">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-sandy/60">
+            <span className="font-ui text-[10px] uppercase tracking-widest text-ink-light">
               Hangi kitaba?
             </span>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-[#8a7a65] hover:text-[#2D1F0E]"
+              className="text-ink-light hover:text-ink"
               aria-label="Kapat"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
-          <div className="px-2 py-2 border-b border-[#d4c9b5]/60">
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[#d4c9b5] bg-[#FAF7F0]/60">
-              <Search className="h-3 w-3 text-[#a89a82]" />
+          <div className="px-2 py-2 border-b border-sandy/60">
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-sandy bg-page/60">
+              <Search className="h-3 w-3 text-ink-muted" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Kitap ara..."
-                className="flex-1 bg-transparent outline-none font-ui text-xs text-[#2D1F0E] placeholder:text-[#a89a82]"
+                className="flex-1 bg-transparent outline-none font-ui text-xs text-ink placeholder:text-ink-muted"
               />
             </div>
           </div>
           <div className="max-h-60 overflow-y-auto">
             {filtered.length === 0 ? (
-              <div className="px-3 py-4 font-body text-xs text-[#8a7a65] italic text-center">
+              <div className="px-3 py-4 font-body text-xs text-ink-light italic text-center">
                 Eşleşen kaynak yok.
               </div>
             ) : (
@@ -159,18 +159,18 @@ export default function PinNoteButton({
                   type="button"
                   onClick={() => pin(e.id)}
                   disabled={busy}
-                  className="w-full text-left px-3 py-1.5 hover:bg-[#FAF7F0] disabled:opacity-50 transition-colors border-b border-[#d4c9b5]/30 last:border-0"
+                  className="w-full text-left px-3 py-1.5 hover:bg-page disabled:opacity-50 transition-colors border-b border-sandy/30 last:border-0"
                 >
                   <div
                     dir="auto"
-                    className="font-body text-xs font-semibold text-[#2D1F0E] truncate"
+                    className="font-body text-xs font-semibold text-ink truncate"
                   >
                     {suggestedEntryIds.includes(e.id) && "⭐ "}
                     {e.title}
                   </div>
                   <div
                     dir="auto"
-                    className="font-ui text-[10px] text-[#5C4A32] truncate"
+                    className="font-ui text-[10px] text-ink-light truncate"
                   >
                     {e.authorSurname}
                     {e.authorName ? `, ${e.authorName}` : ""}
@@ -181,7 +181,7 @@ export default function PinNoteButton({
             )}
           </div>
           {busy && (
-            <div className="flex items-center gap-2 px-3 py-2 border-t border-[#d4c9b5]/60 font-ui text-[10px] text-[#8a7a65]">
+            <div className="flex items-center gap-2 px-3 py-2 border-t border-sandy/60 font-ui text-[10px] text-ink-light">
               <Loader2 className="h-3 w-3 animate-spin" />
               Kaydediliyor...
             </div>

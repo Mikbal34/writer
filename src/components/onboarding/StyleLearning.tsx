@@ -254,11 +254,11 @@ export default function StyleLearning({
       )}
 
       {stats && (
-        <details className="rounded-lg border border-[#d4c9b5]/60 bg-[#FAF7F0]/40 p-3 text-xs">
-          <summary className="cursor-pointer font-ui uppercase tracking-wider text-[#8a7a65]">
+        <details className="rounded-lg border border-sandy/60 bg-page/40 p-3 text-xs">
+          <summary className="cursor-pointer font-ui uppercase tracking-wider text-ink-light">
             Ölçtüklerimiz (Twin&apos;in dayandığı objektif sayılar)
           </summary>
-          <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 font-body text-[#5C4A32]">
+          <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 font-body text-ink-light">
             <Stat k="Kelime sayısı" v={stats.wordCount} />
             <Stat k="Cümle sayısı" v={stats.sentenceCount} />
             <Stat k="Ort. cümle (kelime)" v={stats.avgSentenceWords} />
@@ -287,8 +287,8 @@ export default function StyleLearning({
 function Stat({ k, v }: { k: string; v: string | number }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <span className="text-[#8a7a65]">{k}:</span>
-      <span className="font-medium text-[#2D1F0E]">{v}</span>
+      <span className="text-ink-light">{k}:</span>
+      <span className="font-medium text-ink">{v}</span>
     </div>
   );
 }

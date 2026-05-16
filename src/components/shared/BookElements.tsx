@@ -54,8 +54,8 @@ export function PageTitle({ title, subtitle }: { title: string; subtitle?: strin
 export function SpineShadow() {
   return (
     <div className="hidden lg:block w-6 relative shrink-0">
-      <div className="absolute inset-0 bg-gradient-to-r from-[#3C2415]/8 via-[#3C2415]/15 to-[#3C2415]/8" />
-      <div className="absolute inset-y-0 left-1/2 w-[1px] bg-[#3C2415]/10" />
+      <div className="absolute inset-0 bg-gradient-to-r from-ink/8 via-ink/15 to-ink/8" />
+      <div className="absolute inset-y-0 left-1/2 w-[1px] bg-ink/10" />
     </div>
   );
 }

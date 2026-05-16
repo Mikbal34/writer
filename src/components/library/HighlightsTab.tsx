@@ -78,7 +78,7 @@ export default function HighlightsTab({
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 px-4 py-6 font-body text-xs text-[#8a7a65]">
+      <div className="flex items-center gap-2 px-4 py-6 font-body text-xs text-ink-light">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Highlight'lar yükleniyor...
       </div>
@@ -87,7 +87,7 @@ export default function HighlightsTab({
 
   if (highlights.length === 0) {
     return (
-      <div className="px-4 py-8 text-center font-body text-sm text-[#8a7a65]">
+      <div className="px-4 py-8 text-center font-body text-sm text-ink-light">
         Henüz highlight yok. PDF tabından metin seçip "Highlight" diyebilirsin.
       </div>
     );
@@ -98,14 +98,14 @@ export default function HighlightsTab({
       {grouped.map(([pageNumber, items]) => (
         <section key={pageNumber}>
           <header className="flex items-center justify-between mb-1.5">
-            <h3 className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+            <h3 className="font-ui text-[10px] uppercase tracking-widest text-ink-light">
               Sayfa {pageNumber} · {items.length} highlight
             </h3>
             {onJumpToPage && (
               <button
                 type="button"
                 onClick={() => onJumpToPage(pageNumber)}
-                className="inline-flex items-center gap-1 font-ui text-[10px] text-[#5C4A32] hover:text-[#2D1F0E]"
+                className="inline-flex items-center gap-1 font-ui text-[10px] text-ink-light hover:text-ink"
               >
                 <ExternalLink className="h-3 w-3" />
                 PDF'e git
@@ -116,7 +116,7 @@ export default function HighlightsTab({
             {items.map((h) => (
               <li
                 key={h.id}
-                className="rounded-sm border border-[#d4c9b5]/60 bg-white/70 px-2 py-1.5 flex gap-2 items-start cursor-pointer hover:bg-white transition-colors"
+                className="rounded-sm border border-sandy/60 bg-white/70 px-2 py-1.5 flex gap-2 items-start cursor-pointer hover:bg-white transition-colors"
                 onClick={() => onJumpToPage?.(h.pageNumber)}
               >
                 <div
@@ -125,12 +125,12 @@ export default function HighlightsTab({
                 />
                 <p
                   dir="auto"
-                  className="font-body text-xs text-[#2D1F0E] flex-1 line-clamp-3"
+                  className="font-body text-xs text-ink flex-1 line-clamp-3"
                 >
                   {h.text}
                 </p>
                 {h.noteId && (
-                  <span className="font-ui text-[10px] text-[#8a5a1a] shrink-0">📝</span>
+                  <span className="font-ui text-[10px] text-gold-dark shrink-0">📝</span>
                 )}
               </li>
             ))}

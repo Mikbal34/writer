@@ -248,7 +248,7 @@ export default function PdfViewerWithHighlights({
             type="button"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="flex items-center gap-1 px-2 py-1 rounded-sm font-ui text-xs text-[#5C4A32] hover:bg-[#FAF7F0] disabled:opacity-40"
+            className="flex items-center gap-1 px-2 py-1 rounded-sm font-ui text-xs text-ink-light hover:bg-page disabled:opacity-40"
           >
             <ChevronLeft className="h-3 w-3" />
           </button>
@@ -263,29 +263,29 @@ export default function PdfViewerWithHighlights({
                 setPage(Math.max(1, Math.min(numPages || n, n)));
               }
             }}
-            className="w-14 text-center px-1 py-0.5 rounded-sm border border-[#d4c9b5] bg-white font-ui text-xs"
+            className="w-14 text-center px-1 py-0.5 rounded-sm border border-sandy bg-white font-ui text-xs"
           />
-          <span className="font-ui text-xs text-[#8a7a65]">
+          <span className="font-ui text-xs text-ink-light">
             / {numPages || "?"}
           </span>
           <button
             type="button"
             onClick={() => setPage((p) => Math.min(numPages || p + 1, p + 1))}
             disabled={numPages > 0 && page >= numPages}
-            className="flex items-center gap-1 px-2 py-1 rounded-sm font-ui text-xs text-[#5C4A32] hover:bg-[#FAF7F0] disabled:opacity-40"
+            className="flex items-center gap-1 px-2 py-1 rounded-sm font-ui text-xs text-ink-light hover:bg-page disabled:opacity-40"
           >
             <ChevronRight className="h-3 w-3" />
           </button>
         </div>
-        <span className="font-ui text-[10px] text-[#8a7a65]">
+        <span className="font-ui text-[10px] text-ink-light">
           {pageHighlights.length} highlight
         </span>
       </div>
 
       {/* PDF page */}
-      <div className="relative w-full bg-[#FAF7F0]/40 border border-[#d4c9b5]/50 rounded-sm flex justify-center overflow-hidden">
+      <div className="relative w-full bg-page/40 border border-sandy/50 rounded-sm flex justify-center overflow-hidden">
         {error ? (
-          <div className="flex items-center gap-2 py-10 text-[#c44] font-ui text-sm">
+          <div className="flex items-center gap-2 py-10 text-destructive font-ui text-sm">
             <AlertTriangle className="h-4 w-4" />
             PDF yüklenemedi
           </div>
@@ -295,13 +295,13 @@ export default function PdfViewerWithHighlights({
             onLoadSuccess={(d) => setNumPages(d.numPages)}
             onLoadError={(err) => setError(err?.message ?? "load failed")}
             loading={
-              <div className="flex items-center gap-2 py-10 text-[#8a7a65] font-ui text-sm">
+              <div className="flex items-center gap-2 py-10 text-ink-light font-ui text-sm">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 PDF yükleniyor...
               </div>
             }
             error={
-              <div className="flex items-center gap-2 py-10 text-[#c44] font-ui text-sm">
+              <div className="flex items-center gap-2 py-10 text-destructive font-ui text-sm">
                 <AlertTriangle className="h-4 w-4" />
                 PDF yüklenemedi
               </div>
@@ -344,7 +344,7 @@ export default function PdfViewerWithHighlights({
               {/* Selection popup */}
               {selection && (
                 <div
-                  className="absolute z-20 flex items-center gap-1 rounded-sm border border-[#d4c9b5] bg-white shadow-md px-1.5 py-1"
+                  className="absolute z-20 flex items-center gap-1 rounded-sm border border-sandy bg-white shadow-md px-1.5 py-1"
                   style={{
                     left: Math.min(
                       Math.max(0, selection.anchorX),
@@ -358,7 +358,7 @@ export default function PdfViewerWithHighlights({
                     type="button"
                     onClick={() => saveHighlight({ withNote: false })}
                     disabled={creating}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-[#FFEB3B]/60 font-ui text-[10px] text-[#5C4A32] hover:bg-[#FFEB3B]/80 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-gold/60 font-ui text-[10px] text-ink-light hover:bg-gold/80 disabled:opacity-50"
                   >
                     <Highlighter className="h-3 w-3" />
                     Highlight
@@ -367,7 +367,7 @@ export default function PdfViewerWithHighlights({
                     type="button"
                     onClick={() => saveHighlight({ withNote: true })}
                     disabled={creating}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-forest text-[#F5EDE0] font-ui text-[10px] hover:bg-forest/90 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-forest text-page font-ui text-[10px] hover:bg-forest/90 disabled:opacity-50"
                   >
                     <Pencil className="h-3 w-3" />
                     Highlight + Not
@@ -386,19 +386,19 @@ export default function PdfViewerWithHighlights({
           {pageHighlights.map((h) => (
             <div
               key={h.id}
-              className="group flex items-start gap-2 px-2 py-1 rounded-sm hover:bg-[#FAF7F0] border border-transparent"
+              className="group flex items-start gap-2 px-2 py-1 rounded-sm hover:bg-page border border-transparent"
             >
               <div
                 className="w-2 h-2 rounded-sm shrink-0 mt-1.5"
                 style={{ backgroundColor: h.color, opacity: 0.7 }}
               />
-              <span className="flex-1 font-body text-xs text-[#2D1F0E] line-clamp-2">
+              <span className="flex-1 font-body text-xs text-ink line-clamp-2">
                 {h.text}
               </span>
               <button
                 type="button"
                 onClick={() => deleteHighlight(h.id)}
-                className="opacity-0 group-hover:opacity-100 text-[#a89a82] hover:text-red-600 transition-opacity"
+                className="opacity-0 group-hover:opacity-100 text-ink-muted hover:text-red-600 transition-opacity"
                 aria-label="Highlight'ı sil"
               >
                 <Trash2 className="h-3 w-3" />

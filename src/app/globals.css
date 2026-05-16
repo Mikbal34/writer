@@ -13,10 +13,16 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* Radius scale — soft editorial default.
+     md (6px) is the new baseline for buttons/cards; sm (4px) for chips
+     and inputs; lg (8px) for modals; xl/2xl reserved for hero surfaces.
+     Layout panels themselves stay 0 — the V3 mockup separates them by
+     subtle tint shift, not by rounded corners. */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -50,15 +56,41 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* Custom book-themed colors */
-  --color-parchment: oklch(0.96 0.015 80);
-  --color-parchment-dark: oklch(0.92 0.02 75);
-  --color-ink: oklch(0.25 0.03 55);
-  --color-ink-light: oklch(0.45 0.025 55);
-  --color-gold: oklch(0.72 0.12 80);
+  /* ─────────────────────────────────────────────────────────────
+     Surface tokens — V3 two-tier layout
+     ────────────────────────────────────────────────────────────
+     bg-page     main work area; lightest parchment
+     bg-rail     56px icon column; ~2% darker tint than page
+     bg-panel    240px context column + right detail; same as rail
+     bg-elevated white cards/inputs sitting on top of page/panel
+     bg-deep     forest-deep header strip (split-view book header)
+     bg-backdrop overlay backdrop for modals and hover halos        */
+  --color-page: oklch(0.95 0.018 80);
+  --color-rail: oklch(0.93 0.022 78);
+  --color-panel: oklch(0.93 0.022 78);
+  --color-elevated: oklch(0.985 0.005 80);
+  --color-deep: oklch(0.28 0.045 150);
+  --color-backdrop: oklch(0.88 0.025 78);
+
+  /* Editorial palette — parchment/ink/gold/forest stays the brand.
+     parchment/parchment-dark intentionally share values with page/rail
+     so existing `bg-parchment` usages pick up the same look as `bg-page`
+     without leaving the @theme block in a forward-reference state
+     (Tailwind v4's PostCSS expansion hangs on cross-token `var()`s
+     inside @theme inline — values are duplicated instead). */
+  --color-parchment: oklch(0.95 0.018 80);
+  --color-parchment-dark: oklch(0.93 0.022 78);
+  --color-ink: oklch(0.22 0.025 60);
+  --color-ink-light: oklch(0.50 0.025 75);
+  --color-ink-muted: oklch(0.65 0.020 75);
+  --color-gold: oklch(0.74 0.12 80);
+  --color-gold-hover: oklch(0.78 0.12 78);
   --color-gold-dark: oklch(0.58 0.13 75);
-  --color-forest: oklch(0.38 0.08 145);
-  --color-forest-light: oklch(0.48 0.07 145);
+  --color-forest: oklch(0.42 0.08 145);
+  --color-forest-deep: oklch(0.28 0.045 150);
+  --color-forest-light: oklch(0.55 0.07 145);
+  --color-sandy: oklch(0.82 0.025 80);
+  --color-sandy-soft: oklch(0.88 0.025 78);
   --color-spine: oklch(0.35 0.04 60);
 
   /* Font families */
@@ -69,38 +101,52 @@
 }
 
 :root {
-  --radius: 0.25rem;
-  --background: oklch(0.96 0.015 80);
-  --foreground: oklch(0.25 0.03 55);
-  --card: oklch(0.97 0.012 80);
-  --card-foreground: oklch(0.25 0.03 55);
-  --popover: oklch(0.97 0.012 80);
-  --popover-foreground: oklch(0.25 0.03 55);
-  --primary: oklch(0.38 0.08 145);
+  /* shadcn anchors. --radius lifts from 4px → 6px so anything that
+     reads it (legacy calcs, shadcn primitives) follows the new soft
+     editorial baseline. The full radius scale lives in @theme above. */
+  --radius: 0.375rem;
+
+  /* Surface roles — all point at the same tokens declared in @theme. */
+  --background: oklch(0.95 0.018 80);            /* = page */
+  --foreground: oklch(0.22 0.025 60);            /* = ink */
+  --card: oklch(0.93 0.022 78);                  /* = panel/rail */
+  --card-foreground: oklch(0.22 0.025 60);
+  --popover: oklch(0.985 0.005 80);              /* = elevated */
+  --popover-foreground: oklch(0.22 0.025 60);
+
+  /* Brand roles. Primary stays forest, accent stays gold so existing
+     shadcn `bg-primary` / `bg-accent` usages land in the right place. */
+  --primary: oklch(0.42 0.08 145);               /* = forest */
   --primary-foreground: oklch(0.97 0.01 80);
-  --secondary: oklch(0.93 0.018 78);
-  --secondary-foreground: oklch(0.35 0.03 55);
-  --muted: oklch(0.93 0.015 78);
-  --muted-foreground: oklch(0.52 0.025 55);
-  --accent: oklch(0.72 0.12 80);
-  --accent-foreground: oklch(0.2 0.03 55);
-  --destructive: oklch(0.577 0.245 27.325);
+  --secondary: oklch(0.93 0.022 78);             /* = panel */
+  --secondary-foreground: oklch(0.22 0.025 60);
+  --muted: oklch(0.93 0.022 78);
+  --muted-foreground: oklch(0.50 0.025 75);      /* = ink-light */
+  --accent: oklch(0.74 0.12 80);                 /* = gold */
+  --accent-foreground: oklch(0.22 0.025 60);
+  --destructive: oklch(0.55 0.18 28);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.85 0.025 75);
-  --input: oklch(0.88 0.02 75);
-  --ring: oklch(0.58 0.13 75);
-  --chart-1: oklch(0.38 0.08 145);
-  --chart-2: oklch(0.72 0.12 80);
+
+  --border: oklch(0.82 0.025 80);                /* = sandy */
+  --input: oklch(0.85 0.025 75);
+  --ring: oklch(0.58 0.13 75);                   /* = gold-dark */
+
+  --chart-1: oklch(0.42 0.08 145);
+  --chart-2: oklch(0.74 0.12 80);
   --chart-3: oklch(0.58 0.13 75);
-  --chart-4: oklch(0.45 0.025 55);
+  --chart-4: oklch(0.50 0.025 75);
   --chart-5: oklch(0.35 0.04 60);
-  --sidebar: oklch(0.94 0.018 78);
-  --sidebar-foreground: oklch(0.25 0.03 55);
-  --sidebar-primary: oklch(0.38 0.08 145);
+
+  /* Sidebar role — kept distinct from --card so the rail can darken
+     slightly relative to elevated cards without dragging every card
+     darker too. Aligned with the new rail/panel tint. */
+  --sidebar: oklch(0.93 0.022 78);
+  --sidebar-foreground: oklch(0.22 0.025 60);
+  --sidebar-primary: oklch(0.42 0.08 145);
   --sidebar-primary-foreground: oklch(0.97 0.01 80);
-  --sidebar-accent: oklch(0.91 0.02 78);
-  --sidebar-accent-foreground: oklch(0.25 0.03 55);
-  --sidebar-border: oklch(0.85 0.025 75);
+  --sidebar-accent: oklch(0.90 0.025 78);
+  --sidebar-accent-foreground: oklch(0.22 0.025 60);
+  --sidebar-border: oklch(0.82 0.025 80);
   --sidebar-ring: oklch(0.58 0.13 75);
 }
 

@@ -15,7 +15,7 @@ export function MarketingFrame({ children }: { children: React.ReactNode }) {
         backgroundAttachment: 'fixed',
       }}
     >
-      <nav className="sticky top-0 z-50 bg-[#1a0f05]/85 backdrop-blur-md border-b border-[#C9A84C]/15">
+      <nav className="sticky top-0 z-50 bg-ink/85 backdrop-blur-md border-b border-gold/15">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
             <img
@@ -28,19 +28,19 @@ export function MarketingFrame({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-6">
             <Link
               href="/pricing"
-              className="font-ui text-sm text-[#e8dfd0]/70 hover:text-[#FAF7F0] transition-colors"
+              className="font-ui text-sm text-sandy-soft/70 hover:text-page transition-colors"
             >
               Pricing
             </Link>
             <Link
               href="/api/auth/signin"
-              className="font-ui text-sm text-[#e8dfd0]/70 hover:text-[#FAF7F0] transition-colors"
+              className="font-ui text-sm text-sandy-soft/70 hover:text-page transition-colors"
             >
               Sign In
             </Link>
             <Link
               href="/api/auth/signin"
-              className="font-ui text-sm font-medium px-4 py-2 bg-[#C9A84C] text-[#1a0f05] rounded-sm hover:bg-[#d4b85a] transition-colors"
+              className="font-ui text-sm font-medium px-4 py-2 bg-gold text-ink rounded-sm hover:bg-gold-hover transition-colors"
             >
               Get Started
             </Link>
@@ -50,7 +50,7 @@ export function MarketingFrame({ children }: { children: React.ReactNode }) {
 
       <main className="flex-1">{children}</main>
 
-      <footer className="border-t border-[#d4c9b5]/40 py-8 px-6 bg-[#FAF7F0]/40">
+      <footer className="border-t border-sandy/40 py-8 px-6 bg-page/40">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <img src="/images/quilpen-logo-horizontal.png" alt="Quilpen" className="h-14" />

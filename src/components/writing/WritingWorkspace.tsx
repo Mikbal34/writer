@@ -95,7 +95,7 @@ interface WritingWorkspaceProps {
 }
 
 const STATUS_DOT: Record<string, string> = {
- pending: "bg-[#c9bfad]",
+ pending: "bg-sandy",
  in_progress: "bg-ink",
  draft: "bg-gold-dark",
  review: "bg-ink-light",
@@ -517,15 +517,15 @@ export default function WritingWorkspace({
    {/* Left panel: subsection navigator */}
    <div
     className={cn(
-     "shrink-0 border-r border-[#d4c9b5]/40 transition-all duration-200 overflow-hidden flex flex-col",
+     "shrink-0 border-r border-sandy/40 transition-all duration-200 overflow-hidden flex flex-col",
      showLeftPanel ? "w-64" : "w-0"
     )}
    >
     {/* Panel header — collapse button only */}
-    <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#d4c9b5]/40 shrink-0">
+    <div className="flex items-center justify-between px-4 py-2.5 border-b border-sandy/40 shrink-0">
      <span className="font-ui text-[10px] text-muted-foreground tracking-wider uppercase">Contents</span>
      <button
-      className="h-6 w-6 flex items-center justify-center rounded-sm hover:bg-[#e8dfd0]/30 transition-colors shrink-0"
+      className="h-6 w-6 flex items-center justify-center rounded-sm hover:bg-sandy-soft/30 transition-colors shrink-0"
       onClick={() => setShowLeftPanel(false)}
       aria-label="Hide panel"
      >
@@ -543,9 +543,9 @@ export default function WritingWorkspace({
         <button
          type="button"
          onClick={() => setBookExpanded(!bookExpanded)}
-         className="flex items-center gap-2 flex-1 min-w-0 rounded-sm px-3 py-2 hover:bg-[#e8dfd0]/30 transition-colors text-left"
+         className="flex items-center gap-2 flex-1 min-w-0 rounded-sm px-3 py-2 hover:bg-sandy-soft/30 transition-colors text-left"
         >
-         <BookOpen className="h-4 w-4 text-[#C9A84C] shrink-0" />
+         <BookOpen className="h-4 w-4 text-gold shrink-0" />
          <span className="font-display text-xs font-bold text-ink truncate flex-1">
           {projectTitle}
          </span>
@@ -573,9 +573,9 @@ export default function WritingWorkspace({
            (e.currentTarget as HTMLElement).blur();
            handleBatchWriteAll();
           }}
-          className="p-1 rounded-sm opacity-0 group-hover/book:opacity-100 hover:bg-[#e8dfd0]/30 transition-opacity cursor-pointer shrink-0"
+          className="p-1 rounded-sm opacity-0 group-hover/book:opacity-100 hover:bg-sandy-soft/30 transition-opacity cursor-pointer shrink-0"
          >
-          <PlayCircle className="h-4 w-4 text-[#C9A84C]" />
+          <PlayCircle className="h-4 w-4 text-gold" />
          </div>
         )}
        </div>
@@ -603,7 +603,7 @@ export default function WritingWorkspace({
              <button
               type="button"
               onClick={() => toggleChapter(chapter.id)}
-              className="flex items-center gap-2 flex-1 min-w-0 rounded-sm px-3 py-1.5 hover:bg-[#e8dfd0]/30 transition-colors text-left"
+              className="flex items-center gap-2 flex-1 min-w-0 rounded-sm px-3 py-1.5 hover:bg-sandy-soft/30 transition-colors text-left"
              >
               <BookOpen className="h-3.5 w-3.5 text-forest shrink-0" />
               <span className="font-ui text-xs text-ink truncate flex-1">
@@ -627,7 +627,7 @@ export default function WritingWorkspace({
                (e.currentTarget as HTMLElement).blur();
                handleBatchWriteChapter(chapter);
               }}
-              className="p-1 rounded-sm opacity-0 group-hover/chapter:opacity-100 hover:bg-[#e8dfd0]/30 transition-opacity cursor-pointer shrink-0"
+              className="p-1 rounded-sm opacity-0 group-hover/chapter:opacity-100 hover:bg-sandy-soft/30 transition-opacity cursor-pointer shrink-0"
              >
               <PlayCircle className="h-3.5 w-3.5 text-forest" />
              </div>
@@ -650,7 +650,7 @@ export default function WritingWorkspace({
                    (e.currentTarget as HTMLElement).blur();
                    handleBatchWriteSection(section);
                   }}
-                  className="p-0.5 rounded-sm opacity-0 group-hover/section:opacity-100 hover:bg-[#e8dfd0]/30 transition-opacity cursor-pointer shrink-0"
+                  className="p-0.5 rounded-sm opacity-0 group-hover/section:opacity-100 hover:bg-sandy-soft/30 transition-opacity cursor-pointer shrink-0"
                  >
                   <PlayCircle className="h-3 w-3 text-forest" />
                  </div>
@@ -668,7 +668,7 @@ export default function WritingWorkspace({
                      "flex items-center gap-2 w-full rounded-sm px-3 py-1.5 text-left transition-colors",
                      isActive
                       ? "bg-forest/5 text-forest"
-                      : "text-ink hover:bg-[#e8dfd0]/20"
+                      : "text-ink hover:bg-sandy-soft/20"
                     )}
                    >
                     {isCurrentlyWriting ? (
@@ -711,10 +711,10 @@ export default function WritingWorkspace({
    {/* Center: main editor */}
    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
     {/* Top bar */}
-    <div className="flex items-center gap-3 px-6 py-3 border-b border-[#d4c9b5]/40 shrink-0">
+    <div className="flex items-center gap-3 px-6 py-3 border-b border-sandy/40 shrink-0">
      {!showLeftPanel && (
       <button
-       className="h-7 w-7 shrink-0 flex items-center justify-center rounded-sm hover:bg-[#e8dfd0]/30 transition-colors"
+       className="h-7 w-7 shrink-0 flex items-center justify-center rounded-sm hover:bg-sandy-soft/30 transition-colors"
        onClick={() => setShowLeftPanel(true)}
        aria-label="Show sections panel"
       >
@@ -785,7 +785,7 @@ export default function WritingWorkspace({
         {!hasContent && (
          <button
           onClick={() => handleWriteWithAI("fresh")}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-[#C9A84C] text-[#1A0F05] font-ui text-xs font-medium hover:bg-[#b5943d] transition-colors shrink-0"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-gold text-ink font-ui text-xs font-medium hover:bg-gold-dark transition-colors shrink-0"
           title="AI ile yaz"
          >
           <Sparkles className="h-3.5 w-3.5" />
@@ -798,7 +798,7 @@ export default function WritingWorkspace({
 
      {!showRightPanel && (
       <button
-       className="h-7 w-7 shrink-0 flex items-center justify-center rounded-sm hover:bg-[#e8dfd0]/30 transition-colors"
+       className="h-7 w-7 shrink-0 flex items-center justify-center rounded-sm hover:bg-sandy-soft/30 transition-colors"
        onClick={() => setShowRightPanel(true)}
        aria-label="Show context panel"
       >
@@ -846,14 +846,14 @@ export default function WritingWorkspace({
    {/* Right panel: context */}
    <div
     className={cn(
-     "shrink-0 border-l border-[#d4c9b5]/40 transition-all duration-200 overflow-hidden",
+     "shrink-0 border-l border-sandy/40 transition-all duration-200 overflow-hidden",
      showRightPanel ? "w-64" : "w-0"
     )}
    >
-    <div className="flex items-center justify-between p-4 border-b border-[#d4c9b5]/40">
+    <div className="flex items-center justify-between p-4 border-b border-sandy/40">
      <span className="font-display text-sm font-semibold text-ink">CONTEXT</span>
      <button
-      className="h-6 w-6 flex items-center justify-center rounded-sm hover:bg-[#e8dfd0]/30 transition-colors"
+      className="h-6 w-6 flex items-center justify-center rounded-sm hover:bg-sandy-soft/30 transition-colors"
       onClick={() => setShowRightPanel(false)}
       aria-label="Hide context panel"
      >

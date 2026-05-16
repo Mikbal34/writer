@@ -51,10 +51,10 @@ export default function PdfPageViewer({ entryId, page, volumeId }: PdfPageViewer
   return (
     <div
       ref={containerRef}
-      className="w-full bg-[#FAF7F0]/40 border border-[#d4c9b5]/50 rounded-sm p-3 flex justify-center"
+      className="w-full bg-page/40 border border-sandy/50 rounded-sm p-3 flex justify-center"
     >
       {error ? (
-        <div className="flex items-center gap-2 py-10 text-[#c44] font-ui text-sm">
+        <div className="flex items-center gap-2 py-10 text-destructive font-ui text-sm">
           <AlertTriangle className="h-4 w-4" />
           PDF yüklenemedi
         </div>
@@ -63,13 +63,13 @@ export default function PdfPageViewer({ entryId, page, volumeId }: PdfPageViewer
           file={fileUrl}
           onLoadError={(err) => setError(err?.message ?? "load failed")}
           loading={
-            <div className="flex items-center gap-2 py-10 text-[#8a7a65] font-ui text-sm">
+            <div className="flex items-center gap-2 py-10 text-ink-light font-ui text-sm">
               <Loader2 className="h-4 w-4 animate-spin" />
               PDF yükleniyor...
             </div>
           }
           error={
-            <div className="flex items-center gap-2 py-10 text-[#c44] font-ui text-sm">
+            <div className="flex items-center gap-2 py-10 text-destructive font-ui text-sm">
               <AlertTriangle className="h-4 w-4" />
               PDF yüklenemedi
             </div>

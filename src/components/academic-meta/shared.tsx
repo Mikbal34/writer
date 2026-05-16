@@ -40,7 +40,7 @@ export function AutoFillButton({
       onClick={onClick}
       disabled={loading}
       title={hint ?? "Auto-fill"}
-      className="h-6 px-2 text-[10px] gap-1 text-[#5C4A32] hover:bg-[#F0E8D8]"
+      className="h-6 px-2 text-[10px] gap-1 text-ink-light hover:bg-rail"
     >
       {loading ? (
         <Loader2 className="h-3 w-3 animate-spin" />
@@ -68,11 +68,11 @@ export function FormSection({
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="font-ui text-xs uppercase tracking-widest text-[#5C4A32]">
+        <h2 className="font-ui text-xs uppercase tracking-widest text-ink-light">
           {title}
         </h2>
         {description ? (
-          <p className="font-body text-[11px] text-[#8a7a65] mt-1 leading-snug">
+          <p className="font-body text-[11px] text-ink-light mt-1 leading-snug">
             {description}
           </p>
         ) : null}
@@ -137,7 +137,7 @@ export function TextField({
         maxLength={maxLength}
       />
       {hint ? (
-        <p className="text-[10px] text-[#8a7a65]">{hint}</p>
+        <p className="text-[10px] text-ink-light">{hint}</p>
       ) : null}
     </div>
   )
@@ -193,7 +193,7 @@ export function NumberField({
         placeholder={placeholder}
       />
       {hint ? (
-        <p className="text-[10px] text-[#8a7a65]">{hint}</p>
+        <p className="text-[10px] text-ink-light">{hint}</p>
       ) : null}
     </div>
   )
@@ -247,7 +247,7 @@ export function TextAreaField({
               variant="ghost"
               onClick={onGenerate}
               disabled={generating}
-              className="h-6 px-2 text-[10px] gap-1 text-[#5C4A32] hover:bg-[#F0E8D8]"
+              className="h-6 px-2 text-[10px] gap-1 text-ink-light hover:bg-rail"
             >
               {generating ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -269,7 +269,7 @@ export function TextAreaField({
         placeholder={placeholder}
       />
       {hint ? (
-        <p className="text-[10px] text-[#8a7a65]">{hint}</p>
+        <p className="text-[10px] text-ink-light">{hint}</p>
       ) : null}
     </div>
   )
@@ -325,7 +325,7 @@ export function StringListField({
             variant="ghost"
             onClick={onGenerate}
             disabled={generating}
-            className="h-6 px-2 text-[10px] gap-1 text-[#5C4A32] hover:bg-[#F0E8D8]"
+            className="h-6 px-2 text-[10px] gap-1 text-ink-light hover:bg-rail"
           >
             {generating ? (
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -351,7 +351,7 @@ export function StringListField({
         placeholder={placeholder}
       />
       {hint ? (
-        <p className="text-[10px] text-[#8a7a65]">{hint}</p>
+        <p className="text-[10px] text-ink-light">{hint}</p>
       ) : null}
     </div>
   )
@@ -383,7 +383,7 @@ export function RepeatableList<T>({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-ui text-[11px] uppercase tracking-widest text-[#5C4A32]">
+        <h3 className="font-ui text-[11px] uppercase tracking-widest text-ink-light">
           {title}
         </h3>
         <Button
@@ -401,10 +401,10 @@ export function RepeatableList<T>({
         {items.map((item, i) => (
           <div
             key={i}
-            className="rounded-sm border border-[#d4c9b5] bg-white p-3 space-y-3"
+            className="rounded-sm border border-sandy bg-white p-3 space-y-3"
           >
             <div className="flex items-center justify-between">
-              <span className="font-ui text-[11px] text-[#8a7a65]">
+              <span className="font-ui text-[11px] text-ink-light">
                 {itemLabel(i)}
               </span>
               {items.length > minItems ? (
@@ -446,7 +446,7 @@ export function BooleanToggle({
   onChange: (next: boolean) => void
 }) {
   return (
-    <label className="flex items-start gap-3 rounded-md border border-[#d4c9b5] bg-white px-3 py-2.5 cursor-pointer hover:bg-[#FAF7F0] transition-colors">
+    <label className="flex items-start gap-3 rounded-md border border-sandy bg-white px-3 py-2.5 cursor-pointer hover:bg-page transition-colors">
       <input
         type="checkbox"
         checked={checked}
@@ -454,11 +454,11 @@ export function BooleanToggle({
         className="mt-0.5 h-4 w-4"
       />
       <span className="flex-1">
-        <span className="block font-ui text-xs font-medium text-[#2D1F0E]">
+        <span className="block font-ui text-xs font-medium text-ink">
           {label}
         </span>
         {description ? (
-          <span className="block font-body text-[11px] text-[#8a7a65] leading-snug mt-0.5">
+          <span className="block font-body text-[11px] text-ink-light leading-snug mt-0.5">
             {description}
           </span>
         ) : null}
@@ -495,15 +495,15 @@ export function VariantPicker<T extends string>({
               onClick={() => onChange(opt.value)}
               className={`text-left rounded-md border px-3 py-2 transition-colors ${
                 active
-                  ? "border-[#2C5F2E] bg-[#F0E8D8]"
-                  : "border-[#d4c9b5] bg-white hover:border-[#8a7a65]"
+                  ? "border-forest bg-rail"
+                  : "border-sandy bg-white hover:border-ink-light"
               }`}
             >
-              <div className="font-ui text-xs font-medium text-[#2D1F0E]">
+              <div className="font-ui text-xs font-medium text-ink">
                 {opt.label}
               </div>
               {opt.description ? (
-                <div className="font-body text-[10px] text-[#8a7a65] mt-0.5">
+                <div className="font-body text-[10px] text-ink-light mt-0.5">
                   {opt.description}
                 </div>
               ) : null}

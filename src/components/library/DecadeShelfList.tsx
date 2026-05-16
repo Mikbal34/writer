@@ -76,7 +76,7 @@ export default function DecadeShelfList({
   if (buckets.length === 0) {
     return (
       <div className="px-6 py-12 text-center">
-        <p className="font-body text-sm text-[#8a7a65]">
+        <p className="font-body text-sm text-ink-light">
           Eşleşen kaynak bulunamadı.
         </p>
       </div>
@@ -91,11 +91,11 @@ export default function DecadeShelfList({
             <h3 className="font-display text-lg font-semibold text-ink">
               {bucket.label}
             </h3>
-            <span className="font-ui text-[10px] uppercase tracking-widest text-[#8a7a65]">
+            <span className="font-ui text-[10px] uppercase tracking-widest text-ink-light">
               {bucket.entries.length} kaynak
             </span>
           </header>
-          <div className="border border-[#d4c9b5]/50 rounded-sm bg-[#FAF7F0]/60 overflow-hidden">
+          <div className="border border-sandy/50 rounded-sm bg-page/60 overflow-hidden">
             <LibraryEntryTable
               entries={bucket.entries}
               onSelect={onSelect}

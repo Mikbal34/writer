@@ -59,7 +59,7 @@ function NotePreview({ json }: { json: object }) {
     editorProps: {
       attributes: {
         class:
-          "prose prose-sm max-w-none text-[#2D1F0E] [&_p]:my-1.5 [&_h2]:font-display [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:font-display [&_h3]:text-xs [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-[#C9A84C] [&_blockquote]:pl-3 [&_blockquote]:italic [&_mark]:bg-[#FFEB3B]/60 [&_mark]:px-0.5",
+          "prose prose-sm max-w-none text-ink [&_p]:my-1.5 [&_h2]:font-display [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:font-display [&_h3]:text-xs [&_h3]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-gold [&_blockquote]:pl-3 [&_blockquote]:italic [&_mark]:bg-gold/60 [&_mark]:px-0.5",
       },
     },
   });
@@ -181,14 +181,14 @@ export default function NotesTab({ entryId, volumes, onMutate }: NotesTabProps) 
 
   function FooterExtras() {
     return (
-      <div className="flex items-center gap-3 font-ui text-xs text-[#5C4A32]">
+      <div className="flex items-center gap-3 font-ui text-xs text-ink-light">
         {volumes.length > 0 && (
           <label className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-[#8a7a65]">Cilt</span>
+            <span className="text-[10px] uppercase tracking-wider text-ink-light">Cilt</span>
             <select
               value={draftVolumeId ?? ""}
               onChange={(e) => setDraftVolumeId(e.target.value || null)}
-              className="px-1.5 py-0.5 rounded-sm border border-[#d4c9b5] bg-white"
+              className="px-1.5 py-0.5 rounded-sm border border-sandy bg-white"
             >
               <option value="">(Genel)</option>
               {volumes.map((v) => (
@@ -201,14 +201,14 @@ export default function NotesTab({ entryId, volumes, onMutate }: NotesTabProps) 
           </label>
         )}
         <label className="flex items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-[#8a7a65]">Sayfa</span>
+          <span className="text-[10px] uppercase tracking-wider text-ink-light">Sayfa</span>
           <input
             type="number"
             min={1}
             value={draftPage}
             onChange={(e) => setDraftPage(e.target.value)}
             placeholder="opsiyonel"
-            className="w-20 px-1.5 py-0.5 rounded-sm border border-[#d4c9b5] bg-white"
+            className="w-20 px-1.5 py-0.5 rounded-sm border border-sandy bg-white"
           />
         </label>
       </div>
@@ -221,7 +221,7 @@ export default function NotesTab({ entryId, volumes, onMutate }: NotesTabProps) 
         <button
           type="button"
           onClick={startNew}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm border border-dashed border-[#C9A84C]/50 bg-[#C9A84C]/8 text-[#5C4A32] font-ui text-xs hover:bg-[#C9A84C]/15 transition-colors w-full justify-center"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm border border-dashed border-gold/50 bg-gold/8 text-ink-light font-ui text-xs hover:bg-gold/15 transition-colors w-full justify-center"
         >
           <Plus className="h-3.5 w-3.5" />
           Yeni Not
@@ -240,19 +240,19 @@ export default function NotesTab({ entryId, volumes, onMutate }: NotesTabProps) 
       )}
 
       {loading && (
-        <div className="flex items-center gap-2 px-3 py-4 font-body text-xs text-[#8a7a65]">
+        <div className="flex items-center gap-2 px-3 py-4 font-body text-xs text-ink-light">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Notlar yükleniyor...
         </div>
       )}
 
       {!loading && notes.length === 0 && editingId !== "new" && (
-        <div className="rounded-sm border border-dashed border-[#d4c9b5] bg-[#FAF7F0]/30 px-4 py-8 text-center">
-          <FileText className="h-5 w-5 text-[#c9bfad] mx-auto mb-2" />
-          <p className="font-body text-sm text-[#8a7a65] mb-1">
+        <div className="rounded-sm border border-dashed border-sandy bg-page/30 px-4 py-8 text-center">
+          <FileText className="h-5 w-5 text-sandy mx-auto mb-2" />
+          <p className="font-body text-sm text-ink-light mb-1">
             Bu kitap için henüz not yok.
           </p>
-          <p className="font-ui text-[11px] text-[#a89880]">
+          <p className="font-ui text-[11px] text-ink-muted">
             + Yeni Not ile başlayabilirsin.
           </p>
         </div>
@@ -277,34 +277,34 @@ export default function NotesTab({ entryId, volumes, onMutate }: NotesTabProps) 
         return (
           <article
             key={note.id}
-            className="group rounded-sm border border-[#d4c9b5]/60 bg-white/70 hover:bg-white transition-colors"
+            className="group rounded-sm border border-sandy/60 bg-white/70 hover:bg-white transition-colors"
           >
             <header className="px-3 pt-2.5 flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <h3
                   dir="auto"
-                  className="font-display text-sm font-semibold text-[#2D1F0E] truncate"
+                  className="font-display text-sm font-semibold text-ink truncate"
                 >
                   {note.title || "(başlıksız)"}
                 </h3>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="font-ui text-[10px] text-[#8a7a65]">
+                  <span className="font-ui text-[10px] text-ink-light">
                     {formatDate(note.updatedAt)}
                   </span>
                   {note.pinnedFromChatSessionId && (
-                    <span className="inline-flex items-center gap-0.5 font-ui text-[10px] text-[#8a5a1a]">
+                    <span className="inline-flex items-center gap-0.5 font-ui text-[10px] text-gold-dark">
                       <Pin className="h-2.5 w-2.5" />
                       Chat'ten
                     </span>
                   )}
                   {vol && (
-                    <span className="inline-flex items-center gap-0.5 font-ui text-[10px] text-[#5C4A32]">
+                    <span className="inline-flex items-center gap-0.5 font-ui text-[10px] text-ink-light">
                       <BookOpen className="h-2.5 w-2.5" />
                       Cilt {vol.volumeNumber}
                     </span>
                   )}
                   {note.pageNumber && (
-                    <span className="font-ui text-[10px] text-[#5C4A32]">
+                    <span className="font-ui text-[10px] text-ink-light">
                       s. {note.pageNumber}
                     </span>
                   )}
@@ -314,14 +314,14 @@ export default function NotesTab({ entryId, volumes, onMutate }: NotesTabProps) 
                 <button
                   type="button"
                   onClick={() => setEditingId(note.id)}
-                  className="font-ui text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm border border-[#d4c9b5] text-[#5C4A32] hover:bg-[#FAF7F0]"
+                  className="font-ui text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm border border-sandy text-ink-light hover:bg-page"
                 >
                   Düzenle
                 </button>
                 <button
                   type="button"
                   onClick={() => deleteNote(note.id)}
-                  className="text-[#a89a82] hover:text-red-600"
+                  className="text-ink-muted hover:text-red-600"
                   aria-label="Notu sil"
                 >
                   <Trash2 className="h-3.5 w-3.5" />

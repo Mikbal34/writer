@@ -114,17 +114,17 @@ export default function SignInPage() {
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: `url(${LOGIN_BG})` }}
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#1a0f05]/20 to-[#1a0f05]/60" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#1a0f05]/70 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-ink/20 to-ink/60" />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-transparent to-transparent" />
 
         <div className="relative z-10 flex flex-col justify-end p-12 w-full">
           {/* Bottom quote */}
           <FadeUpLarge delay={0.5}>
-            <div className="h-px w-12 bg-[#C9A84C] mb-6" />
-            <blockquote className="font-body text-2xl italic text-[#FAF7F0]/90 leading-relaxed mb-4">
+            <div className="h-px w-12 bg-gold mb-6" />
+            <blockquote className="font-body text-2xl italic text-page/90 leading-relaxed mb-4">
               &ldquo;Writing a book is the most lasting mark you can leave on the world.&rdquo;
             </blockquote>
-            <p className="font-ui text-sm text-[#C9A84C]">— Quilpen</p>
+            <p className="font-ui text-sm text-gold">— Quilpen</p>
           </FadeUpLarge>
         </div>
       </div>
@@ -139,16 +139,16 @@ export default function SignInPage() {
           </div>
 
           {/* Card */}
-          <div className="bg-[#FAF7F0]/90 border border-[#d4c9b5]/70 rounded-sm shadow-[0_4px_30px_rgba(60,36,21,0.12)] p-8">
+          <div className="bg-page/90 border border-sandy/70 rounded-sm shadow-[0_4px_30px_rgba(60,36,21,0.12)] p-8">
             {/* Top ornament */}
             <div className="flex items-center gap-3 mb-6">
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-[#d4c9b5]" />
-              <svg viewBox="0 0 40 20" className="w-8 text-[#C9A84C]/60" fill="currentColor">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-sandy" />
+              <svg viewBox="0 0 40 20" className="w-8 text-gold/60" fill="currentColor">
                 <circle cx="20" cy="10" r="3" />
                 <circle cx="8" cy="10" r="1.5" />
                 <circle cx="32" cy="10" r="1.5" />
               </svg>
-              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-[#d4c9b5]" />
+              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-sandy" />
             </div>
 
             {/* Icon */}
@@ -167,7 +167,7 @@ export default function SignInPage() {
             <button
               onClick={() => signIn("google", { callbackUrl: "/" })}
               type="button"
-              className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-sm border border-[#d4c9b5] bg-white/80 font-ui text-sm text-ink hover:bg-[#F5F0E6] transition-all duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A84C]/60"
+              className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-sm border border-sandy bg-white/80 font-ui text-sm text-ink hover:bg-page transition-all duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
             >
               <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -176,21 +176,21 @@ export default function SignInPage() {
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
               </svg>
               Sign in with Google
-              <ArrowRight className="w-4 h-4 text-[#c9bfad] group-hover:text-ink group-hover:translate-x-0.5 transition-all" />
+              <ArrowRight className="w-4 h-4 text-sandy group-hover:text-ink group-hover:translate-x-0.5 transition-all" />
             </button>
 
             {/* Divider */}
             <div className="flex items-center gap-3 my-5">
-              <div className="h-px flex-1 bg-[#d4c9b5]/60" />
-              <span className="font-ui text-[11px] text-[#a89a82] tracking-wider uppercase">veya</span>
-              <div className="h-px flex-1 bg-[#d4c9b5]/60" />
+              <div className="h-px flex-1 bg-sandy/60" />
+              <span className="font-ui text-[11px] text-ink-muted tracking-wider uppercase">veya</span>
+              <div className="h-px flex-1 bg-sandy/60" />
             </div>
 
             {/* Email + 6-digit code flow */}
             {step === "email" ? (
               <form onSubmit={handleRequest} className="space-y-2">
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#a89a82]" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-muted" />
                   <input
                     type="email"
                     value={email}
@@ -198,19 +198,19 @@ export default function SignInPage() {
                     placeholder="eposta@adresin.com"
                     required
                     autoComplete="email"
-                    className="w-full pl-10 pr-3 py-3 rounded-sm border border-[#d4c9b5] bg-white/80 font-ui text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#C9A84C]/60"
+                    className="w-full pl-10 pr-3 py-3 rounded-sm border border-sandy bg-white/80 font-ui text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={loading || !email}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-sm bg-ink text-[#FAF7F0] font-ui text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-sm bg-ink text-page font-ui text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
                 >
                   {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   {loading ? "Gonderiliyor..." : "Giris kodu gonder"}
                 </button>
                 {error && (
-                  <p className="font-ui text-xs text-[#c44] text-center">{error}</p>
+                  <p className="font-ui text-xs text-destructive text-center">{error}</p>
                 )}
               </form>
             ) : (
@@ -234,18 +234,18 @@ export default function SignInPage() {
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   placeholder="000000"
                   required
-                  className="w-full px-3 py-3 text-center rounded-sm border border-[#d4c9b5] bg-white/80 font-mono text-2xl tracking-[0.5em] text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#C9A84C]/60"
+                  className="w-full px-3 py-3 text-center rounded-sm border border-sandy bg-white/80 font-mono text-2xl tracking-[0.5em] text-ink outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
                 />
                 <button
                   type="submit"
                   disabled={loading || code.length !== 6}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-sm bg-ink text-[#FAF7F0] font-ui text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-sm bg-ink text-page font-ui text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
                 >
                   {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   {loading ? "Dogrulaniyor..." : "Giris yap"}
                 </button>
                 {error && (
-                  <p className="font-ui text-xs text-[#c44] text-center">{error}</p>
+                  <p className="font-ui text-xs text-destructive text-center">{error}</p>
                 )}
                 <div className="flex items-center justify-between pt-1">
                   <button
@@ -255,7 +255,7 @@ export default function SignInPage() {
                       setCode("");
                       setError(null);
                     }}
-                    className="flex items-center gap-1 font-ui text-xs text-[#8a7a65] hover:text-ink transition-colors"
+                    className="flex items-center gap-1 font-ui text-xs text-ink-light hover:text-ink transition-colors"
                   >
                     <ArrowLeft className="h-3 w-3" />
                     E-postayi degistir
@@ -264,7 +264,7 @@ export default function SignInPage() {
                     type="button"
                     onClick={handleResend}
                     disabled={resendCountdown > 0}
-                    className="font-ui text-xs text-[#C9A84C] hover:underline disabled:text-[#a89a82] disabled:no-underline disabled:cursor-not-allowed"
+                    className="font-ui text-xs text-gold hover:underline disabled:text-ink-muted disabled:no-underline disabled:cursor-not-allowed"
                   >
                     {resendCountdown > 0 ? `Kodu tekrar gonder (${resendCountdown}s)` : "Kodu tekrar gonder"}
                   </button>
@@ -274,13 +274,13 @@ export default function SignInPage() {
 
             {/* Bottom ornament */}
             <div className="flex items-center gap-3 mt-6">
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-[#d4c9b5]" />
-              <svg viewBox="0 0 40 20" className="w-8 text-[#C9A84C]/60" fill="currentColor">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-sandy" />
+              <svg viewBox="0 0 40 20" className="w-8 text-gold/60" fill="currentColor">
                 <circle cx="20" cy="10" r="3" />
                 <circle cx="8" cy="10" r="1.5" />
                 <circle cx="32" cy="10" r="1.5" />
               </svg>
-              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-[#d4c9b5]" />
+              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-sandy" />
             </div>
           </div>
 

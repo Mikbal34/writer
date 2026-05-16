@@ -13,21 +13,21 @@ function getCommandStyle(action: string): {
  label: string;
 } {
  if (action === "add_source") {
-  return { borderClass: "border-[#C9A84C]/40 bg-[#C9A84C]/5", Icon: BookOpen, label: "Source added" };
+  return { borderClass: "border-gold/40 bg-gold/5", Icon: BookOpen, label: "Source added" };
  }
  if (action === "update_project") {
-  return { borderClass: "border-[#C9A84C]/40 bg-[#C9A84C]/5", Icon: Info, label: "Project updated" };
+  return { borderClass: "border-gold/40 bg-gold/5", Icon: Info, label: "Project updated" };
  }
  if (action.startsWith("add_")) {
-  return { borderClass: "border-[#C9A84C]/40 bg-[#C9A84C]/5", Icon: Plus, label: "Added" };
+  return { borderClass: "border-gold/40 bg-gold/5", Icon: Plus, label: "Added" };
  }
  if (action.startsWith("update_")) {
-  return { borderClass: "border-[#8a7a65]/30 bg-[#8a7a65]/5", Icon: Pencil, label: "Updated" };
+  return { borderClass: "border-ink-light/30 bg-ink-light/5", Icon: Pencil, label: "Updated" };
  }
  if (action.startsWith("remove_")) {
-  return { borderClass: "border-[#8a4a4a]/30 bg-[#8a4a4a]/5", Icon: Trash2, label: "Removed" };
+  return { borderClass: "border-destructive/30 bg-destructive/5", Icon: Trash2, label: "Removed" };
  }
- return { borderClass: "border-[#d4c9b5]/50 bg-[#d4c9b5]/10", Icon: Info, label: action };
+ return { borderClass: "border-sandy/50 bg-sandy/10", Icon: Info, label: action };
 }
 
 function getDetail(command: Record<string, unknown>): string {

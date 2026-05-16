@@ -56,9 +56,9 @@ export default function CommandGroup({ commands, applied }: CommandGroupProps) {
   return (
     <div className="mt-2 rounded-lg border bg-card text-card-foreground shadow-sm px-3 py-2.5 flex items-center gap-2">
       {applied ? (
-        <CheckCircle className="h-4 w-4 text-[#C9A84C] shrink-0" />
+        <CheckCircle className="h-4 w-4 text-gold shrink-0" />
       ) : (
-        <XCircle className="h-4 w-4 text-[#8a4a4a] shrink-0" />
+        <XCircle className="h-4 w-4 text-destructive shrink-0" />
       )}
       <div className="flex-1 min-w-0">
         <p className="font-ui text-xs font-medium">

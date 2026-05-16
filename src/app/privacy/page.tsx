@@ -130,9 +130,9 @@ export default function PrivacyPage() {
         Clauses where applicable):
       </p>
       <div className="overflow-x-auto -mx-2 my-3">
-        <table className="w-full text-left border border-[#d4c9b5]/60 rounded-sm">
+        <table className="w-full text-left border border-sandy/60 rounded-sm">
           <thead>
-            <tr className="bg-[#FAF7F0]/60 border-b border-[#d4c9b5]/60">
+            <tr className="bg-page/60 border-b border-sandy/60">
               <th className="px-3 py-2 font-ui text-xs uppercase tracking-wider text-ink-light">
                 Subprocessor
               </th>
@@ -146,7 +146,7 @@ export default function PrivacyPage() {
           </thead>
           <tbody>
             {SUBPROCESSORS.map((sp) => (
-              <tr key={sp.name} className="border-b border-[#d4c9b5]/30 last:border-0">
+              <tr key={sp.name} className="border-b border-sandy/30 last:border-0">
                 <td className="px-3 py-2 align-top font-ui text-sm text-ink">
                   <a href={sp.url} target="_blank" rel="noopener noreferrer">
                     {sp.name}
