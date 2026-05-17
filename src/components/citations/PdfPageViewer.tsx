@@ -7,7 +7,7 @@
  * view. Lazy import + dynamic so the heavy pdfjs worker only ships
  * when the user actually opens a verification.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Loader2, AlertTriangle } from "lucide-react";
 
@@ -32,6 +32,12 @@ export default function PdfPageViewer({ entryId, page, volumeId }: PdfPageViewer
   const fileUrl = volumeId
     ? `/api/library/${entryId}/pdf?volume=${encodeURIComponent(volumeId)}`
     : `/api/library/${entryId}/pdf`;
+  // Mirrors PdfViewerWithHighlights: the pdfjs worker's fetch omits
+  // cookies by default, so /pdf returns 401 unless we opt-in.
+  const fileSpec = useMemo(
+    () => ({ url: fileUrl, withCredentials: true as const }),
+    [fileUrl],
+  );
   const [error, setError] = useState<string | null>(null);
   const [width, setWidth] = useState<number>(640);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -60,7 +66,7 @@ export default function PdfPageViewer({ entryId, page, volumeId }: PdfPageViewer
         </div>
       ) : (
         <Document
-          file={fileUrl}
+          file={fileSpec}
           onLoadError={(err) => setError(err?.message ?? "load failed")}
           loading={
             <div className="flex items-center gap-2 py-10 text-ink-light font-ui text-sm">

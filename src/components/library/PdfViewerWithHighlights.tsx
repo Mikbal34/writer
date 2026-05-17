@@ -22,7 +22,7 @@
  * the 800+ page books in the corpus.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import {
   Loader2,
@@ -84,6 +84,15 @@ export default function PdfViewerWithHighlights({
   const fileUrl = volumeId
     ? `/api/library/${entryId}/pdf?volume=${encodeURIComponent(volumeId)}`
     : `/api/library/${entryId}/pdf`;
+  // pdfjs spawns a Web Worker that fetches the PDF bytes; by default
+  // its request omits cookies, so our auth-gated /pdf route returns
+  // 401 and Document.onLoadError fires before any /pdf entry shows up
+  // in the network panel. Wrapping the url in an object lets us flip
+  // withCredentials so the session cookie rides along.
+  const fileSpec = useMemo(
+    () => ({ url: fileUrl, withCredentials: true as const }),
+    [fileUrl],
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [errorContext, setErrorContext] = useState<{
@@ -324,7 +333,7 @@ export default function PdfViewerWithHighlights({
           <PdfErrorState entryId={entryId} context={errorContext} />
         ) : (
           <Document
-            file={fileUrl}
+            file={fileSpec}
             onLoadSuccess={(d) => setNumPages(d.numPages)}
             onLoadError={(err) => setError(err?.message ?? "load failed")}
             loading={
