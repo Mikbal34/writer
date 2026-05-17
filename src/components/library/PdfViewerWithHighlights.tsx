@@ -366,10 +366,15 @@ export default function PdfViewerWithHighlights({
           >
             <div
               ref={pageRef}
-              className="relative inline-block"
+              className="relative inline-block overflow-hidden"
               onMouseUp={handleMouseUp}
             >
+              {/* key forces a full unmount/remount when page or width
+                  changes — without it react-pdf leaves the previous
+                  page's text layer DOM behind, producing the ghost
+                  overlap seen in the reader. */}
               <Page
+                key={`${page}-${width}`}
                 pageNumber={page}
                 width={width}
                 renderAnnotationLayer={false}
