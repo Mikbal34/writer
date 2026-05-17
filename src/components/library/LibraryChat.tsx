@@ -15,7 +15,7 @@
  * when the chip's source is the one currently rendered in the PDF.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
@@ -68,24 +68,32 @@ function spineColorFor(seed: string): string {
   return SPINE_COLORS[Math.abs(h) % SPINE_COLORS.length];
 }
 
-// Suggested prompts shown on the empty-welcome state. Hard-coded for
-// now — could be derived later from the user's most-searched topics.
-const SUGGESTIONS: Array<{ icon: "quote" | "note" | "sparkles" | "highlighter"; text: string }> = [
+type SuggestionIcon = "quote" | "note" | "sparkles" | "highlighter";
+interface Suggestion {
+  icon: SuggestionIcon;
+  text: string;
+}
+
+// Fallback suggestions when /api/library/chat/suggestions hasn't
+// resolved yet or the user has no library entries. The endpoint
+// returns the same shape with prompts tailored to the user's
+// actual library.
+const FALLBACK_SUGGESTIONS: Suggestion[] = [
   {
     icon: "quote",
-    text: "Kalâm tartışmaları nasıl başladı? Hangi kitaplar farklı tezler ileri sürüyor?",
+    text: "Kütüphanene bir kitap eklediğinde, ana iddialarını birkaç cümleyle özetleyebilirim.",
   },
   {
     icon: "note",
-    text: "Tezim için Eşarî atomculuğu üzerine 3 ana kaynak öner",
+    text: "Önce birkaç PDF yükle — sonra hangi kaynakların birbiriyle çeliştiğini gösterebilirim.",
   },
   {
     icon: "sparkles",
-    text: "Bell ile Douglas'ın ritüel teorisi arasındaki temel farklar nelerdir?",
+    text: "Bir konu seç — sana o konuda kütüphanende eksik kalan perspektifleri söyleyeyim.",
   },
   {
     icon: "highlighter",
-    text: "Hodgson, Watt ve van Ess — üçü erken İslam tarihini nasıl farklı yorumluyor?",
+    text: "Bir bölümün önemli pasajlarını bulup alıntılayabilirim.",
   },
 ];
 
@@ -605,6 +613,28 @@ function truncate(s: string, n: number): string {
 // ── Empty welcome ──────────────────────────────────────────────
 
 function EmptyWelcome({ onPick }: { onPick: (text: string) => void }) {
+  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/library/chat/suggestions")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { suggestions?: Suggestion[] } | null) => {
+        if (cancelled) return;
+        if (data?.suggestions && data.suggestions.length === 4) {
+          setSuggestions(data.suggestions);
+        } else {
+          setSuggestions(FALLBACK_SUGGESTIONS);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestions(FALLBACK_SUGGESTIONS);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="flex-1 overflow-y-auto px-8 py-8 flex flex-col">
       {/* Book stack */}
@@ -639,15 +669,26 @@ function EmptyWelcome({ onPick }: { onPick: (text: string) => void }) {
           Ne sormak istersin?
         </div>
         <div className="mt-1 font-body text-[12.5px] text-ink-light">
-          Aşağıdaki örneklerden birini seç veya kendi sorunu yaz.
+          {suggestions === null
+            ? "Kütüphanenden örnek sorular hazırlanıyor…"
+            : "Aşağıdaki örneklerden birini seç veya kendi sorunu yaz."}
         </div>
       </div>
 
       {/* Suggested prompts grid */}
       <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-2.5 max-w-[720px] mx-auto w-full">
-        {SUGGESTIONS.map((s, i) => (
-          <SuggestionCard key={i} icon={s.icon} text={s.text} onClick={() => onPick(s.text)} />
-        ))}
+        {suggestions === null
+          ? Array.from({ length: 4 }).map((_, i) => (
+              <SuggestionSkeleton key={i} />
+            ))
+          : suggestions.map((s, i) => (
+              <SuggestionCard
+                key={i}
+                icon={s.icon}
+                text={s.text}
+                onClick={() => onPick(s.text)}
+              />
+            ))}
       </div>
 
       {/* Tip */}
@@ -696,6 +737,18 @@ function SuggestionCard({
         “{text}”
       </span>
     </button>
+  );
+}
+
+function SuggestionSkeleton() {
+  return (
+    <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-lg border border-sandy/40 bg-elevated/60 animate-pulse">
+      <span className="inline-flex items-center justify-center h-[26px] w-[26px] rounded-md shrink-0 bg-forest/10" />
+      <span className="flex-1 space-y-1.5 py-0.5">
+        <span className="block h-2 rounded-sm bg-sandy/60" style={{ width: "92%" }} />
+        <span className="block h-2 rounded-sm bg-sandy/60" style={{ width: "68%" }} />
+      </span>
+    </div>
   );
 }
 
