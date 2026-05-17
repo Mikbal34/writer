@@ -330,12 +330,27 @@ export default function PdfViewerWithHighlights({
       {/* PDF page */}
       <div className="relative w-full bg-page/40 border border-sandy/50 rounded-sm flex justify-center overflow-hidden">
         {error ? (
-          <PdfErrorState entryId={entryId} context={errorContext} />
+          <PdfErrorState entryId={entryId} context={errorContext} loadError={error} />
         ) : (
           <Document
             file={fileSpec}
             onLoadSuccess={(d) => setNumPages(d.numPages)}
-            onLoadError={(err) => setError(err?.message ?? "load failed")}
+            onLoadError={(err) => {
+              // Surface the exact pdfjs error to the console so failures
+              // (worker init, 401, malformed PDF, etc.) are diagnosable
+              // from a user report without re-deploying instrumentation.
+              console.error("[pdfjs] Document load failed", {
+                entryId,
+                volumeId,
+                fileUrl,
+                name: err?.name,
+                message: err?.message,
+                err,
+              });
+              setError(
+                err?.name ? `${err.name}: ${err.message ?? ""}` : err?.message ?? "load failed",
+              );
+            }}
             loading={
               <div className="flex items-center gap-2 py-10 text-ink-light font-ui text-sm">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -456,6 +471,7 @@ export default function PdfViewerWithHighlights({
 function PdfErrorState({
   entryId,
   context,
+  loadError,
 }: {
   entryId: string;
   context: {
@@ -463,6 +479,10 @@ function PdfErrorState({
     hasFile: boolean;
     error: string | null;
   } | null;
+  /** Raw pdfjs error message (Name + message). Surfaced under the
+   *  friendly heading so user reports can include the exact failure
+   *  mode (401 vs InvalidPDFException vs worker init failure). */
+  loadError: string | null;
 }) {
   // No context yet → show a soft loading hint while the status fetch
   // resolves so the panel doesn't flash a wrong message.
@@ -532,6 +552,11 @@ function PdfErrorState({
           ? "Dosya disk üzerinde ama açılamıyor. Yeniden yüklemeyi dene."
           : "Kaynak künyesi kütüphanende ama dosyası yok. Yüklediğinde sayfa numaralı atıflar burada gezinebilir hâle gelecek."}
       </div>
+      {loadError && (
+        <div className="mt-1 text-[10.5px] text-ink-muted font-mono break-all">
+          {loadError}
+        </div>
+      )}
       <a
         href={`/library?entry=${entryId}`}
         className="mt-2 inline-flex items-center px-3 py-1.5 rounded-md bg-gold text-white font-semibold text-[12px] hover:bg-gold-hover transition-colors"
