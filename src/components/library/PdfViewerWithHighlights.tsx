@@ -86,12 +86,48 @@ export default function PdfViewerWithHighlights({
     : `/api/library/${entryId}/pdf`;
 
   const [error, setError] = useState<string | null>(null);
+  const [errorContext, setErrorContext] = useState<{
+    status: string;
+    hasFile: boolean;
+    error: string | null;
+  } | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
   const [width, setWidth] = useState(640);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [selection, setSelection] = useState<SelectionPopup | null>(null);
   const [creating, setCreating] = useState(false);
+
+  // When the PDF document fails to load (404, network, parse error), ask
+  // the status sidecar why so we can show the user a meaningful message
+  // ("PDF yüklenmemiş" vs "işleniyor" vs "başarısız") instead of a
+  // generic "load failed".
+  useEffect(() => {
+    if (!error) {
+      setErrorContext(null);
+      return;
+    }
+    let cancelled = false;
+    const statusUrl = volumeId
+      ? `/api/library/${entryId}/pdf-status?volume=${encodeURIComponent(volumeId)}`
+      : `/api/library/${entryId}/pdf-status`;
+    fetch(statusUrl)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setErrorContext({
+          status: typeof data.status === "string" ? data.status : "unknown",
+          hasFile: Boolean(data.hasFile),
+          error: typeof data.error === "string" ? data.error : null,
+        });
+      })
+      .catch(() => {
+        /* viewer keeps the generic error fallback */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [error, entryId, volumeId]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -285,10 +321,7 @@ export default function PdfViewerWithHighlights({
       {/* PDF page */}
       <div className="relative w-full bg-page/40 border border-sandy/50 rounded-sm flex justify-center overflow-hidden">
         {error ? (
-          <div className="flex items-center gap-2 py-10 text-destructive font-ui text-sm">
-            <AlertTriangle className="h-4 w-4" />
-            PDF yüklenemedi
-          </div>
+          <PdfErrorState entryId={entryId} context={errorContext} />
         ) : (
           <Document
             file={fileUrl}
@@ -407,6 +440,95 @@ export default function PdfViewerWithHighlights({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function PdfErrorState({
+  entryId,
+  context,
+}: {
+  entryId: string;
+  context: {
+    status: string;
+    hasFile: boolean;
+    error: string | null;
+  } | null;
+}) {
+  // No context yet → show a soft loading hint while the status fetch
+  // resolves so the panel doesn't flash a wrong message.
+  if (!context) {
+    return (
+      <div className="flex items-center gap-2 py-10 text-ink-light font-ui text-sm">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        PDF durumu kontrol ediliyor…
+      </div>
+    );
+  }
+
+  const { status, hasFile, error } = context;
+  const inProgress =
+    status === "pending" ||
+    status === "downloading" ||
+    status === "extracting" ||
+    status === "embedding";
+
+  if (inProgress) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-10 px-6 text-center text-ink-light font-ui text-sm max-w-[420px]">
+        <Loader2 className="h-5 w-5 animate-spin text-gold" />
+        <div className="font-display italic text-[15px] text-ink">
+          PDF işleniyor…
+        </div>
+        <div className="text-[12.5px]">
+          Sunucu bu kaynağın PDF&apos;ini hazırlıyor ({status}). Birkaç dakika
+          sonra tekrar dener misin?
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "failed") {
+    return (
+      <div className="flex flex-col items-center gap-2 py-10 px-6 text-center font-ui text-sm max-w-[440px]">
+        <AlertTriangle className="h-5 w-5 text-destructive" />
+        <div className="font-display italic text-[15px] text-ink">
+          PDF işleme başarısız oldu
+        </div>
+        <div className="text-[12.5px] text-ink-light">
+          {error ?? "Beklenmedik bir hata oluştu."}
+        </div>
+        <a
+          href={`/library?entry=${entryId}`}
+          className="mt-2 inline-flex items-center px-3 py-1.5 rounded-md bg-gold text-white font-semibold text-[12px] hover:bg-gold-hover transition-colors"
+        >
+          Yeniden yükle
+        </a>
+      </div>
+    );
+  }
+
+  // status === "none" / "ready" but no file / unknown → most common case:
+  // user added the bibliographic entry but never uploaded a PDF.
+  return (
+    <div className="flex flex-col items-center gap-2 py-10 px-6 text-center font-ui text-sm max-w-[440px]">
+      <AlertTriangle className="h-5 w-5 text-ink-muted" />
+      <div className="font-display italic text-[15px] text-ink">
+        {hasFile
+          ? "PDF okunamadı"
+          : "Bu kaynak için PDF yüklenmemiş"}
+      </div>
+      <div className="text-[12.5px] text-ink-light">
+        {hasFile
+          ? "Dosya disk üzerinde ama açılamıyor. Yeniden yüklemeyi dene."
+          : "Kaynak künyesi kütüphanende ama dosyası yok. Yüklediğinde sayfa numaralı atıflar burada gezinebilir hâle gelecek."}
+      </div>
+      <a
+        href={`/library?entry=${entryId}`}
+        className="mt-2 inline-flex items-center px-3 py-1.5 rounded-md bg-gold text-white font-semibold text-[12px] hover:bg-gold-hover transition-colors"
+      >
+        Kütüphanede aç & PDF yükle
+      </a>
     </div>
   );
 }
