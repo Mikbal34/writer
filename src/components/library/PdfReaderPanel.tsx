@@ -105,6 +105,7 @@ export default function PdfReaderPanel({
           entryId={entryId}
           volumeId={volumeId ?? null}
           targetPage={targetPage ?? null}
+          chatQuote={chatQuote ?? null}
           onHighlightsChanged={onHighlightsChanged}
         />
       </div>

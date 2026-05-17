@@ -64,6 +64,11 @@ interface PdfViewerWithHighlightsProps {
   /** External "go to page N" trigger (e.g. clicking a highlight in
    *  HighlightsTab). The viewer responds to the prop changing. */
   targetPage?: number | null;
+  /** When opened from a chat citation, the AI-quoted passage. The
+   *  viewer searches the rendered text layer for an anchor phrase
+   *  and paints a translucent gold overlay over the matching spans
+   *  so the reader can see exactly which sentences were quoted. */
+  chatQuote?: string | null;
   onHighlightsChanged?: () => void;
 }
 
@@ -79,6 +84,7 @@ export default function PdfViewerWithHighlights({
   entryId,
   volumeId,
   targetPage,
+  chatQuote,
   onHighlightsChanged,
 }: PdfViewerWithHighlightsProps) {
   const fileUrl = volumeId
@@ -106,6 +112,13 @@ export default function PdfViewerWithHighlights({
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [selection, setSelection] = useState<SelectionPopup | null>(null);
   const [creating, setCreating] = useState(false);
+  // Rects (page-relative 0-1) of the AI-quoted passage on the current
+  // page. Computed by scanning the rendered text layer for the quote's
+  // anchor phrase; null when no match (different page, OCR mismatch,
+  // span boundaries broke the substring, etc.).
+  const [chatQuoteRects, setChatQuoteRects] = useState<RangeRect[] | null>(
+    null,
+  );
 
   // When the PDF document fails to load (404, network, parse error), ask
   // the status sidecar why so we can show the user a meaningful message
@@ -232,6 +245,93 @@ export default function PdfViewerWithHighlights({
       anchorY: lastRectEnd?.y ?? rects[0].y * pageRect.height,
     });
   }
+
+  // ── AI-quote overlay ────────────────────────────────────────────
+  // Scans the rendered text layer for the citation's anchor phrase
+  // and returns page-relative rects for each matching span. Runs on
+  // text-layer ready (per page render) and whenever chatQuote changes.
+  const findChatQuoteRects = useCallback(
+    (quote: string): RangeRect[] | null => {
+      if (!pageRef.current) return null;
+      const textLayer = pageRef.current.querySelector(
+        ".react-pdf__Page__textContent",
+      );
+      if (!textLayer) return null;
+      const norm = (s: string) =>
+        s.toLowerCase().replace(/\s+/g, " ").trim();
+      const normQuote = norm(quote);
+      if (normQuote.length < 12) return null;
+      // Anchor: first sentence (if short) or first ~80 chars. Keeps
+      // the substring search forgiving when later sentences drift
+      // from what the AI quoted (paraphrase, OCR noise).
+      const sentenceCut = normQuote.search(/[.!?؟]\s/);
+      const anchorLen =
+        sentenceCut > 12 && sentenceCut < 120
+          ? sentenceCut
+          : Math.min(80, normQuote.length);
+      const anchor = normQuote.slice(0, anchorLen);
+
+      const rawSpans = Array.from(
+        textLayer.querySelectorAll("span"),
+      ) as HTMLElement[];
+      // Build a single normalized string from span textContents and
+      // remember each span's [start, end) offset in it, so we can map
+      // a substring match back to the spans whose rects to paint.
+      let combined = "";
+      const spanOffsets: Array<{
+        span: HTMLElement;
+        start: number;
+        end: number;
+      }> = [];
+      for (const s of rawSpans) {
+        const txt = norm(s.textContent ?? "");
+        if (!txt) continue;
+        if (combined && !combined.endsWith(" ")) combined += " ";
+        const start = combined.length;
+        combined += txt;
+        spanOffsets.push({ span: s, start, end: combined.length });
+      }
+      const idx = combined.indexOf(anchor);
+      if (idx === -1) return null;
+      const matchEnd = idx + anchor.length;
+
+      const pageRect = pageRef.current.getBoundingClientRect();
+      if (pageRect.width === 0 || pageRect.height === 0) return null;
+      const seen = new Set<string>();
+      const rects: RangeRect[] = [];
+      for (const { span, start, end } of spanOffsets) {
+        if (end <= idx || start >= matchEnd) continue;
+        const r = span.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        const x = (r.left - pageRect.left) / pageRect.width;
+        const y = (r.top - pageRect.top) / pageRect.height;
+        const w = r.width / pageRect.width;
+        const h = r.height / pageRect.height;
+        if (x < 0 || y < 0 || x + w > 1.001 || y + h > 1.001) continue;
+        const key = `${x.toFixed(3)}-${y.toFixed(3)}-${w.toFixed(3)}-${h.toFixed(3)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rects.push({ x, y, w, h });
+      }
+      return rects.length > 0 ? rects : null;
+    },
+    [],
+  );
+
+  const handleTextLayerReady = useCallback(() => {
+    if (!chatQuote) {
+      setChatQuoteRects(null);
+      return;
+    }
+    setChatQuoteRects(findChatQuoteRects(chatQuote));
+  }, [chatQuote, findChatQuoteRects]);
+
+  // Clear stale overlay rects when the user navigates pages or the
+  // citation changes — recompute happens once the next text layer is
+  // rendered (handleTextLayerReady).
+  useEffect(() => {
+    setChatQuoteRects(null);
+  }, [page, chatQuote]);
 
   async function saveHighlight(opts: { withNote: boolean }) {
     if (!selection) return;
@@ -379,7 +479,29 @@ export default function PdfViewerWithHighlights({
                 width={width}
                 renderAnnotationLayer={false}
                 renderTextLayer
+                onRenderTextLayerSuccess={handleTextLayerReady}
               />
+              {/* AI-citation overlay — translucent gold rectangles
+                  over the quoted passage so the reader can spot
+                  exactly which sentences the chat pulled from. Sits
+                  under saved highlights z-order-wise so user-saved
+                  yellows stay dominant. */}
+              {chatQuoteRects?.map((r, i) => (
+                <div
+                  key={`chat-quote-${i}`}
+                  style={{
+                    position: "absolute",
+                    left: `${r.x * 100}%`,
+                    top: `${r.y * 100}%`,
+                    width: `${r.w * 100}%`,
+                    height: `${r.h * 100}%`,
+                    backgroundColor: "rgb(212, 175, 55)",
+                    opacity: 0.32,
+                    pointerEvents: "none",
+                    borderRadius: 1,
+                  }}
+                />
+              ))}
               {/* Saved highlights overlay. Each rect is one absolutely-
                   positioned div sized in % so it auto-tracks page width. */}
               {pageHighlights.map((h) => {

@@ -293,7 +293,7 @@ export default function LibraryChat() {
             </span>
           </div>
         ) : !hasMessages ? (
-          <EmptyWelcome onPick={handleSuggestion} />
+          <EmptyWelcome onPick={handleSuggestion} entryId={initialEntryId} />
         ) : (
           <ActiveConversation
             messages={messages}
@@ -618,12 +618,25 @@ function truncate(s: string, n: number): string {
 
 // ── Empty welcome ──────────────────────────────────────────────
 
-function EmptyWelcome({ onPick }: { onPick: (text: string) => void }) {
+function EmptyWelcome({
+  onPick,
+  entryId,
+}: {
+  onPick: (text: string) => void;
+  /** When the chat surface was opened for a single book
+   *  (`/library/chat?entryId=…`), pass it along so suggestions are
+   *  generated from that book's own chunks rather than the whole
+   *  library. */
+  entryId?: string;
+}) {
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/library/chat/suggestions")
+    const qs = entryId
+      ? `?entryId=${encodeURIComponent(entryId)}`
+      : "";
+    fetch(`/api/library/chat/suggestions${qs}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { suggestions?: Suggestion[] } | null) => {
         if (cancelled) return;
@@ -639,7 +652,7 @@ function EmptyWelcome({ onPick }: { onPick: (text: string) => void }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [entryId]);
 
   return (
     <div className="flex-1 overflow-y-auto px-8 py-8 flex flex-col">
