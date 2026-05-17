@@ -107,6 +107,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       blindReview,
       seriesId,
       seriesOrder,
+      styleProfileId,
     } = body as {
       title?: string
       description?: string
@@ -115,6 +116,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       audience?: string
       citationFormat?: CitationFormat
       language?: string
+      styleProfileId?: string | null
       status?: ProjectStatus
       styleProfile?: Record<string, unknown>
       writingGuidelines?: Record<string, unknown>
@@ -147,6 +149,21 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
 
+    // Style profile rebinding: validate ownership when a non-null id
+    // is passed. null detaches, undefined leaves the link untouched.
+    if (styleProfileId !== undefined && styleProfileId !== null) {
+      const profile = await prisma.userStyleProfile.findFirst({
+        where: { id: styleProfileId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!profile) {
+        return NextResponse.json(
+          { error: 'Style profile not found' },
+          { status: 404 },
+        )
+      }
+    }
+
     // Series rebinding: validate ownership when caller passes a non-null
     // seriesId. Null detaches; undefined leaves the link untouched.
     if (seriesId !== undefined && seriesId !== null) {
@@ -170,6 +187,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         ...(citationFormat !== undefined && { citationFormat }),
         ...(language !== undefined && { language }),
         ...(status !== undefined && { status }),
+        ...(styleProfileId !== undefined && { styleProfileId }),
         // Prisma Json fields require casting through unknown
         ...(styleProfile !== undefined && { styleProfile: styleProfile as unknown as object }),
         ...(writingGuidelines !== undefined && { writingGuidelines: writingGuidelines as unknown as object }),

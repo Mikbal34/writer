@@ -35,6 +35,7 @@ export interface TextStats {
   // Voice & person
   firstPersonHits: number;         // count of 1st-person markers
   passiveLikeHits: number;         // -dı/-mıştır/-mış endings (Turkish passive proxy)
+  metaphorHits: number;            // count of figurative "gibi/sanki/like a" comparisons
 
   // Top transition phrases (already observed in the text)
   topTransitions: string[];        // up to 12
@@ -83,6 +84,10 @@ const FIRST_PERSON_TOKENS = [
 // stems that show up in formal academic writing. Far from grammatical,
 // but works as a coarse signal.
 const PASSIVE_LIKE_RE = /\b\w{2,}(?:mıştır|miştir|muştur|müştür|ılmış|ilmiş|ulmuş|ülmüş|ılır|ilir|ulur|ülür|ılmak|ilmek|ulmak|ülmek)\b/giu;
+
+// Metaphor proxy — Turkish "gibi"/"sanki"/"adeta" + common English
+// similes. Each hit is one figurative comparison the author leaned on.
+const METAPHOR_RE = /\b(gibi|sanki|adeta|âdeta|misali|nitekim|tıpkı|like a|as if|akin to|reminiscent of)\b/giu;
 
 function splitParagraphs(text: string): string[] {
   return text
@@ -191,6 +196,7 @@ export function computeTextStats(text: string): TextStats {
     if (m) firstPerson += m.length;
   }
   const passiveLike = (text.match(PASSIVE_LIKE_RE) ?? []).length;
+  const metaphorHits = (text.match(METAPHOR_RE) ?? []).length;
 
   const pct = (n: number, total: number) =>
     total === 0 ? 0 : Math.round((n / total) * 100);
@@ -211,6 +217,7 @@ export function computeTextStats(text: string): TextStats {
     inductiveCueHitPct: pct(inductiveEndCount, paragraphCount),
     firstPersonHits: firstPerson,
     passiveLikeHits: passiveLike,
+    metaphorHits,
     topTransitions,
   };
 }
@@ -239,6 +246,7 @@ export function combineStats(perSample: TextStats[]): TextStats {
       inductiveCueHitPct: 0,
       firstPersonHits: 0,
       passiveLikeHits: 0,
+      metaphorHits: 0,
       topTransitions: [],
     };
   }
@@ -293,6 +301,7 @@ export function combineStats(perSample: TextStats[]): TextStats {
     inductiveCueHitPct: wPct('inductiveCueHitPct', totalP),
     firstPersonHits: perSample.reduce((a, s) => a + s.firstPersonHits, 0),
     passiveLikeHits: perSample.reduce((a, s) => a + s.passiveLikeHits, 0),
+    metaphorHits: perSample.reduce((a, s) => a + s.metaphorHits, 0),
     topTransitions,
   };
 }

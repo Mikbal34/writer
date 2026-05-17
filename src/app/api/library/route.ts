@@ -15,9 +15,28 @@ export async function GET(req: NextRequest) {
     // are returned. Combines with tagId via AND so "Kelam klasörü AND
     // tez tag'i" works naturally.
     const collectionId = url.searchParams.get('collectionId') ?? ''
+    const sort = url.searchParams.get('sort') ?? 'updated_desc'
     const page = parseInt(url.searchParams.get('page') ?? '1', 10)
     const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
     const skip = (page - 1) * limit
+
+    // Map UI sort keys to Prisma orderBy. Unknown values fall through
+    // to the recency default.
+    const orderBy: Record<string, unknown> = (() => {
+      switch (sort) {
+        case 'year_desc':
+          return { year: 'desc' }
+        case 'year_asc':
+          return { year: 'asc' }
+        case 'title_asc':
+          return { title: 'asc' }
+        case 'author_asc':
+          return { authorSurname: 'asc' }
+        case 'updated_desc':
+        default:
+          return { updatedAt: 'desc' }
+      }
+    })()
 
     const where: Record<string, unknown> = { userId }
 
@@ -60,7 +79,7 @@ export async function GET(req: NextRequest) {
           // multi-volume parent rows (no per-row `pdfStatus` of its own).
           volumes: { select: { pdfStatus: true } },
         },
-        orderBy: { updatedAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),

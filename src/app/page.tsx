@@ -17,11 +17,15 @@ import {
   Crown,
 } from "lucide-react";
 import NewProjectDialog from "@/components/NewProjectDialog";
-import DeleteProjectButton from "@/components/projects/DeleteProjectButton";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import SignOutButton from "@/components/shared/SignOutButton";
 import WorkspaceShell from "@/components/shared/WorkspaceShell";
+import {
+  type ProjectCardData,
+} from "@/components/projects/ProjectCard";
+import ProjectsBrowser from "@/components/projects/ProjectsBrowser";
+import ResumePanel from "@/components/projects/ResumePanel";
 import { FadeUp, FadeUpLarge, FadeIn, ScrollFadeUp, ScrollFadeIn, AnimatedBar } from "@/components/shared/Animations";
 
 const TEXTURE_URL =
@@ -38,10 +42,11 @@ const BOOK_COLORS = [
 ];
 
 const STATUS_LABELS: Record<string, string> = {
-  roadmap: "Roadmap",
-  sources: "Sources",
-  writing: "Writing",
-  completed: "Completed",
+  onboarding: "Hazırlanıyor",
+  roadmap: "Yol haritası",
+  sources: "Kaynaklar",
+  writing: "Yazım",
+  completed: "Tamamlandı",
 };
 
 function getStatusProgress(status: string): number {
@@ -112,360 +117,430 @@ export default async function HomePage() {
     arr.sort((a, b) => (a.seriesOrder ?? 0) - (b.seriesOrder ?? 0));
   }
 
-  // Render one project card. Pulled out so the JSX can be reused both
-  // for series volumes and standalone projects without duplicating ~80
-  // lines of layout. `volumeNumber` becomes a small "Cilt N" badge in
-  // the corner of the cover when present.
-  function renderProjectCard(
-    project: (typeof projects)[number],
-    index: number,
-    volumeNumber: number | null,
-  ) {
-    const colorScheme = BOOK_COLORS[index % BOOK_COLORS.length];
+  // ── Card data computation ───────────────────────────────────────
+  // Project rows include the full chapter→section→subsection tree; we
+  // collapse each into a ProjectCardData shape so the card component
+  // stays presentational. Cover colours cycle through BOOK_COLORS by
+  // index in the displayed list (active section first, then done).
+
+  const allProjectsCardData: Array<{
+    raw: (typeof projects)[number];
+    data: ProjectCardData;
+  }> = projects.map((project, idx) => {
+    const colorScheme = BOOK_COLORS[idx % BOOK_COLORS.length];
     const allSubsections = project.chapters.flatMap((c) =>
       c.sections.flatMap((s) => s.subsections),
     );
-    const completedSubsections = allSubsections.filter(
+    const completedSubs = allSubsections.filter(
       (s) => s.status === "completed",
     ).length;
-    const totalWordCount = allSubsections.reduce((acc, s) => acc + s.wordCount, 0);
-    const chapterCount = project.chapters.length;
-    const completionPct =
-      allSubsections.length > 0
-        ? Math.round((completedSubsections / allSubsections.length) * 100)
-        : getStatusProgress(project.status);
-    const completedChapters = project.chapters.filter((c) =>
+    const totalWords = allSubsections.reduce(
+      (acc, s) => acc + s.wordCount,
+      0,
+    );
+    const chaptersTotal = project.chapters.length;
+    const chaptersDone = project.chapters.filter((c) =>
       c.sections.every((s) =>
         s.subsections.every((sub) => sub.status === "completed"),
       ),
     ).length;
+    const fallbackPct = getStatusProgress(project.status);
+    const isCompleted = project.status === "completed";
+    const flag: "active" | "done" | null = isCompleted
+      ? "done"
+      : project.status === "writing" || project.status === "sources"
+        ? "active"
+        : null;
+    const stage = isCompleted
+      ? "Tamamlandı"
+      : project.status === "writing"
+        ? chaptersTotal > 0
+          ? `Taslak · Bölüm ${Math.min(chaptersDone + 1, chaptersTotal)}`
+          : "Taslak"
+        : (STATUS_LABELS[project.status] ?? project.status);
 
-    return (
-      <FadeUpLarge key={project.id} delay={index * 0.08}>
-        <div className="group relative" style={{ perspective: "800px" }}>
-          {/* Kebab menu floats over the card; outside the Link so its
-              click doesn't propagate to the navigation anchor. */}
-          <div className="absolute top-2.5 right-2.5 z-20">
-            <DeleteProjectButton
-              projectId={project.id}
-              projectTitle={project.title}
-              variant="icon"
-            />
-          </div>
-          <Link
-            href={`/projects/${project.id}`}
-            className="block"
-            aria-label={`Go to ${project.title}`}
-          >
-          <article className="book-card relative overflow-hidden rounded-sm">
-            {/* Spine */}
-            <div
-              className="absolute left-0 top-0 bottom-0 w-5 z-10"
-              style={{
-                background: `linear-gradient(to right, ${colorScheme.spine}, ${colorScheme.color})`,
-              }}
-            >
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 w-2.5 h-px" style={{ backgroundColor: "#C9A84C" }} />
-              <div className="absolute top-5 left-1/2 -translate-x-1/2 w-1.5 h-px" style={{ backgroundColor: "rgba(201,168,76,0.6)" }} />
-              <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-1.5 h-px" style={{ backgroundColor: "rgba(201,168,76,0.6)" }} />
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-2.5 h-px" style={{ backgroundColor: "#C9A84C" }} />
-            </div>
+    return {
+      raw: project,
+      data: {
+        id: project.id,
+        title: project.title,
+        stage,
+        // The Project schema carries description/topic/purpose; pick
+        // whichever has content so the card always has a subtitle.
+        tagline:
+          (project as { description?: string | null }).description ??
+          (project as { topic?: string | null }).topic ??
+          null,
+        chaptersDone,
+        chaptersTotal: Math.max(chaptersTotal, 1),
+        words: totalWords,
+        wordsTarget: null,
+        lastEdit: formatRelativeTurkish(project.updatedAt),
+        coverColor: colorScheme.color,
+        coverAccent: colorScheme.accent,
+        flag,
+        volumeNumber: project.seriesOrder ?? null,
+        fallbackPct,
+      } satisfies ProjectCardData,
+    };
+  });
 
-            {/* Cover */}
-            <div
-              className="relative pl-5 flex flex-col min-h-[220px]"
-              style={{
-                background: `linear-gradient(160deg, ${colorScheme.color} 0%, ${colorScheme.accent} 100%)`,
-              }}
-            >
-              {/* Volume badge — top-left when part of a series */}
-              {volumeNumber !== null && (
-                <div
-                  className="absolute top-2.5 left-7 px-1.5 py-0.5 rounded-sm text-[10px] font-ui font-medium z-10"
-                  style={{
-                    backgroundColor: "rgba(201,168,76,0.85)",
-                    color: "#1A0F05",
-                  }}
-                >
-                  Cilt {volumeNumber}
-                </div>
-              )}
-              {/* Completion badge */}
-              <div
-                className="absolute top-2.5 right-2.5 px-1.5 py-0.5 rounded-sm text-[10px] font-ui font-medium z-10"
-                style={{
-                  backgroundColor: "rgba(0,0,0,0.35)",
-                  color: "rgba(250,247,240,0.85)",
-                  backdropFilter: "blur(4px)",
-                }}
-              >
-                {completedChapters}/{chapterCount}
-              </div>
+  const activeCards = allProjectsCardData.filter(
+    (p) => p.raw.status !== "completed",
+  );
+  const doneCards = allProjectsCardData.filter(
+    (p) => p.raw.status === "completed",
+  );
 
-              <div className="flex-1 flex items-center px-4 py-6">
-                <h2
-                  className="font-display text-lg font-bold leading-snug line-clamp-3"
-                  style={{
-                    color: "rgba(250,247,240,0.95)",
-                    textShadow: "0 1px 3px rgba(0,0,0,0.3)",
-                  }}
-                >
-                  {project.title}
-                </h2>
-              </div>
+  // ── Stats ───────────────────────────────────────────────────────
+  const totalWords = allProjectsCardData.reduce(
+    (acc, p) => acc + p.data.words,
+    0,
+  );
+  const completedCount = doneCards.length;
+  const activeCount = activeCards.length;
 
-              <div
-                className="px-4 py-2.5"
-                style={{
-                  backgroundColor: "rgba(250,240,220,0.12)",
-                  borderTop: "1px solid rgba(201,168,76,0.20)",
-                }}
-              >
-                <div className="mb-2">
-                  <div
-                    className="h-[3px] rounded-full overflow-hidden"
-                    style={{ backgroundColor: "rgba(250,247,240,0.12)" }}
-                  >
-                    <AnimatedBar
-                      percentage={completionPct}
-                      delay={0.4 + index * 0.08}
-                      className="h-full rounded-full"
-                      style={{
-                        background: `linear-gradient(to right, #C9A84C, #e8c96a)`,
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-ui text-[10px]" style={{ color: "rgba(250,247,240,0.55)" }}>
-                    <Layers className="inline h-2.5 w-2.5 mr-0.5" />
-                    {chapterCount} ch.
-                  </span>
-                  <span className="font-ui text-[10px]" style={{ color: "rgba(250,247,240,0.55)" }}>
-                    <Feather className="inline h-2.5 w-2.5 mr-0.5" />
-                    {totalWordCount > 999
-                      ? `${(totalWordCount / 1000).toFixed(1)}k`
-                      : totalWordCount}
-                  </span>
-                  <span className="font-ui text-[10px]" style={{ color: "rgba(250,247,240,0.40)" }}>
-                    {completionPct}%
-                  </span>
-                </div>
-              </div>
-            </div>
-          </article>
-        </Link>
-        </div>
-      </FadeUpLarge>
-    );
+  // ── Resume target ───────────────────────────────────────────────
+  // Prefer the user's most recent WritingSession — that's the actual
+  // last spot the cursor was. Falls back to the most-recently-updated
+  // non-completed project when no AI write history exists.
+  const lastWritingSession = await prisma.writingSession.findFirst({
+    where: {
+      subsection: {
+        section: { chapter: { project: { userId: session.user.id as string } } },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      createdAt: true,
+      subsection: {
+        select: {
+          id: true,
+          title: true,
+          content: true,
+          wordCount: true,
+          subsectionId: true,
+          section: {
+            select: {
+              title: true,
+              chapter: {
+                select: {
+                  number: true,
+                  title: true,
+                  project: {
+                    select: { id: true, title: true, updatedAt: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  let resume: {
+    id: string;
+    title: string;
+    context: string;
+    preview: string | null;
+    totalWords: number;
+    lastEdit: string;
+  } | null = null;
+
+  // ── Weekly stats (last 7 days) ─────────────────────────────────
+  // Real numbers from WritingSession. Word totals are approximated from
+  // the subsection's wordCount snapshot (no per-session delta stored),
+  // so the figure tracks "words sitting in subsections that you touched
+  // this week" — directional, not exact.
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentSessions = await prisma.writingSession.findMany({
+    where: {
+      createdAt: { gte: sevenDaysAgo },
+      subsection: {
+        section: { chapter: { project: { userId: session.user.id as string } } },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      createdAt: true,
+      subsection: { select: { id: true, wordCount: true } },
+    },
+  });
+
+  // Distinct active days across the week.
+  const activeDays = new Set(
+    recentSessions.map((s) => s.createdAt.toISOString().slice(0, 10)),
+  );
+
+  // Total words across the subsections touched this week (deduped by
+  // subsection id so a 5-call session on the same paragraph doesn't
+  // 5x the wordcount).
+  const touchedSubs = new Map<string, number>();
+  for (const s of recentSessions) {
+    if (!touchedSubs.has(s.subsection.id)) {
+      touchedSubs.set(s.subsection.id, s.subsection.wordCount);
+    }
+  }
+  const wordsThisWeek = Array.from(touchedSubs.values()).reduce(
+    (acc, w) => acc + w,
+    0,
+  );
+
+  // Longest contiguous burst (same-day, gaps <30 min). Cheap proxy for
+  // "en uzun seri" without a real per-session duration field.
+  let longestRunMins = 0;
+  let curRunStart: number | null = null;
+  let lastTs: number | null = null;
+  for (const s of recentSessions) {
+    const ts = s.createdAt.getTime();
+    if (curRunStart === null || lastTs === null || ts - lastTs > 30 * 60 * 1000) {
+      curRunStart = ts;
+    }
+    lastTs = ts;
+    const runMins = Math.round(((lastTs ?? ts) - (curRunStart ?? ts)) / 60000);
+    if (runMins > longestRunMins) longestRunMins = runMins;
   }
 
-  const totalWords = projects.reduce((acc, project) => {
-    const words = project.chapters
-      .flatMap((c) => c.sections.flatMap((s) => s.subsections))
-      .reduce((a, s) => a + s.wordCount, 0);
-    return acc + words;
-  }, 0);
+  // Intensity per weekday slot (last 7 calendar days, today last).
+  const streakDays: Array<{ label: string; intensity: number; date: string }> = [];
+  const WEEKDAY_LABELS = ["P", "P", "S", "Ç", "P", "C", "C"]; // Su,Mo,Tu,We,Th,Fr,Sa (Turkish)
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const key = d.toISOString().slice(0, 10);
+    const count = recentSessions.filter(
+      (s) => s.createdAt.toISOString().slice(0, 10) === key,
+    ).length;
+    streakDays.push({
+      label: WEEKDAY_LABELS[d.getDay()] ?? "·",
+      intensity: count, // raw, normalised in the component
+      date: key,
+    });
+  }
 
-  const completedCount = projects.filter((p) => p.status === "completed").length;
+  const weeklyStats =
+    recentSessions.length > 0
+      ? {
+          wordsWritten: wordsThisWeek,
+          activeDays: { done: activeDays.size, total: 7 },
+          longestSessionMins: longestRunMins,
+          assistantCalls: recentSessions.length,
+          streakDays,
+        }
+      : null;
+
+  if (lastWritingSession?.subsection) {
+    const sub = lastWritingSession.subsection;
+    const proj = sub.section.chapter.project;
+    const previewBody = stripPreview(sub.content ?? "");
+    resume = {
+      id: proj.id,
+      title: proj.title,
+      context: `Bölüm ${sub.section.chapter.number} · ${sub.subsectionId} ${sub.title}`,
+      preview: previewBody || null,
+      totalWords: sub.wordCount,
+      lastEdit: formatRelativeTurkish(lastWritingSession.createdAt),
+    };
+  } else {
+    // No AI write history — fall back to the most-recently-updated
+    // non-completed project and derive a coarse summary.
+    const fallback =
+      projects.find((p) => p.status !== "completed") ?? projects[0] ?? null;
+    if (fallback) {
+      const allSubs = fallback.chapters.flatMap((c) =>
+        c.sections.flatMap((s) => s.subsections),
+      );
+      resume = {
+        id: fallback.id,
+        title: fallback.title,
+        context:
+          fallback.chapters.length === 0
+            ? "Yol haritası aşaması"
+            : `${fallback.chapters.length} bölüm · ${allSubs.length} alt-bölüm`,
+        preview: null,
+        totalWords: allSubs.reduce((acc, s) => acc + s.wordCount, 0),
+        lastEdit: formatRelativeTurkish(fallback.updatedAt),
+      };
+    }
+  }
+
   return (
-    <WorkspaceShell>
-      <div className="max-w-5xl w-full mx-auto px-6 py-8">
-        {/* Page header */}
-        <FadeUp className="text-center mb-10">
-          <div className="flex items-center justify-center gap-3 mb-3" aria-hidden="true">
-            <div
-              className="h-px flex-1 max-w-[120px]"
+    <WorkspaceShell fullHeight bareMain>
+      <div className="flex flex-1 min-h-0 gap-3.5 bg-page">
+        {/* === MAIN === */}
+        <main className="flex-1 min-w-0 flex flex-col rounded-2xl bg-elevated overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
+            {/* Dark forest hero band */}
+            <section
+              className="relative overflow-hidden px-12 pt-9 pb-8 text-gold-soft"
               style={{
                 background:
-                  "linear-gradient(to right, transparent, #C9A84C)",
+                  "linear-gradient(135deg, var(--color-forest-deep) 0%, #1a2818 100%)",
               }}
-            />
-            <BookMarked className="h-5 w-5" style={{ color: "#C9A84C" }} />
-            <div
-              className="h-px flex-1 max-w-[120px]"
-              style={{
-                background:
-                  "linear-gradient(to left, transparent, #C9A84C)",
-              }}
-            />
-          </div>
-          <h1
-            className="font-display text-3xl font-bold mb-1"
-            style={{ color: "#2D1F0E" }}
-          >
-            My Books
-          </h1>
-          <p className="font-body text-sm" style={{ color: "#6b5a45" }}>
-            {projects.length === 0
-              ? "Create your first book project."
-              : `${projects.length} project${projects.length !== 1 ? 's' : ''}`}
-          </p>
-        </FadeUp>
-
-        {/* Stats banner */}
-        {projects.length > 0 && (
-          <div
-            className="rounded-sm border mb-8 grid grid-cols-3 divide-x"
-            style={{
-              backgroundColor: "rgba(45,31,14,0.70)",
-              borderColor: "rgba(201,168,76,0.20)",
-            }}
-          >
-            {[
-              {
-                label: "Total Books",
-                value: projects.length,
-                icon: <BookOpen className="h-4 w-4" />,
-              },
-              {
-                label: "Completed",
-                value: completedCount,
-                icon: <Layers className="h-4 w-4" />,
-              },
-              {
-                label: "Total Words",
-                value:
-                  totalWords > 999
-                    ? `${(totalWords / 1000).toFixed(1)}k`
-                    : totalWords,
-                icon: <Feather className="h-4 w-4" />,
-              },
-            ].map(({ label, value, icon }) => (
-              <div key={label} className="flex flex-col items-center py-4 gap-1">
-                <span style={{ color: "#C9A84C" }}>{icon}</span>
-                <span
-                  className="font-display text-xl font-bold"
-                  style={{ color: "#FAF7F0" }}
-                >
-                  {value}
-                </span>
-                <span
-                  className="font-ui text-xs"
-                  style={{ color: "rgba(250,247,240,0.50)" }}
-                >
-                  {label}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Action row */}
-        <div className="flex items-center justify-between gap-4 mb-6">
-          <div
-            className="flex items-center gap-2 px-3 py-2 rounded-sm border flex-1 max-w-xs"
-            style={{
-              backgroundColor: "rgba(45,31,14,0.60)",
-              borderColor: "rgba(201,168,76,0.20)",
-            }}
-          >
-            <Search className="h-3.5 w-3.5 shrink-0" style={{ color: "rgba(250,247,240,0.40)" }} />
-            <span
-              className="font-ui text-sm"
-              style={{ color: "rgba(250,247,240,0.35)" }}
             >
-              Search books...
-            </span>
-          </div>
-          <NewProjectDialog />
-        </div>
+              {/* Decorative italic Q */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute right-8 top-4 select-none"
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontStyle: "italic",
+                  fontSize: 140,
+                  lineHeight: 1,
+                  color: "var(--color-gold-soft)",
+                  opacity: 0.18,
+                }}
+              >
+                Q
+              </div>
 
-        {/* Shelf divider */}
-        <div className="flex items-center gap-3 mb-7" aria-hidden="true">
-          <div
-            className="h-px flex-1"
-            style={{
-              background:
-                "linear-gradient(to right, transparent, #C9A84C55, #C9A84C, #C9A84C55, transparent)",
-            }}
-          />
-          <BookMarked className="h-4 w-4" style={{ color: "#C9A84C" }} />
-          <div
-            className="h-px flex-1"
-            style={{
-              background:
-                "linear-gradient(to right, transparent, #C9A84C55, #C9A84C, #C9A84C55, transparent)",
-            }}
-          />
-        </div>
+              <div className="font-ui text-[10px] uppercase tracking-[0.16em] text-gold-soft/65 mb-1">
+                Yazım atölyesi
+              </div>
+              <h1 className="font-display italic font-medium text-[48px] leading-none tracking-tight text-white">
+                Kitaplarım
+              </h1>
+              <p className="mt-3 font-body text-sm leading-relaxed text-gold-soft/85 max-w-[560px]">
+                Yazdığın ve yazmakta olduğun kitap projeleri. Bir taneye
+                tıkla — bölümler, taslaklar ve yazım yardımcısı açılır.
+              </p>
 
-        {/* Books grid — series groups first, then standalone */}
-        {projects.length === 0 && seriesList.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <div className="space-y-10">
-            {/* Series groups */}
-            {seriesList.map((series) => {
-              const volumes = projectsBySeries.get(series.id) ?? [];
-              return (
-                <section key={series.id}>
-                  <div className="flex items-baseline justify-between mb-4">
-                    <div>
-                      <h2 className="font-display text-xl font-semibold text-ink">
-                        {series.name}
-                      </h2>
-                      <p className="font-ui text-[11px] uppercase tracking-widest text-ink-light mt-0.5">
-                        Seri · {volumes.length} cilt
-                      </p>
-                    </div>
-                  </div>
-                  {volumes.length === 0 ? (
-                    <div className="rounded-sm border border-dashed border-sandy bg-page/40 px-4 py-6 text-center">
-                      <p className="font-body text-xs text-ink-light">
-                        Henüz bu seride cilt yok. Yeni proje oluştururken bu seriyi seçebilirsin.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                      {volumes.map((project, idx) =>
-                        renderProjectCard(project, idx, project.seriesOrder ?? null),
-                      )}
-                    </div>
-                  )}
-                </section>
-              );
-            })}
+              {/* Stats inline */}
+              <div className="mt-7 flex items-end gap-9 flex-wrap">
+                <HeroStat num={String(projects.length)} label="kitap" />
+                <HeroDivider />
+                <HeroStat
+                  num={String(activeCount)}
+                  suffix={projects.length ? `/${projects.length}` : undefined}
+                  label="aktif"
+                />
+                <HeroDivider />
+                <HeroStat
+                  num={
+                    totalWords > 999
+                      ? `${(totalWords / 1000).toFixed(1)}k`
+                      : String(totalWords)
+                  }
+                  label="toplam kelime"
+                />
+                <HeroDivider />
+                <HeroStat num={String(completedCount)} label="tamamlanan" />
+                <span className="flex-1" />
+                <div className="self-end">
+                  <NewProjectDialog />
+                </div>
+              </div>
+            </section>
 
-            {/* Standalone projects */}
-            {standaloneProjects.length > 0 && (
-              <section>
-                {seriesList.length > 0 && (
-                  <div className="flex items-baseline justify-between mb-4">
-                    <div>
-                      <h2 className="font-display text-xl font-semibold text-ink">
-                        Bağımsız projeler
-                      </h2>
-                      <p className="font-ui text-[11px] uppercase tracking-widest text-ink-light mt-0.5">
-                        {standaloneProjects.length} kitap
-                      </p>
-                    </div>
+            {/* Toolbar + grid (interactive search/filter live in client) */}
+            {projects.length === 0 ? (
+              <div className="px-9 py-12">
+                <EmptyState />
+              </div>
+            ) : (
+              <>
+                <ProjectsBrowser
+                  cards={allProjectsCardData.map((p) => ({
+                    data: p.data,
+                    status: p.raw.status,
+                  }))}
+                  activeCount={activeCount}
+                  doneCount={completedCount}
+                />
+
+                {/* Series notice — surfaces series with no volumes yet */}
+                {seriesList.some(
+                  (s) => (projectsBySeries.get(s.id) ?? []).length === 0,
+                ) && (
+                  <div className="mx-9 mb-11 rounded-md border border-dashed border-sandy/70 bg-panel px-4 py-3 font-body text-xs text-ink-light">
+                    Boş serilerin var. Yeni proje oluştururken bir seriye
+                    cilt ekleyebilirsin.
                   </div>
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                  {standaloneProjects.map((project, idx) =>
-                    renderProjectCard(project, idx, null),
-                  )}
-                </div>
-              </section>
+              </>
             )}
           </div>
-        )}
+        </main>
 
-        {/* Page number */}
-        {projects.length > 0 && (
-          <div className="text-center mt-12">
-            <span
-              className="font-body text-xs italic"
-              style={{ color: "rgba(201,168,76,0.45)" }}
-            >
-              — {projects.length} —
-            </span>
-          </div>
-        )}
+        {/* === RIGHT RAIL === */}
+        <aside className="w-[290px] shrink-0 rounded-2xl bg-elevated overflow-hidden hidden lg:block">
+          <ResumePanel resume={resume} weeklyStats={weeklyStats} />
+        </aside>
       </div>
     </WorkspaceShell>
   );
+}
+
+// ── V6 helpers ───────────────────────────────────────────────────
+
+function HeroStat({
+  num,
+  suffix,
+  label,
+}: {
+  num: string;
+  suffix?: string;
+  label: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline gap-0.5 font-display font-medium text-[38px] leading-none tracking-tight text-white">
+        {num}
+        {suffix && (
+          <span className="text-[22px] text-gold-soft/60">{suffix}</span>
+        )}
+      </div>
+      <div className="mt-1 font-ui text-[11px] uppercase tracking-[0.1em] text-gold-soft/70">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function HeroDivider() {
+  return (
+    <span
+      aria-hidden
+      className="w-px h-9 self-center"
+      style={{ background: "rgba(232,212,154,0.25)" }}
+    />
+  );
+}
+
+// Strip a subsection's rich-text content down to a 1-line plain text
+// preview. Drops markdown markers and excess whitespace, then truncates
+// to ~180 chars so the right-rail card stays compact.
+function stripPreview(raw: string): string {
+  if (!raw) return "";
+  const flat = raw
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[#*_>`~]+/g, " ")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (flat.length <= 180) return flat;
+  return flat.slice(0, 180).trimEnd() + "…";
+}
+
+// Simple Turkish-locale relative time. Tolerates server-side rendering
+// (UTC-based math). For dates older than a week, falls back to a short
+// day/month format.
+function formatRelativeTurkish(date: Date): string {
+  const diffMs = Date.now() - new Date(date).getTime();
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 60) return "az önce";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} dakika önce`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} saat önce`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return "dün";
+  if (day < 7) return `${day} gün önce`;
+  return new Date(date).toLocaleDateString("tr-TR", {
+    day: "numeric",
+    month: "long",
+  });
 }
 
 function EmptyState() {

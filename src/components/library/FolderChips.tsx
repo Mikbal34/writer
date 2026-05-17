@@ -257,19 +257,17 @@ export default function FolderChips({
       <button
         type="button"
         onClick={() => onSelectionChange({ kind: "all" })}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs transition-colors ${
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-ui text-xs font-semibold transition-colors ${
           selection.kind === "all"
-            ? "bg-ink text-paper"
-            : "bg-page border border-gold/30 text-ink hover:bg-page/70"
+            ? "bg-forest-deep text-gold-soft border border-forest-deep"
+            : "bg-transparent border border-sandy text-ink-light hover:bg-elevated"
         }`}
       >
         <Library className="h-3 w-3" />
         Tüm Kütüphane
         <span
-          className={`tabular-nums ${
-            selection.kind === "all"
-              ? "text-paper/70"
-              : "text-ink-light"
+          className={`tabular-nums opacity-70 ${
+            selection.kind === "all" ? "text-gold-soft" : "text-ink-muted"
           }`}
         >
           {totalEntries}
@@ -314,23 +312,23 @@ export default function FolderChips({
               onDragOver={(e) => onDragOver(c.id, e)}
               onDragLeave={() => setHoverDropId(null)}
               onDrop={(e) => onDrop(c.id, e)}
-              className={`group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs transition-colors ${
+              className={`group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-ui text-xs transition-colors ${
                 isSelected
-                  ? "bg-ink text-paper"
+                  ? "bg-forest-deep text-gold-soft border border-forest-deep font-semibold"
                   : isHover
-                    ? "bg-gold/30 border border-gold"
-                    : "bg-page border border-gold/30 text-ink hover:bg-page/70"
+                    ? "bg-gold/30 border border-gold text-ink"
+                    : "bg-transparent border border-sandy text-ink-light hover:bg-elevated"
               }`}
             >
               <Folder
                 className={`h-3 w-3 ${
-                  isSelected ? "text-paper" : "text-gold"
+                  isSelected ? "text-gold-soft" : "text-ink-muted"
                 }`}
               />
               {c.name}
               <span
-                className={`tabular-nums ${
-                  isSelected ? "text-paper/70" : "text-ink-light"
+                className={`tabular-nums opacity-70 ${
+                  isSelected ? "text-gold-soft" : "text-ink-muted"
                 }`}
               >
                 {c.entryCount}
@@ -413,7 +411,7 @@ export default function FolderChips({
       {/* "Ask this folder" affordance — only when a folder is active */}
       {selection.kind === "collection" && (
         <Link
-          href={`/library/ask?collectionId=${selection.collectionId}`}
+          href={`/library/chat?collectionId=${selection.collectionId}`}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs text-ink-light hover:text-ink hover:bg-page transition-colors ml-auto"
         >
           <MessageSquare className="h-3 w-3" />

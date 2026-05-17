@@ -5,6 +5,13 @@ import { cn } from "@/lib/utils";
 interface WorkspaceShellProps {
   children: React.ReactNode;
   /**
+   * Strip the main column's default bg-elevated rounded card. Pages
+   * that build their own multi-card layout inside main (the library
+   * with its shelf + detail panel) opt in so their inner cards sit
+   * directly inside the workspace gutter, height-matching the rail.
+   */
+  bareMain?: boolean;
+  /**
    * Content for the 240px context pane that sits between the icon
    * rail and the main area. Pages declare this slot when they have
    * a section-scoped second column: Library uses it for folder chips
@@ -30,34 +37,35 @@ interface WorkspaceShellProps {
 }
 
 /**
- * Top-level workspace shell. Three columns laid out edge-to-edge:
+ * Top-level workspace shell. Three floating cards laid out with a 14px
+ * outer gutter and 14px gap so each column reads as its own island:
  *
- *   ┌────┬──────────────┬──────────────────────────────────┐
- *   │rail│ contextPane  │  main                            │
- *   │56px│  240px       │  fills remaining                 │
- *   └────┴──────────────┴──────────────────────────────────┘
+ *   ┌──────────────────────────────────────────────────────────┐
+ *   │ ┌────┐ ┌──────────────┐ ┌─────────────────────────────┐  │
+ *   │ │rail│ │ contextPane  │ │ main                        │  │
+ *   │ │56px│ │   240px      │ │ fills remaining             │  │
+ *   │ └────┘ └──────────────┘ └─────────────────────────────┘  │
+ *   └──────────────────────────────────────────────────────────┘
  *
- * Panel seams are subtle tint shifts (bg-rail vs bg-page) rather
- * than heavy borders — the V3 mockup keeps the design language
- * book-like without sectioning the screen visually.
- *
- * Pages outside the workspace (auth, pricing, wizard) intentionally
- * skip this shell.
+ * The dark forest-deep rail is the primary brand surface; the lighter
+ * cards float on the page background. Pages outside the workspace
+ * (auth, pricing, wizard) intentionally skip this shell.
  */
 export default function WorkspaceShell({
   children,
   context,
   fullHeight,
   contextWidth,
+  bareMain,
 }: WorkspaceShellProps) {
   return (
-    <div className="h-screen flex bg-page text-ink overflow-hidden">
+    <div className="h-screen flex bg-page text-ink overflow-hidden gap-3.5 p-3.5">
       <IconRail />
 
       {context !== undefined && (
         <aside
           className={cn(
-            "shrink-0 bg-panel border-r border-sandy-soft overflow-y-auto hidden lg:block",
+            "shrink-0 bg-elevated rounded-2xl overflow-y-auto hidden lg:block",
             contextWidth ?? "w-60",
           )}
         >
@@ -67,10 +75,9 @@ export default function WorkspaceShell({
 
       <main
         className={cn(
-          "flex-1 min-w-0 bg-page",
-          fullHeight
-            ? "flex flex-col overflow-hidden"
-            : "overflow-y-auto",
+          "flex-1 min-w-0",
+          bareMain ? "" : "bg-elevated rounded-2xl",
+          fullHeight ? "flex flex-col overflow-hidden" : "overflow-y-auto",
         )}
       >
         {/* Spacer for the mobile menu button so the page header isn't

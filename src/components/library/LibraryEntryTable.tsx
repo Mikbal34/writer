@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, BookCopy, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown, X, GraduationCap, Users, Link as LinkIcon, Globe, FileText, FolderClosed } from "lucide-react";
+import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, BookCopy, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown, ChevronRight, X, GraduationCap, Users, Link as LinkIcon, Globe, FileText, FolderClosed } from "lucide-react";
 import { StaggerItem, FadeUpLarge } from "@/components/shared/Animations";
 import { toast } from "sonner";
 import VolumesDialog from "@/components/library/VolumesDialog";
@@ -125,6 +125,23 @@ const ENTRY_TYPE_LABELS: Record<string, string> = {
  ansiklopedi: "Encyclopedia",
  web: "Web",
 };
+
+// Mock palette — spines randomise by author surname hash so a shelf
+// reads visually like a real bookshelf instead of a wall of one colour.
+const SHELF_SPINES = [
+ "#3a5238",
+ "#5a4a2a",
+ "#8a6a3d",
+ "#6a3a2a",
+ "#2a3d28",
+ "#a08a5a",
+ "#4a3a2a",
+ "#b89149",
+];
+function spineColor(authorSurname: string): string {
+ const seed = authorSurname.charCodeAt(0) || 0;
+ return SHELF_SPINES[seed % SHELF_SPINES.length];
+}
 
 const ENTRY_TYPE_COLORS: Record<string, { color: string; accent: string; spine: string }> = {
  kitap: { color: "#2D5016", accent: "#4a7a2e", spine: "#1e3a0e" },
@@ -423,73 +440,53 @@ export default function LibraryEntryTable({
         handleRowActivate(entry);
        }
       }}
-      className="group flex items-center gap-3 py-3.5 border-b border-dashed border-sandy/40 hover:bg-sandy-soft/15 px-4 w-full text-left transition-colors last:border-b-0 cursor-pointer"
+      className="group flex items-stretch gap-4 px-3 py-3.5 rounded-md hover:bg-panel transition-colors cursor-pointer"
      >
-      {/* Vertical accent bar */}
+      {/* Book spine — mock-style vertical-text card; the author surname
+          rotates 180° down the spine. Colour hashes from author so the
+          shelf reads multi-colour like a real bookcase. */}
       <div
-       className="w-[3px] self-stretch rounded-full shrink-0"
-       style={{ backgroundColor: colorScheme.color }}
-      />
+       className="w-[30px] min-h-[50px] rounded-sm shrink-0 overflow-hidden relative flex items-center justify-center self-stretch"
+       style={{
+        background: spineColor(entry.authorSurname),
+        boxShadow:
+         "inset -3px 0 0 rgba(0,0,0,0.18), inset 3px 0 0 rgba(255,255,255,0.08), 1px 1px 0 rgba(0,0,0,0.12)",
+       }}
+      >
+       <span
+        className="font-display text-[9px] tracking-wide whitespace-nowrap overflow-hidden text-ellipsis max-h-full px-1"
+        style={{
+         writingMode: "vertical-rl",
+         transform: "rotate(180deg)",
+         color: "rgba(255,255,255,0.7)",
+        }}
+       >
+        {entry.authorSurname}
+       </span>
+      </div>
 
-      {/* PDF status indicator — not interactive; visual only.
-          Multi-volume parents don't carry filePath themselves (files
-          live on cilt rows), so we derive "is this entry usable for
-          RAG?" from whether the volumes are ready instead of bare
-          filePath presence. */}
-      {(() => {
-       const totalVolumes = entry._count?.volumes ?? 0
-       const isMultiVolume = totalVolumes > 0
-       const readyVolumes = isMultiVolume
-        ? (entry.volumes ?? []).filter((v) => v.pdfStatus === "ready").length
-        : 0
-       const usable = isMultiVolume
-        ? readyVolumes > 0
-        : Boolean(entry.filePath)
-       const title = isMultiVolume
-        ? `${readyVolumes}/${totalVolumes} cilt hazır`
-        : usable
-         ? "PDF yüklü — RAG için hazır"
-         : "PDF yok — yazımda bu kaynak kullanılamaz"
-       return usable ? (
-        <div
-         className="w-5 h-5 rounded-sm bg-forest flex items-center justify-center shrink-0"
-         title={title}
-         aria-label={title}
-        >
-         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#F5EDE0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-         </svg>
-        </div>
-       ) : (
-        <div
-         className="w-5 h-5 rounded-sm border-2 border-sandy/60 shrink-0"
-         title={title}
-         aria-label={title}
-        />
-       )
-      })()}
-
-      {/* Author + Title + Tags */}
-      <div className="min-w-0 flex-1">
-       <div className="flex items-baseline gap-2 flex-wrap">
-        <span
-         dir="auto"
-         className="font-body text-sm font-semibold text-ink"
-        >
+      {/* Title + meta — serif title on top, author / year / type inline */}
+      <div className="min-w-0 flex-1 pt-0.5">
+       <div
+        dir="auto"
+        className="font-display text-[17px] font-semibold leading-tight text-ink line-clamp-1"
+       >
+        {entry.title}
+       </div>
+       <div className="mt-1 flex items-center gap-2 font-body text-[13px] text-ink-light flex-wrap">
+        <span dir="auto">
          {entry.authorSurname}
          {entry.authorName ? `, ${entry.authorName}` : ""}
         </span>
-        <span className="text-ink-muted">—</span>
-        <span
-         dir="auto"
-         className="font-body text-sm italic text-ink-light truncate"
-        >
-         {entry.title}
+        <span className="text-ink-muted">·</span>
+        <span className="font-display italic text-ink-light tabular-nums">
+         {entry.year ?? "—"}
         </span>
-       </div>
-       {entry.tags.length > 0 && (
-        <div className="flex gap-1 mt-1">
-         {entry.tags.map((t) => (
+        <span className="font-ui text-[9px] px-1.5 py-0.5 ml-1 rounded-sm bg-sandy-soft text-ink-light uppercase tracking-wider">
+         {ENTRY_TYPE_LABELS[entry.entryType] ?? entry.entryType}
+        </span>
+        {entry.tags.length > 0 &&
+         entry.tags.map((t) => (
           <span
            key={t.tag.id}
            className="font-ui text-[10px] bg-sandy-soft text-ink-light px-1.5 py-0.5 rounded-sm"
@@ -497,46 +494,36 @@ export default function LibraryEntryTable({
            {t.tag.name}
           </span>
          ))}
-        </div>
-       )}
+       </div>
       </div>
 
-      {/* Year */}
-      <span className="font-display text-sm text-ink-light tabular-nums shrink-0">
-       {entry.year ?? "—"}
-      </span>
-
-      {/* Type badge */}
-      <span className="font-ui text-[10px] px-2 py-0.5 bg-sandy-soft text-ink-light rounded-sm tracking-wider uppercase shrink-0">
-       {ENTRY_TYPE_LABELS[entry.entryType] ?? entry.entryType}
-      </span>
-
+      {/* Right side meta + actions — wrapped in items-center so icons
+          don't stretch vertically with the row's items-stretch layout. */}
+      <div className="flex items-center gap-3 shrink-0 text-ink-light">
       {/* Linked projects count */}
       {(entry._count?.bibliographies ?? 0) > 0 && (
-       <span className="flex items-center gap-0.5 font-ui text-[10px] text-forest shrink-0" title="Linked projects">
-        <Link2 className="h-3 w-3" />
+       <span className="flex items-center gap-1 font-ui text-[11px] text-forest" title="Linked projects">
+        <Link2 className="h-3.5 w-3.5" />
         {entry._count!.bibliographies}
        </span>
       )}
 
-      {/* Note + collection badges — surface the "research depth" of an
-          entry at a glance: how many notes you've taken on it, how many
-          folders contain it. */}
+      {/* Note + collection badges */}
       {(entry._count?.notes ?? 0) > 0 && (
        <span
-        className="flex items-center gap-0.5 font-ui text-[10px] text-ink-light shrink-0"
+        className="flex items-center gap-1 font-ui text-[11px]"
         title={`${entry._count!.notes} not`}
        >
-        <FileText className="h-3 w-3" />
+        <FileText className="h-3.5 w-3.5 text-ink-muted" />
         {entry._count!.notes}
        </span>
       )}
       {(entry._count?.collections ?? 0) > 0 && (
        <span
-        className="flex items-center gap-0.5 font-ui text-[10px] text-gold shrink-0"
+        className="flex items-center gap-1 font-ui text-[11px]"
         title={`${entry._count!.collections} klasör`}
        >
-        <FolderClosed className="h-3 w-3" />
+        <FolderClosed className="h-3.5 w-3.5 text-gold" />
         {entry._count!.collections}
        </span>
       )}
@@ -741,6 +728,11 @@ export default function LibraryEntryTable({
        className="flex items-center justify-center h-6 w-6 shrink-0 rounded-sm opacity-0 group-hover:opacity-100 hover:bg-red-50 transition-all cursor-pointer"
       >
        <Trash2 className="h-3.5 w-3.5 text-red-400" />
+      </div>
+
+      {/* Trailing chevron — matches the mock's row affordance, signals
+          the row is clickable to reveal the detail panel. */}
+      <ChevronRight className="h-3.5 w-3.5 text-ink-muted" />
       </div>
      </div>
      </StaggerItem>

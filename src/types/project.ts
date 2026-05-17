@@ -39,6 +39,13 @@ export interface WritingTwinProfile {
   rhetoricalApproach?: 'argumentative' | 'descriptive' | 'analytical' | 'comparative'
   /** Additional style notes captured from sample analysis */
   additionalNotes?: string
+  /** Quantitative axes computed from the text-stats pipeline. All are
+   *  optional + clamped to 0-1; older profiles that pre-date this
+   *  extension simply omit them and the UI falls back to synthesised
+   *  values. Surfaced as the 3 right-most radar axes. */
+  metaphorScore?: number
+  firstPersonScore?: number
+  passiveScore?: number
 }
 
 export interface ProjectStyleOverrides {

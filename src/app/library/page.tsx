@@ -30,8 +30,15 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  MessageSquare,
+  Sparkles,
+  ArrowDownUp,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -42,7 +49,6 @@ import { toast } from "sonner";
 import LibraryEntryForm from "@/components/library/LibraryEntryForm";
 import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
-import PdfDropZone from "@/components/library/PdfDropZone";
 import VolumeHintBanner from "@/components/library/VolumeHintBanner";
 import FolderChips, {
   type LibrarySelection,
@@ -67,6 +73,32 @@ export default function LibraryPage() {
   // Right panel state
   const [selectedEntry, setSelectedEntry] = useState<LibraryEntryRow | null>(null);
 
+  // User-level stats (filled by /api/library/stats so the hero
+  // numbers don't shift when the user paginates). Refreshed in tandem
+  // with entries via the same sidebarKey + fetchEntries cycle.
+  const [stats, setStats] = useState<{
+    total: number;
+    booksAndArticles: number;
+    notedSources: number;
+    highlightsTotal: number;
+  } | null>(null);
+
+  // Sort state — mirrors the API's accepted keys.
+  type SortKey =
+    | "updated_desc"
+    | "year_desc"
+    | "year_asc"
+    | "title_asc"
+    | "author_asc";
+  const [sort, setSort] = useState<SortKey>("updated_desc");
+  const SORT_LABELS: Record<SortKey, string> = {
+    updated_desc: "Son düzenleme",
+    year_desc: "Yıl ↓ (yeni)",
+    year_asc: "Yıl ↑ (eski)",
+    title_asc: "Başlık (A→Z)",
+    author_asc: "Yazar (A→Z)",
+  };
+
   // Selected folder's display name (for hero h1 + breadcrumb).
   const [selectionLabel, setSelectionLabel] = useState<string>("Tüm Kütüphane");
 
@@ -82,6 +114,7 @@ export default function LibraryPage() {
       try {
         const params = new URLSearchParams({ page: String(page), limit: "200" });
         if (search) params.set("search", search);
+        if (sort) params.set("sort", sort);
         if (selection.kind === "collection") {
           params.set("collectionId", selection.collectionId);
         } else if (selection.kind === "tag") {
@@ -99,12 +132,30 @@ export default function LibraryPage() {
         if (!opts.silent) setIsLoading(false);
       }
     },
-    [page, search, selection],
+    [page, search, sort, selection],
   );
 
   useEffect(() => {
     fetchEntries();
   }, [fetchEntries]);
+
+  // Pull the user-level stats once on mount and re-pull after any
+  // mutation that the page triggers (sidebar refresh ticks the key,
+  // which the chips also use to invalidate their own state).
+  useEffect(() => {
+    fetch("/api/library/stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setStats({
+          total: data.total ?? 0,
+          booksAndArticles: data.booksAndArticles ?? 0,
+          notedSources: data.notedSources ?? 0,
+          highlightsTotal: data.highlightsTotal ?? 0,
+        });
+      })
+      .catch(() => undefined);
+  }, [sidebarKey]);
 
   // Auto-refresh while any entry is still processing.
   useEffect(() => {
@@ -133,8 +184,10 @@ export default function LibraryPage() {
   }, [selection]);
 
   // Resolve the active selection's display label. For collections we
-  // hit the collections endpoint once and cache the result by id.
+  // hit the collections endpoint once and cache the result by id; the
+  // tags endpoint feeds the toolbar chip strip + label resolution.
   const [collectionLabelById, setCollectionLabelById] = useState<Record<string, string>>({});
+  const [tags, setTags] = useState<Array<{ id: string; name: string; count: number }>>([]);
   useEffect(() => {
     fetch("/api/library/collections")
       .then((r) => (r.ok ? r.json() : null))
@@ -147,16 +200,37 @@ export default function LibraryPage() {
         setCollectionLabelById(map);
       })
       .catch(() => undefined);
+    fetch("/api/library/tags")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        setTags(
+          (
+            data as Array<{
+              id: string;
+              name: string;
+              _count: { entries: number };
+            }>
+          ).map((t) => ({ id: t.id, name: t.name, count: t._count.entries })),
+        );
+      })
+      .catch(() => undefined);
   }, [sidebarKey]);
+
+  const tagLabelById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const t of tags) m[t.id] = t.name;
+    return m;
+  }, [tags]);
 
   useEffect(() => {
     if (selection.kind === "all") setSelectionLabel("Tüm Kütüphane");
     else if (selection.kind === "collection") {
       setSelectionLabel(collectionLabelById[selection.collectionId] ?? "Klasör");
     } else if (selection.kind === "tag") {
-      setSelectionLabel("Etiket");
+      setSelectionLabel(tagLabelById[selection.tagId] ?? "Etiket");
     }
-  }, [selection, collectionLabelById]);
+  }, [selection, collectionLabelById, tagLabelById]);
 
   function handleEdit(entry: LibraryEntryRow) {
     setEditingEntry(entry);
@@ -195,15 +269,15 @@ export default function LibraryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries]);
 
-  // Whole-library ask: routes to /library/ask preserving any active
+  // Whole-library ask: routes to /library/chat preserving any active
   // collection/tag scope so the chat opens already-narrowed.
   function askEntireScope() {
     if (selection.kind === "collection") {
-      router.push(`/library/ask?collectionId=${selection.collectionId}`);
+      router.push(`/library/chat?collectionId=${selection.collectionId}`);
     } else if (selection.kind === "tag") {
-      router.push(`/library/ask?tagId=${selection.tagId}`);
+      router.push(`/library/chat?tagId=${selection.tagId}`);
     } else {
-      router.push("/library/ask");
+      router.push("/library/chat");
     }
   }
 
@@ -222,50 +296,93 @@ export default function LibraryPage() {
   }, [selection, selectionLabel]);
 
   return (
-    <WorkspaceShell>
-      <div className="flex flex-1 min-h-0 h-[calc(100vh-3.5rem)]">
+    <WorkspaceShell fullHeight bareMain>
+      {/* Inner shelf + detail panel sit directly inside the workspace
+          gutter (no extra padding) so they height-match the rail. The
+          14px gap between them is the only inter-card separation. */}
+      <div className="flex flex-1 min-h-0 gap-3.5">
         {/* === MAIN SCROLLABLE PANEL === */}
-        <div className="flex-1 min-w-0 overflow-y-auto">
-          <div className="max-w-5xl mx-auto px-6 py-6 space-y-5">
-            {/* Hero — eyebrow, H1, sort/import/add */}
-            <header className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 font-ui text-[10px] uppercase tracking-widest text-ink-light mb-1">
-                  <Library className="h-3 w-3" />
-                  Kütüphane · {total} kaynak
-                </div>
-                <h1 className="font-display text-2xl font-semibold text-ink leading-tight">
-                  {selectionLabel}
-                </h1>
-                <p className="font-body text-sm text-ink-light mt-1 max-w-2xl">
-                  {subtitle}
-                </p>
-              </div>
+        <div className="flex-1 min-w-0 overflow-y-auto rounded-2xl bg-elevated">
+          {/* === Dark forest hero band (v3.3 match) === */}
+          <section
+            className="relative overflow-hidden px-11 pt-8 pb-7 text-gold-soft"
+            style={{
+              background:
+                "linear-gradient(135deg, var(--color-forest-deep) 0%, #1a2818 100%)",
+            }}
+          >
+            {/* Decorative ornament */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute right-8 top-3 select-none"
+              style={{
+                fontFamily: "var(--font-display)",
+                fontStyle: "italic",
+                fontSize: 150,
+                lineHeight: 1,
+                color: "var(--color-gold-soft)",
+                opacity: 0.14,
+              }}
+            >
+              ℘
+            </div>
 
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  type="button"
-                  onClick={askEntireScope}
-                  className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-sandy bg-page/70 text-ink-light hover:bg-page transition-colors"
-                  title="Bu kapsama sor"
-                >
-                  <MessageSquare className="h-3 w-3" />
-                  {selection.kind === "all"
-                    ? "Kütüphaneye sor"
-                    : "Bu kapsama sor"}
-                </button>
+            <div className="font-ui inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-gold-soft/65 mb-1.5">
+              <Library className="h-3 w-3" />
+              {selection.kind === "all"
+                ? "Arşivin"
+                : selection.kind === "collection"
+                  ? "Klasör"
+                  : "Etiket"}
+            </div>
+            <h1 className="font-display italic font-medium text-[42px] leading-none tracking-tight text-white">
+              {selectionLabel}
+            </h1>
+            <p className="mt-2.5 font-body text-sm leading-relaxed text-gold-soft/85 max-w-[580px]">
+              {subtitle}
+            </p>
+
+            {/* Stats + action buttons — user-level from /api/library/stats
+                so the numbers stay correct when the entry list paginates. */}
+            <div className="mt-6 flex items-end gap-9 flex-wrap">
+              <LibStat num={String(stats?.total ?? total)} label="kaynak" />
+              <LibStatDivider />
+              <LibStat
+                num={String(stats?.booksAndArticles ?? "—")}
+                label="kitap & makale"
+              />
+              <LibStatDivider />
+              <LibStat
+                num={String(stats?.notedSources ?? "—")}
+                label="notlu"
+              />
+              <LibStatDivider />
+              <LibStat
+                num={String(stats?.highlightsTotal ?? "—")}
+                label="alıntı"
+              />
+              <span className="flex-1" />
+              <div className="self-end flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setShowBibtexDialog(true)}
-                  className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-sandy bg-page/70 text-ink-light hover:bg-page transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md font-ui text-xs text-gold-soft hover:bg-white/10 transition-colors"
+                  style={{
+                    background: "rgba(255,255,255,0.08)",
+                    border: "1px solid rgba(232,212,154,0.25)",
+                  }}
                 >
-                  <FileUp className="h-3 w-3" />
+                  <FileUp className="h-3.5 w-3.5" />
                   BibTeX
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowZoteroPanel(!showZoteroPanel)}
-                  className="font-ui text-[11px] px-2.5 py-1.5 rounded-sm border border-sandy bg-page/70 text-ink-light hover:bg-page transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md font-ui text-xs text-gold-soft hover:bg-white/10 transition-colors"
+                  style={{
+                    background: "rgba(255,255,255,0.08)",
+                    border: "1px solid rgba(232,212,154,0.25)",
+                  }}
                 >
                   Zotero
                 </button>
@@ -275,50 +392,125 @@ export default function LibraryPage() {
                     setEditingEntry(null);
                     setShowEntryDialog(true);
                   }}
-                  className="flex items-center gap-1.5 font-ui text-[11px] px-2.5 py-1.5 rounded-sm bg-forest text-page hover:bg-forest/90 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-gold text-white font-ui text-[13px] font-semibold hover:bg-gold-hover transition-colors shadow-[0_4px_12px_rgba(0,0,0,0.25)]"
                 >
-                  <Plus className="h-3 w-3" />
+                  <Plus className="h-3.5 w-3.5" />
                   Kaynak ekle
                 </button>
               </div>
-            </header>
+            </div>
+          </section>
 
-            {/* Drop zone + search row */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[260px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-light" />
-                <input
-                  type="text"
-                  placeholder="Yazar veya başlıkta ara..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 rounded-sm border border-sandy/60 bg-page font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/50 transition-colors"
-                />
-              </div>
-              {/* Inline drop affordance, smaller than the old hero
-                  panel; main "+ Kaynak ekle" button is the primary CTA. */}
-              <details className="rounded-sm border border-sandy/60 bg-page px-3 py-2 cursor-pointer">
-                <summary className="font-ui text-xs text-ink-light list-none flex items-center gap-1.5">
-                  <FileUp className="h-3 w-3" />
-                  PDF sürükle
-                </summary>
-                <div className="pt-2">
-                  <PdfDropZone onUploaded={fetchEntries} />
-                </div>
-              </details>
+          {/* === Toolbar: search with embedded ask CTA + folder chips + sort === */}
+          <div className="flex items-center gap-2.5 px-9 py-3 border-b border-sandy/60 bg-panel flex-wrap">
+            <div className="relative flex-1 min-w-[280px] max-w-[460px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-muted pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Yazar, başlık veya alıntıda ara..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="w-full pl-9 pr-[155px] py-2 rounded-lg border border-sandy bg-elevated font-body text-[13px] text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold transition-colors"
+              />
+              <button
+                type="button"
+                onClick={askEntireScope}
+                className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-forest-deep text-gold-soft font-ui text-[11.5px] font-medium hover:bg-forest transition-colors"
+                title="Bu kapsama sor"
+              >
+                <Sparkles className="h-3 w-3" />
+                {selection.kind === "all"
+                  ? "Kütüphaneye sor"
+                  : "Bu kapsama sor"}
+              </button>
+            </div>
+            <span className="w-px h-4 bg-sandy/70 hidden lg:block" />
+            {/* Folder chips inline. FolderChips renders the active pill +
+                all top-level folder chips + create input — for v3.3 we
+                surface them in the toolbar instead of below the hero. */}
+            <div className="flex-1 min-w-0">
+              <FolderChips
+                selection={selection}
+                onSelectionChange={setSelection}
+                refreshKey={sidebarKey}
+                totalEntries={total}
+              />
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-sm text-ink-light hover:text-ink hover:bg-elevated transition-colors font-ui text-xs"
+                    title="Sıralama"
+                  >
+                    <ArrowDownUp className="h-3 w-3" />
+                    {SORT_LABELS[sort]}
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                  <DropdownMenuItem
+                    key={key}
+                    onClick={() => {
+                      setSort(key);
+                      setPage(1);
+                    }}
+                  >
+                    {sort === key && <ArrowDownUp className="h-3.5 w-3.5 text-gold" />}
+                    {SORT_LABELS[key]}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Tag chip strip — surfaces user tags so the tag scope flow
+              has a real entry point (not just deep links). */}
+          {tags.length > 0 && (
+            <div className="flex items-center gap-1.5 px-9 py-2 border-b border-sandy/40 bg-panel/60 flex-wrap font-ui text-xs">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-ink-muted mr-1">
+                Etiketler
+              </span>
+              {tags.map((t) => {
+                const active =
+                  selection.kind === "tag" && selection.tagId === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() =>
+                      setSelection(
+                        active
+                          ? { kind: "all" }
+                          : { kind: "tag", tagId: t.id },
+                      )
+                    }
+                    className={
+                      active
+                        ? "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-gold bg-gold/15 text-gold-dark"
+                        : "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-sandy bg-elevated text-ink-light hover:bg-panel transition-colors"
+                    }
+                  >
+                    <span>#{t.name}</span>
+                    <span className="opacity-65 tabular-nums text-[11px]">
+                      {t.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* === Body: shelf list === */}
+          <div className="px-9 pt-4 pb-9">
+            <div className="mt-1">
+              <VolumeHintBanner entries={entries} onChanged={fetchEntries} />
             </div>
 
-            {/* Folder chips row */}
-            <FolderChips
-              selection={selection}
-              onSelectionChange={setSelection}
-              refreshKey={sidebarKey}
-              totalEntries={total}
-            />
-
-            <VolumeHintBanner entries={entries} onChanged={fetchEntries} />
-
             {/* Decade shelves */}
+            <div className="mt-4">
             {isLoading ? (
               <div className="flex items-center justify-center py-12 gap-2">
                 <Loader2 className="h-5 w-5 animate-spin text-forest" />
@@ -345,6 +537,7 @@ export default function LibraryPage() {
                 onPdfAttached={() => fetchEntries()}
               />
             )}
+            </div>
 
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-3 mt-5">
@@ -447,5 +640,30 @@ export default function LibraryPage() {
         </DialogContent>
       </Dialog>
     </WorkspaceShell>
+  );
+}
+
+// ── v3.3 hero stats helpers ──────────────────────────────────────
+
+function LibStat({ num, label }: { num: string; label: string }) {
+  return (
+    <div>
+      <div className="font-display font-medium text-[36px] leading-none tracking-tight text-white">
+        {num}
+      </div>
+      <div className="mt-1 font-ui text-[11px] uppercase tracking-[0.1em] text-gold-soft/70">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function LibStatDivider() {
+  return (
+    <span
+      aria-hidden
+      className="w-px h-9 self-center"
+      style={{ background: "rgba(232,212,154,0.25)" }}
+    />
   );
 }

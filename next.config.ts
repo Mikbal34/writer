@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@prisma/client", "pdfkit"],
+  // pdfjs-dist ships an .mjs entry that webpack mishandles (manifests
+  // at runtime as "Properties can only be defined on Objects" inside
+  // pdf.mjs). Routing it through Next's transpiler fixes the export
+  // shape so react-pdf can consume it.
+  transpilePackages: ["pdfjs-dist", "react-pdf"],
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",

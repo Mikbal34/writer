@@ -241,10 +241,59 @@ Now produce the JSON.`
       { styleProfileId: profileId, sampleCount: samples.length },
     )
 
+    // Augment the AI-extracted profile with quantitative axes derived
+    // from the text-stats output. Normalise hits → 0-1 against
+    // sentence count so the radar reads consistently across sample
+    // sizes. Capped at 1 because heavy-handed styles can produce more
+    // hits than sentences (especially first-person).
+    const sentencesForRate = Math.max(1, combined.sentenceCount);
+    const firstPersonScore = Math.max(
+      0,
+      Math.min(1, combined.firstPersonHits / sentencesForRate),
+    )
+    const passiveScore = Math.max(
+      0,
+      Math.min(1, combined.passiveLikeHits / sentencesForRate),
+    )
+    const metaphorScore = Math.max(
+      0,
+      Math.min(1, combined.metaphorHits / Math.max(1, combined.paragraphCount)),
+    )
+
+    const profileWithAxes = {
+      ...(result.data as WritingTwinProfile),
+      metaphorScore,
+      firstPersonScore,
+      passiveScore,
+    }
+
     await prisma.userStyleProfile.update({
       where: { id: profileId },
-      data: { profile: result.data as object },
+      data: { profile: profileWithAxes as object },
     })
+
+    // Persist each submitted sample so the detail panel's "Örnek
+    // metinler" list can show what fed the analysis. We log per-sample
+    // failures but don't fail the whole request — the profile result
+    // is already saved.
+    for (let i = 0; i < samples.length; i++) {
+      const content = samples[i]
+      const wordCount = content.split(/\s+/).filter((w) => w.length > 0).length
+      try {
+        await prisma.styleSample.create({
+          data: {
+            userId: session.user.id,
+            profileId,
+            filename: `Analiz örneği ${i + 1} · ${wordCount} kelime`,
+            content,
+            wordCount,
+            origin: 'paste',
+          },
+        })
+      } catch (e) {
+        console.warn('[style-analyze] sample persist failed', e)
+      }
+    }
 
     return NextResponse.json({
       styleProfile: result.data,

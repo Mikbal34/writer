@@ -84,27 +84,25 @@ export default function DecadeShelfList({
   }
 
   return (
-    <div className="space-y-6">
+    <div>
       {buckets.map((bucket) => (
-        <section key={bucket.label}>
-          <header className="flex items-baseline justify-between px-4 mb-1.5">
-            <h3 className="font-display text-lg font-semibold text-ink">
+        <section key={bucket.label} className="mt-7 first:mt-0">
+          <header className="flex items-baseline gap-3 mb-3 pb-2 border-b-[1.5px] border-sandy">
+            <h3 className="font-display italic font-medium text-[22px] leading-none text-forest-deep">
               {bucket.label}
             </h3>
-            <span className="font-ui text-[10px] uppercase tracking-widest text-ink-light">
+            <span className="font-ui text-xs text-ink-muted">
               {bucket.entries.length} kaynak
             </span>
           </header>
-          <div className="border border-sandy/50 rounded-sm bg-page/60 overflow-hidden">
-            <LibraryEntryTable
-              entries={bucket.entries}
-              onSelect={onSelect}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onPdfAttached={onPdfAttached}
-              viewMode="list"
-            />
-          </div>
+          <LibraryEntryTable
+            entries={bucket.entries}
+            onSelect={onSelect}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onPdfAttached={onPdfAttached}
+            viewMode="list"
+          />
         </section>
       ))}
     </div>

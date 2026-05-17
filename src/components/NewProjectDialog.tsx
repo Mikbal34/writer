@@ -242,6 +242,7 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
         <Button
           onClick={() => setOpen(true)}
           className="gap-2"
+          data-new-project-trigger
         >
           <Plus className="h-4 w-4" />
           Create your first book
@@ -250,6 +251,7 @@ export default function NewProjectDialog({ variant = "default" }: NewProjectDial
         <Button
           onClick={() => setOpen(true)}
           className="gap-2"
+          data-new-project-trigger
         >
           <Plus className="h-4 w-4" />
           New Project

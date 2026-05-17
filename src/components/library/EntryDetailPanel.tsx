@@ -101,14 +101,13 @@ export default function EntryDetailPanel({
   }
 
   return (
-    <aside className="relative h-full w-[380px] shrink-0 border-l border-sandy bg-page/40 flex flex-col">
-      {/* Close button — pinned upper-right so the V3 header below
-          doesn't crowd it. */}
-      <div className="absolute right-2 top-2 z-10">
+    <aside className="relative h-full w-[320px] shrink-0 rounded-2xl overflow-hidden bg-elevated flex flex-col">
+      {/* Close button — sits over the dark hero, so light icon. */}
+      <div className="absolute right-2.5 top-3.5 z-10">
         <button
           type="button"
           onClick={onClose}
-          className="h-7 w-7 flex items-center justify-center rounded-sm text-ink-light hover:text-ink hover:bg-page"
+          className="h-7 w-7 flex items-center justify-center rounded-sm text-gold-soft/70 hover:text-gold-soft hover:bg-white/10 transition-colors"
           aria-label="Paneli kapat"
         >
           <X className="h-4 w-4" />
@@ -119,6 +118,12 @@ export default function EntryDetailPanel({
         entry={entry}
         onEdit={onEdit}
         onJumpToPage={jumpToPdfPage}
+        onDeleted={() => {
+          // Refresh the library list (drop the deleted row) and close
+          // this panel so the user lands back on the shelf.
+          onMutate?.();
+          onClose();
+        }}
       />
 
       {/* Tabs */}

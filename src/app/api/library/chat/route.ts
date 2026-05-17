@@ -283,6 +283,10 @@ export async function POST(req: NextRequest) {
       authorSurname: c.authorSurname,
       page: c.pageNumber,
       noteTitle: c.noteTitle,
+      // First ~280 chars of the cited chunk/note so the PDF panel can
+      // surface a "AI bu metni gösterdi" preview when the user opens
+      // the source. Keeps the payload light; full content is in DB.
+      text: (c.content ?? '').slice(0, 280),
     }))
 
     const stream = new ReadableStream({

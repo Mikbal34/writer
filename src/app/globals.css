@@ -65,12 +65,16 @@
      bg-elevated white cards/inputs sitting on top of page/panel
      bg-deep     forest-deep header strip (split-view book header)
      bg-backdrop overlay backdrop for modals and hover halos        */
-  --color-page: oklch(0.95 0.018 80);
-  --color-rail: oklch(0.93 0.022 78);
-  --color-panel: oklch(0.93 0.022 78);
-  --color-elevated: oklch(0.985 0.005 80);
-  --color-deep: oklch(0.28 0.045 150);
-  --color-backdrop: oklch(0.88 0.025 78);
+  /* Mock palette (V3 shelf qpTokens):
+       t.paper      rgb(214,201,163)  -> page (dominant body bg)
+       t.paperHi    rgb(244,236,214)  -> elevated (input/active row)
+       t.paperSoft  rgb(239,230,205)  -> panel/backdrop (cards) */
+  --color-page: oklch(0.85 0.045 90);
+  --color-rail: oklch(0.85 0.045 90);
+  --color-panel: oklch(0.925 0.035 88);
+  --color-elevated: oklch(0.945 0.030 88);
+  --color-deep: oklch(0.31 0.050 145);
+  --color-backdrop: oklch(0.925 0.035 88);
 
   /* Editorial palette — parchment/ink/gold/forest stays the brand.
      parchment/parchment-dark intentionally share values with page/rail
@@ -78,19 +82,34 @@
      without leaving the @theme block in a forward-reference state
      (Tailwind v4's PostCSS expansion hangs on cross-token `var()`s
      inside @theme inline — values are duplicated instead). */
-  --color-parchment: oklch(0.95 0.018 80);
-  --color-parchment-dark: oklch(0.93 0.022 78);
-  --color-ink: oklch(0.22 0.025 60);
-  --color-ink-light: oklch(0.50 0.025 75);
-  --color-ink-muted: oklch(0.65 0.020 75);
-  --color-gold: oklch(0.74 0.12 80);
-  --color-gold-hover: oklch(0.78 0.12 78);
-  --color-gold-dark: oklch(0.58 0.13 75);
-  --color-forest: oklch(0.42 0.08 145);
-  --color-forest-deep: oklch(0.28 0.045 150);
-  --color-forest-light: oklch(0.55 0.07 145);
-  --color-sandy: oklch(0.82 0.025 80);
-  --color-sandy-soft: oklch(0.88 0.025 78);
+  --color-parchment: oklch(0.945 0.030 88);
+  --color-parchment-dark: oklch(0.85 0.045 90);
+  /* Ink tones mapped from mock:
+       t.ink     rgb(31,30,21)   -> ink (headings/black)
+       t.inkSoft rgb(92,86,66)   -> ink-light (body text)
+       t.inkMute rgb(138,131,102)-> ink-muted (captions) */
+  --color-ink: oklch(0.21 0.020 90);
+  --color-ink-light: oklch(0.43 0.030 90);
+  --color-ink-muted: oklch(0.60 0.040 90);
+  /* Gold mapped from mock:
+       t.gold     rgb(184,145,73)  -> gold (primary accent)
+       t.goldSoft rgb(232,212,154) -> gold-soft (cream-yellow, dark surfaces)
+       t.goldDeep rgb(154,120,56)  -> gold-dark (active focus) */
+  --color-gold: oklch(0.66 0.105 80);
+  --color-gold-hover: oklch(0.70 0.105 80);
+  --color-gold-dark: oklch(0.55 0.105 75);
+  --color-gold-soft: oklch(0.86 0.085 90);
+  /* Forest mapped from mock:
+       t.olive     rgb(58,82,56)  -> forest
+       t.oliveDeep rgb(42,61,40)  -> forest-deep / deep */
+  --color-forest: oklch(0.41 0.050 145);
+  --color-forest-deep: oklch(0.31 0.050 145);
+  --color-forest-light: oklch(0.52 0.060 145);
+  /* Rule borders:
+       t.rule     rgb(183,168,120) -> sandy
+       t.ruleSoft rgb(225,213,177) -> sandy-soft */
+  --color-sandy: oklch(0.71 0.050 90);
+  --color-sandy-soft: oklch(0.87 0.040 90);
   --color-spine: oklch(0.35 0.04 60);
 
   /* Font families */

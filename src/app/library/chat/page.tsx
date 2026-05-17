@@ -12,7 +12,7 @@ export default async function LibraryChatPage() {
     redirect("/api/auth/signin?callbackUrl=/library/chat");
   }
   return (
-    <WorkspaceShell fullHeight>
+    <WorkspaceShell fullHeight bareMain>
       <LibraryChat />
     </WorkspaceShell>
   );

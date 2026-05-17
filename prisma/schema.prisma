@@ -58,6 +58,7 @@ model User {
   creditBalance      Int                 @default(1500)
   creditTransactions CreditTransaction[]
   styleProfiles      UserStyleProfile[]
+  styleSamples       StyleSample[]
   backgroundJobs     BackgroundJob[]
 
   // Subscription / billing (Paddle). Tier maps to monthly credit allowance
@@ -108,8 +109,33 @@ model UserStyleProfile {
 
   user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   chatMessages StyleChatMessage[]
+  samples      StyleSample[]
   projects     Project[]          @relation("ProjectLinkedStyle")
 
+  @@index([userId])
+}
+
+// User-supplied writing samples that fed the Writing Twin analysis.
+// Persisted so the detail panel can show what the profile was built
+// on; the "Örnek metinler" list pulls from this table.
+model StyleSample {
+  id        String   @id @default(cuid())
+  userId    String
+  profileId String
+  /** Free-form label — usually the original filename for uploads or a
+   *  synthesised "Örnek N" tag for pasted text. */
+  filename  String
+  content   String   @db.Text
+  wordCount Int      @default(0)
+  /** How the sample entered the system. Helps the UI display origin
+   *  badges and lets the analyze pipeline skip re-ingesting later. */
+  origin    String   @default("paste") // paste | upload | chat
+  createdAt DateTime @default(now())
+
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile UserStyleProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, createdAt])
   @@index([userId])
 }
 
