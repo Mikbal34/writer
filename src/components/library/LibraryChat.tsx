@@ -99,6 +99,10 @@ const FALLBACK_SUGGESTIONS: Suggestion[] = [
 
 interface ActiveSource {
   entryId: string;
+  /** Multi-volume entries: which volume the citation came from, so the
+   *  PDF panel opens the correct PDF. Null for single-volume entries
+   *  (server then falls back to entry.filePath or the first volume). */
+  volumeId: string | null;
   page: number | null;
   title: string;
   authorSurname: string | null;
@@ -161,6 +165,7 @@ export default function LibraryChat() {
     (src: ChatSource) => {
       setActiveSource({
         entryId: src.entryId,
+        volumeId: src.volumeId ?? null,
         page: src.page,
         title: src.title,
         authorSurname: src.authorSurname,
@@ -246,6 +251,7 @@ export default function LibraryChat() {
         <section className="flex-[1.05] min-w-0 flex flex-col rounded-2xl bg-elevated overflow-hidden relative">
           <PdfReaderPanel
             entryId={activeSource.entryId}
+            volumeId={activeSource.volumeId}
             title={activeSource.title}
             targetPage={activeSource.page}
             cohortPages={cohortPages}
