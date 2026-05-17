@@ -34,6 +34,10 @@ type Scope = 'all' | 'picked' | 'single'
 interface RetrievedChunk {
   kind: 'chunk' | 'note'
   entryId: string
+  // Multi-volume entries: identifies which volume the chunk/note came
+  // from so the chat UI can open the correct PDF in the sources panel.
+  // NULL for legacy single-volume entries that pre-date the volume model.
+  volumeId: string | null
   title: string
   authorSurname: string | null
   pageNumber: number | null
@@ -161,6 +165,7 @@ export async function POST(req: NextRequest) {
           ? await prisma.$queryRaw<RetrievedChunk[]>`
               SELECT 'chunk' AS kind,
                      le.id AS "entryId",
+                     lc."volumeId" AS "volumeId",
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      lc."pageNumber" AS "pageNumber",
@@ -176,6 +181,7 @@ export async function POST(req: NextRequest) {
           : await prisma.$queryRaw<RetrievedChunk[]>`
               SELECT 'chunk' AS kind,
                      le.id AS "entryId",
+                     lc."volumeId" AS "volumeId",
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      lc."pageNumber" AS "pageNumber",
@@ -194,6 +200,7 @@ export async function POST(req: NextRequest) {
           ? await prisma.$queryRaw<RetrievedChunk[]>`
               SELECT 'note' AS kind,
                      le.id AS "entryId",
+                     ln."volumeId" AS "volumeId",
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      ln."pageNumber" AS "pageNumber",
@@ -209,6 +216,7 @@ export async function POST(req: NextRequest) {
           : await prisma.$queryRaw<RetrievedChunk[]>`
               SELECT 'note' AS kind,
                      le.id AS "entryId",
+                     ln."volumeId" AS "volumeId",
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      ln."pageNumber" AS "pageNumber",
@@ -279,6 +287,7 @@ export async function POST(req: NextRequest) {
       marker: i + 1,
       kind: c.kind,
       entryId: c.entryId,
+      volumeId: c.volumeId,
       title: c.title,
       authorSurname: c.authorSurname,
       page: c.pageNumber,

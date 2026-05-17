@@ -15,6 +15,10 @@ export interface ChatSource {
    *  their own commentary, not a primary text. */
   kind?: "chunk" | "note";
   entryId: string;
+  /** Multi-volume entries: which volume the chunk/note belongs to.
+   *  Sources panel passes this through so the right PDF opens (server
+   *  falls back to the entry's first volume when omitted). */
+  volumeId?: string | null;
   title: string;
   authorSurname: string | null;
   page: number | null;

@@ -4,17 +4,19 @@ import { useCallback, useState } from "react";
 import type { ChatSource } from "./MessageBubble";
 
 export interface SourceTab {
-  /** Stable identifier: entryId + page. Same source clicked twice
-   *  focuses the existing tab instead of opening a duplicate. */
+  /** Stable identifier: entryId + volumeId + page. Citations from two
+   *  different volumes of the same multi-volume entry open as separate
+   *  tabs instead of collapsing onto one. */
   key: string;
   entryId: string;
+  volumeId: string | null;
   page: number | null;
   title: string;
   authorSurname: string | null;
 }
 
 function tabKey(src: ChatSource): string {
-  return `${src.entryId}#${src.page ?? 0}`;
+  return `${src.entryId}#${src.volumeId ?? ""}#${src.page ?? 0}`;
 }
 
 export function useSourceTabs() {
@@ -31,6 +33,7 @@ export function useSourceTabs() {
             {
               key,
               entryId: src.entryId,
+              volumeId: src.volumeId ?? null,
               page: src.page,
               title: src.title,
               authorSurname: src.authorSurname,

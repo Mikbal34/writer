@@ -43,6 +43,19 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
         select: { filePath: true },
       })
       filePath = entry?.filePath ?? null
+      // New entries keep bytes on LibraryEntryVolume rows and leave
+      // LibraryEntry.filePath null. When callers (chat sources panel,
+      // BookHero "open in tab", etc.) don't pass ?volume=, fall back
+      // to the entry's earliest volume so a single-volume upload still
+      // streams without forcing every caller to plumb volumeId.
+      if (!pdfExists(filePath) && entry) {
+        const firstVolume = await prisma.libraryEntryVolume.findFirst({
+          where: { libraryEntryId: id },
+          orderBy: { createdAt: 'asc' },
+          select: { filePath: true },
+        })
+        filePath = firstVolume?.filePath ?? null
+      }
     }
 
     if (!pdfExists(filePath)) {

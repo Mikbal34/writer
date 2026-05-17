@@ -50,6 +50,23 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     if (!entry) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    // Mirrors /pdf: when entry.filePath is null (new volume-based
+    // uploads), report the earliest volume's status so the viewer's
+    // empty-state matches what /pdf will actually serve.
+    if (!pdfExists(entry.filePath)) {
+      const firstVolume = await prisma.libraryEntryVolume.findFirst({
+        where: { libraryEntryId: id },
+        orderBy: { createdAt: "asc" },
+        select: { filePath: true, pdfStatus: true, pdfError: true },
+      });
+      if (firstVolume) {
+        return NextResponse.json({
+          status: firstVolume.pdfStatus,
+          hasFile: pdfExists(firstVolume.filePath),
+          error: firstVolume.pdfError ?? null,
+        });
+      }
+    }
     return NextResponse.json({
       status: entry.pdfStatus,
       hasFile: pdfExists(entry.filePath),

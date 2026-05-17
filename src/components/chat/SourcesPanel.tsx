@@ -76,6 +76,7 @@ export default function SourcesPanel({
                 <PdfReaderPanel
                   key={activeTab.key}
                   entryId={activeTab.entryId}
+                  volumeId={activeTab.volumeId}
                   title={activeTab.title}
                   targetPage={activeTab.page ?? null}
                 />
