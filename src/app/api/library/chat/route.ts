@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      ln."pageNumber" AS "pageNumber",
-                     NULL AS "pdfPageLabel",
+                     ln."pdfPageLabel" AS "pdfPageLabel",
                      ln."contentText" AS content,
                      ln.title AS "noteTitle"
               FROM "LibraryNote" ln
@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      ln."pageNumber" AS "pageNumber",
-                     NULL AS "pdfPageLabel",
+                     ln."pdfPageLabel" AS "pdfPageLabel",
                      ln."contentText" AS content,
                      ln.title AS "noteTitle"
               FROM "LibraryNote" ln

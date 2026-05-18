@@ -688,6 +688,11 @@ export default function PdfViewerWithHighlights({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             pageNumber: page,
+            // Printed-page label from the PDF (e.g. "49" when page is
+            // 64). Keeps citations of this highlight/note pointing at
+            // the book's actual numbering. Falls back to NULL when
+            // the PDF lacks /PageLabels.
+            pdfPageLabel: pageLabels[page - 1] || null,
             text: selection.text,
             rangeRects: selection.pageRects,
             volumeId: volumeId ?? null,

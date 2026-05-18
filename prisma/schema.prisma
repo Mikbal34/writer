@@ -691,6 +691,11 @@ model LibraryNote {
   contentText             String   @db.Text
   embedding               Unsupported("vector(768)")?
   pageNumber              Int?
+  // Printed page label captured from the PDF (the "49" stamped on
+  // the page even when pageNumber is 64). The viewer pulls these
+  // from pdfjs.getPageLabels() and sends them on highlight save;
+  // citation surfaces prefer this over pageNumber.
+  pdfPageLabel            String?
   pinnedFromChatSessionId String?
 
   libraryEntry LibraryEntry        @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
@@ -718,6 +723,10 @@ model LibraryHighlight {
   noteId         String?
   userId         String
   pageNumber     Int
+  // Mirrors LibraryNote.pdfPageLabel; saved alongside pageNumber when
+  // the viewer creates the highlight so citations of the highlight
+  // (or its linked note) display the printed book page.
+  pdfPageLabel   String?
   text           String   @db.Text
   rangeRects     Json     // [{ x, y, w, h }] in 0-1 page-relative units
   color          String   @default("#FFEB3B")

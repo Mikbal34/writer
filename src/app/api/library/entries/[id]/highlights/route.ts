@@ -105,6 +105,11 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const { id: entryId } = await ctx.params
     const body = (await req.json()) as {
       pageNumber?: number
+      /** Printed page label captured by the viewer from
+       *  pdfjs.getPageLabels() — e.g. "49" when pageNumber is 64.
+       *  Optional; saved on both LibraryHighlight and the linked
+       *  LibraryNote so citation surfaces can render the book page. */
+      pdfPageLabel?: string | null
       text?: string
       rangeRects?: unknown[]
       color?: string
@@ -155,6 +160,11 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Optionally create a paired note. We persist the note FIRST so the
     // highlight points back to it; if the highlight insert fails we
     // delete the orphan note in the catch.
+    const pdfPageLabel =
+      typeof body.pdfPageLabel === 'string' && body.pdfPageLabel.length > 0
+        ? body.pdfPageLabel
+        : null
+
     let createdNoteId: string | null = null
     if (body.createNote) {
       const note = await prisma.libraryNote.create({
@@ -164,6 +174,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           volumeId: body.volumeId ?? null,
           title: body.noteTitle?.trim() || null,
           pageNumber: Math.floor(body.pageNumber),
+          pdfPageLabel,
           // Block-quote the highlighted text so the note opens as a
           // properly-formatted starting point the user can extend.
           content: {
@@ -200,6 +211,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           volumeId: body.volumeId ?? null,
           noteId: createdNoteId,
           pageNumber: Math.floor(body.pageNumber),
+          pdfPageLabel,
           text: body.text.trim(),
           rangeRects: rects as unknown as Prisma.InputJsonValue,
           color: body.color ?? '#FFEB3B',
