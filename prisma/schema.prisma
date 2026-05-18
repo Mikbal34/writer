@@ -602,6 +602,12 @@ model LibraryChunk {
   // input still navigates by pageNumber.
   pageNumber     Int?
   pdfPageLabel   String?
+  // Closest preceding heading on the page (e.g. "Chapter 3:
+  // Concepts of Pollution", "BÖLÜM 2"). Tracked during extraction
+  // by the heading-detection pass and copied onto every chunk that
+  // sits under it. Used both for richer retrieval prompts and for
+  // letting the UI show a section breadcrumb on each citation chip.
+  sectionTitle   String?
   chunkIndex     Int
   content        String                      @db.Text
   embedding      Unsupported("vector(768)")?

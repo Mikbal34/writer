@@ -81,6 +81,7 @@ async function extractPdfLocalAsProcessResponse(
   const chunks = chunkRows.map((c) => ({
     pageNumber: c.pageNumber,
     pageLabel: c.pageLabel,
+    sectionTitle: c.sectionTitle,
     chunkIndex: c.chunkIndex,
     content: c.content,
   }))
@@ -448,6 +449,10 @@ interface ProcessResponse {
      *  64). NULL when the PDF lacks /PageLabels or fell back to pypdf;
      *  citation renderers should prefer it over pageNumber when set. */
     pageLabel?: string | null
+    /** Section heading the chunk sits under (e.g. "BÖLÜM 3:
+     *  KAVRAMSAL ÇERÇEVE"). Propagated by the Node extractor when
+     *  available; Python-pipeline chunks won't carry it. */
+    sectionTitle?: string | null
     chunkIndex: number
     content: string
   }>
@@ -638,6 +643,32 @@ async function persistChunks(
       content: (c.content ?? '').replace(/\u0000/g, '').trim(),
     }))
     .filter((c) => c.content.length > 0)
+    // Quality filter — drop chunks that survived the extractor's
+    // junk-page pass but are still noise. Even after that pass, a
+    // small number of chunks slip through that are either too short
+    // to embed meaningfully or look like reference apparatus (long
+    // lists of "Surname, F. (1999). Title…" entries the back-matter
+    // heading detector missed). These pollute retrieval, so strip
+    // at the persistence boundary as the last line of defence.
+    .filter((c) => {
+      // Too short to embed meaningfully — vector will be high-
+      // variance noise and even verbatim queries won't usefully
+      // match.
+      if (c.content.length < 150) return false
+      // Looks like a reference/bibliography fragment that slipped
+      // through. Heuristic: dense in citation markers (year-in-parens,
+      // "et al.", "pp.", "vol.") and the chunk itself is short.
+      const refMarkers =
+        (c.content.match(/\(\d{4}[a-z]?\)/g)?.length ?? 0) +
+        (c.content.match(/\bet al\.|\bpp?\.\s*\d|\bvol\.\s*\d/g)?.length ?? 0)
+      if (refMarkers >= 4 && c.content.length < 800) return false
+      // Mostly numeric / page-ref noise — more digits than letters
+      // is almost always TOC/index leftover.
+      const digits = (c.content.match(/\d/g) ?? []).length
+      const letters = (c.content.match(/[A-Za-zÇŞĞÜÖİçşğüöı]/g) ?? []).length
+      if (letters > 0 && digits / (digits + letters) > 0.5) return false
+      return true
+    })
 
   if (safeChunks.length === 0) return
 
@@ -651,6 +682,7 @@ async function persistChunks(
       volumeId,
       pageNumber: c.pageNumber,
       pdfPageLabel: c.pageLabel ?? null,
+      sectionTitle: c.sectionTitle ?? null,
       chunkIndex: c.chunkIndex,
       content: c.content,
     })),

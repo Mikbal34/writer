@@ -14,19 +14,57 @@
 export interface ChunkerInputPage {
   pageNumber: number;
   pageLabel?: string | null;
+  /** Section title the page sits under (propagated by pdf-extract).
+   *  Copied onto every chunk derived from this page so retrieval
+   *  and display surfaces can show a breadcrumb. */
+  sectionTitle?: string | null;
   content: string;
 }
 
 export interface ChunkerOutput {
   pageNumber: number;
   pageLabel: string | null;
+  sectionTitle: string | null;
   chunkIndex: number;
   content: string;
 }
 
 export interface ChunkOptions {
+  /** Target chunk size in chars (semantic boundaries respected,
+   *  so actual size floats between minChunkSize and maxChunkSize). */
   chunkSize?: number;
+  /** Overlap (chars) between consecutive chunks for context bleed. */
   overlap?: number;
+  /** Below this, an emitted chunk is rolled into the next one rather
+   *  than being a standalone fragment. Prevents 12-char "intro" chunks
+   *  from polluting retrieval. */
+  minChunkSize?: number;
+  /** Hard ceiling. We split mid-sentence only as a last resort if a
+   *  single paragraph blows past this. */
+  maxChunkSize?: number;
+}
+
+// Heading regex re-used by chunker for in-page heading splits.
+// Mirrors pdf-extract's HEADING_PATTERNS so the boundaries line up.
+const CHUNKER_HEADING_PATTERNS: RegExp[] = [
+  /^\s*(?:BÖLÜM|B[oö]l[uü]m|CHAPTER|Chapter|KISIM|K[iı]s[iı]m|PART|Part|SECTION|Section)\s+[0-9IVXLCM]+/,
+  /^\s*[0-9]+\.[0-9]+(?:\.[0-9]+)?\s+\S/, // 1.1 Heading
+];
+
+function looksLikeHeading(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length < 4 || trimmed.length > 100) return false;
+  for (const re of CHUNKER_HEADING_PATTERNS) {
+    if (re.test(trimmed)) return true;
+  }
+  // All-caps standalone line
+  const letters = trimmed.replace(/[^A-Za-zÇŞĞÜÖİçşğüöı]/g, "");
+  return (
+    letters.length >= 6 &&
+    letters.length <= 60 &&
+    letters === letters.toUpperCase() &&
+    !/\d{2,}/.test(trimmed)
+  );
 }
 
 /**
@@ -51,13 +89,19 @@ export function chunkByPage(
     const text = (page.content ?? "").replace(/\u0000/g, "");
     if (!text.trim()) continue;
 
-    const pieces = splitText(text, chunkSize, overlap);
+    const pieces = semanticSplit(text, {
+      target: chunkSize,
+      overlap,
+      min: options.minChunkSize ?? 150,
+      max: options.maxChunkSize ?? 1500,
+    });
     for (let i = 0; i < pieces.length; i++) {
       const cleaned = pieces[i].replace(/\u0000/g, "");
       if (!cleaned.trim()) continue;
       out.push({
         pageNumber: page.pageNumber,
         pageLabel: page.pageLabel ?? null,
+        sectionTitle: page.sectionTitle ?? null,
         chunkIndex: i,
         content: cleaned,
       });
@@ -65,6 +109,97 @@ export function chunkByPage(
   }
 
   return out;
+}
+
+interface SplitOpts {
+  target: number;
+  overlap: number;
+  min: number;
+  max: number;
+}
+
+// Semantic split: respect headings and paragraph boundaries when
+// possible, fall back to sentence-level split (via splitText) only
+// for paragraphs that exceed `max`. Goal: keep each chunk's content
+// thematically coherent so embedding quality stays high.
+function semanticSplit(text: string, opts: SplitOpts): string[] {
+  // First: break the page wherever a heading-shaped line opens a
+  // new paragraph block. Headings always start a fresh chunk so
+  // the embedding for a chunk doesn't mix two unrelated sections.
+  const blocks = splitOnHeadings(text);
+  // Pack the blocks into ~target-sized chunks; oversize blocks
+  // fall through to the legacy sentence-based splitter.
+  return packBlocks(blocks, opts);
+}
+
+function splitOnHeadings(text: string): string[] {
+  const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
+  if (paragraphs.length === 0) return [text];
+  const blocks: string[] = [];
+  let current: string[] = [];
+  for (const para of paragraphs) {
+    const firstLine = para.split("\n", 1)[0];
+    if (looksLikeHeading(firstLine) && current.length > 0) {
+      blocks.push(current.join("\n\n"));
+      current = [para];
+    } else {
+      current.push(para);
+    }
+  }
+  if (current.length > 0) blocks.push(current.join("\n\n"));
+  return blocks;
+}
+
+function packBlocks(blocks: string[], opts: SplitOpts): string[] {
+  const out: string[] = [];
+  let buf: string[] = [];
+  let bufLen = 0;
+  const flush = () => {
+    if (buf.length === 0) return;
+    out.push(buf.join("\n\n"));
+    buf = [];
+    bufLen = 0;
+  };
+  for (const block of blocks) {
+    if (block.length > opts.max) {
+      // Block exceeds the hard ceiling — flush whatever is pending
+      // and sentence-split this monolith with overlap via the
+      // legacy splitter (kept around so behavior is well-tested).
+      flush();
+      const pieces = splitText(block, opts.target, opts.overlap);
+      for (const piece of pieces) out.push(piece);
+      continue;
+    }
+    if (bufLen + block.length + 2 > opts.target && bufLen >= opts.min) {
+      // Adding this block would overflow target — emit current
+      // and seed the next with overlap from the tail of the
+      // previously-emitted chunk.
+      flush();
+      const tail = takeTailOverlap(out[out.length - 1] ?? "", opts.overlap);
+      if (tail) {
+        buf.push(tail);
+        bufLen = tail.length;
+      }
+    }
+    buf.push(block);
+    bufLen += block.length + 2;
+  }
+  flush();
+  return out;
+}
+
+function takeTailOverlap(text: string, target: number): string {
+  if (!text || target <= 0) return "";
+  if (text.length <= target) return text;
+  const cut = text.slice(-target);
+  // Prefer cutting at a sentence boundary inside the tail.
+  // [\s\S]* avoids needing the `s` (dotAll) flag for TS targets <ES2018.
+  const m = cut.match(/[.!?]\s+(\S[\s\S]*)$/);
+  if (m && m.index !== undefined && cut.length - (m.index ?? 0) >= 30) {
+    return m[1];
+  }
+  const space = cut.indexOf(" ");
+  return space > 0 ? cut.slice(space + 1) : cut;
 }
 
 function splitText(text: string, chunkSize: number, overlap: number): string[] {
