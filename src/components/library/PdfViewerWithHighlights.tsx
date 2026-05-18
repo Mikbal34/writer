@@ -526,8 +526,32 @@ export default function PdfViewerWithHighlights({
       const textLayer = textLayerRef.current;
       const pageWrap = pageWrapRef.current;
       if (!textLayer || !pageWrap) return null;
-      const norm = (s: string) =>
-        s.toLowerCase().replace(/\s+/g, " ").trim();
+      // Robust normalize for matching across PDF text-layer ↔ AI quote
+      // boundaries. Handles:
+      //   - Turkish-locale case mapping (so "İlk" / "İLK" / "ilk"
+      //     collapse to the same form; default toLowerCase() turns
+      //     "İ" into "i̇" with a dotted-i marker that ruins indexOf)
+      //   - Unicode composition (NFKC — combining ş→ş, ligatures
+      //     "ﬁ"→"fi", non-breaking spaces, etc.)
+      //   - Curly punctuation ("smart" quotes/apostrophes) that the
+      //     extractor sometimes keeps and sometimes flattens
+      //   - Invisible characters (soft hyphen, zero-width joiners)
+      //     that bloat the string without affecting the visible text
+      const norm = (s: string) => {
+        let t = s.normalize("NFKC");
+        // Strip invisible / line-wrap helpers PDF extractors leave behind.
+        t = t.replace(/[­​-‍﻿]/g, "");
+        // Unify curly quotes & apostrophes so AI quotes and PDF
+        // typesetting share the same characters.
+        t = t.replace(/[‘’‚‛]/g, "'");
+        t = t.replace(/[“”„‟]/g, '"');
+        try {
+          t = t.toLocaleLowerCase("tr");
+        } catch {
+          t = t.toLowerCase();
+        }
+        return t.replace(/\s+/g, " ").trim();
+      };
       const normQuote = norm(quote);
       if (normQuote.length < 12) return null;
       const sentenceCut = normQuote.search(/[.!?؟]\s/);
@@ -540,16 +564,27 @@ export default function PdfViewerWithHighlights({
       const rawSpans = Array.from(
         textLayer.querySelectorAll("span"),
       ) as HTMLElement[];
+      // Build the combined string with smart joining: when two spans
+      // sit on the same baseline (same visible line) we concatenate
+      // directly, otherwise we insert a single space. The previous
+      // "always insert a space" rule was breaking words split across
+      // text-runs ("kavra" + "mına" → "kavra mına") and that broke
+      // indexOf for any anchor straddling such a boundary — common
+      // in Turkish PDFs where line breaks fall mid-word.
       let combined = "";
       const spanOffsets: Array<{
         span: HTMLElement;
         start: number;
         end: number;
       }> = [];
+      let prevTop: number | null = null;
       for (const s of rawSpans) {
         const txt = norm(s.textContent ?? "");
         if (!txt) continue;
-        if (combined && !combined.endsWith(" ")) combined += " ";
+        const top = s.offsetTop;
+        const newLine = prevTop !== null && Math.abs(top - prevTop) > 2;
+        prevTop = top;
+        if (combined && newLine && !combined.endsWith(" ")) combined += " ";
         const start = combined.length;
         combined += txt;
         spanOffsets.push({ span: s, start, end: combined.length });
