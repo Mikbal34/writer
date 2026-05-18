@@ -86,6 +86,11 @@ interface SelectionPopup {
   anchorY: number;
 }
 
+// Counter so each viewer instance gets a stable id across renders —
+// helps tell "one instance re-rendering" from "two instances mounted"
+// in the dev console.
+let __viewerInstanceCounter = 0;
+
 export default function PdfViewerWithHighlights({
   entryId,
   volumeId,
@@ -93,6 +98,17 @@ export default function PdfViewerWithHighlights({
   chatQuote,
   onHighlightsChanged,
 }: PdfViewerWithHighlightsProps) {
+  const instanceIdRef = useRef<string | null>(null);
+  if (instanceIdRef.current === null) {
+    __viewerInstanceCounter += 1;
+    instanceIdRef.current = `viewer-${__viewerInstanceCounter}`;
+  }
+  const iid = instanceIdRef.current;
+  useEffect(() => {
+    console.log("[PdfViewer mount]", iid, { entryId, volumeId });
+    return () => console.log("[PdfViewer unmount]", iid);
+  }, [iid, entryId, volumeId]);
+
   const fileUrl = volumeId
     ? `/api/library/${entryId}/pdf?volume=${encodeURIComponent(volumeId)}`
     : `/api/library/${entryId}/pdf`;
@@ -198,9 +214,11 @@ export default function PdfViewerWithHighlights({
     const ro = new ResizeObserver((entries) => {
       for (const e of entries) {
         const w = Math.max(320, Math.min(900, e.contentRect.width));
+        console.log("[PdfViewer resize-tick]", iid, w);
         lastObserved = w;
         if (stableTimer !== null) window.clearTimeout(stableTimer);
         stableTimer = window.setTimeout(() => {
+          console.log("[PdfViewer width-settle]", iid, lastObserved);
           setWidth(lastObserved);
           stableTimer = null;
         }, 220);
@@ -541,7 +559,16 @@ export default function PdfViewerWithHighlights({
                 width={width}
                 renderAnnotationLayer={false}
                 renderTextLayer
-                onRenderSuccess={() => setPageReady(true)}
+                onRenderSuccess={() => {
+                  console.log("[PdfViewer page-render-success]", iid, {
+                    page,
+                    width,
+                    canvasCount: document.querySelectorAll(
+                      ".react-pdf__Page canvas",
+                    ).length,
+                  });
+                  setPageReady(true);
+                }}
                 onRenderTextLayerSuccess={handleTextLayerReady}
               />
               )}
