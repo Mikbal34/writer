@@ -15,6 +15,13 @@ type RouteContext = { params: Promise<{ id: string; subsectionId: string }> }
 interface RagChunk {
   content: string
   pageNumber: number | null
+  /** Printed page label from the book (e.g. "49" when pageNumber is
+   *  64 because of front matter). Citation rendering prefers this so
+   *  the LLM's footnotes match what the reader sees on the printed
+   *  page. NULL for SourceChunk rows (Source pipeline doesn't track
+   *  labels yet) or library chunks created before the pageLabel
+   *  pipeline / lacking /PageLabels in the source PDF. */
+  pdfPageLabel: string | null
   sourceTitle: string
 }
 
@@ -75,10 +82,14 @@ async function fetchRagChunks(
     // Project sources (proje-specific PDF chunks). Narrow to sources mapped
     // to this subsection when we have mappings; else fall back to project
     // scope so a subsection with no mappings still has something to cite.
+    // SourceChunk doesn't track pdfPageLabel yet (Source pipeline is
+    // separate from the library), so we synthesize a NULL column to
+    // keep the row shape aligned with libraryChunks downstream.
     const projectChunks = hasSubsectionScope && mappedSourceIds.length > 0
-      ? await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; sourceTitle: string }>>`
+      ? await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; pdfPageLabel: string | null; sourceTitle: string }>>`
           SELECT sc.content,
                  sc."pageNumber",
+                 NULL::text AS "pdfPageLabel",
                  COALESCE(b.title, s.filename) as "sourceTitle"
           FROM "SourceChunk" sc
           JOIN "Source" s ON sc."sourceId" = s.id
@@ -90,9 +101,10 @@ async function fetchRagChunks(
         `.catch(() => [])
       : hasSubsectionScope
       ? [] // subsection has mappings but none of them have uploaded Source files
-      : await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; sourceTitle: string }>>`
+      : await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; pdfPageLabel: string | null; sourceTitle: string }>>`
           SELECT sc.content,
                  sc."pageNumber",
+                 NULL::text AS "pdfPageLabel",
                  COALESCE(b.title, s.filename) as "sourceTitle"
           FROM "SourceChunk" sc
           JOIN "Source" s ON sc."sourceId" = s.id
@@ -106,9 +118,10 @@ async function fetchRagChunks(
     // Library entries linked via Bibliography. Same logic: narrow to those
     // mapped to this subsection; fall back to project scope otherwise.
     const libraryChunks = hasSubsectionScope && mappedLibraryEntryIds.length > 0
-      ? await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; sourceTitle: string }>>`
+      ? await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; pdfPageLabel: string | null; sourceTitle: string }>>`
           SELECT lc.content,
                  lc."pageNumber",
+                 lc."pdfPageLabel",
                  le.title as "sourceTitle"
           FROM "LibraryChunk" lc
           JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
@@ -119,9 +132,10 @@ async function fetchRagChunks(
         `.catch(() => [])
       : hasSubsectionScope
       ? []
-      : await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; sourceTitle: string }>>`
+      : await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; pdfPageLabel: string | null; sourceTitle: string }>>`
           SELECT lc.content,
                  lc."pageNumber",
+                 lc."pdfPageLabel",
                  le.title as "sourceTitle"
           FROM "LibraryChunk" lc
           JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
@@ -194,11 +208,15 @@ async function fetchRagChunks(
       ...projectChunks.map((c) => ({
         content: c.content,
         pageNumber: c.pageNumber,
+        // SourceChunk table doesn't carry pdfPageLabel; the fallback
+        // ORM path can only return what the schema knows about.
+        pdfPageLabel: null,
         sourceTitle: c.bibliography?.title ?? c.source.filename,
       })),
       ...libraryChunks.map((c) => ({
         content: c.content,
         pageNumber: c.pageNumber,
+        pdfPageLabel: c.pdfPageLabel,
         sourceTitle: c.libraryEntry.title,
       })),
     ]
@@ -258,10 +276,14 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const ragBlock =
       ragChunks.length > 0
         ? `\n\nRELEVANT SOURCE EXCERPTS:\n${ragChunks
-            .map(
-              (c, i) =>
-                `[Excerpt ${i + 1}] Source: "${c.sourceTitle}" (p.${c.pageNumber ?? '?'})\n${c.content}`
-            )
+            .map((c, i) => {
+              // Prefer the printed book page label so the LLM's
+              // footnote text matches the page a reader would find
+              // by flipping through the physical book. Fall back to
+              // the PDF index when the source lacks /PageLabels.
+              const pageDisplay = c.pdfPageLabel ?? c.pageNumber ?? '?'
+              return `[Excerpt ${i + 1}] Source: "${c.sourceTitle}" (p.${pageDisplay})\n${c.content}`
+            })
             .join('\n\n')}`
         : ''
 
