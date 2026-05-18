@@ -25,7 +25,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -184,54 +183,32 @@ export default function PdfViewerWithHighlights({
     }
   }, [targetPage]);
 
-  // Track container width for the responsive react-pdf Page. The
-  // tricky part is the panel's slide-in animation: width goes 0 →
-  // some intermediate → final over ~250ms, and every observed value
-  // would trigger a Page remount. We mitigate two ways:
-  //   1. useLayoutEffect reads the *post-animation* width by waiting
-  //      one frame, so the first <Page> mount happens at the real
-  //      final width, not the cramped intermediate.
-  //   2. ResizeObserver still listens for later resizes (user drags
-  //      window, etc.) but debounces by 150ms so a burst of changes
-  //      collapses into one remount.
-  useLayoutEffect(() => {
-    if (!containerRef.current) return;
-    let raf1: number | null = null;
-    let raf2: number | null = null;
-    // Two RAFs: first lets the panel's slide-in transition begin
-    // applying, second reads the width after layout settles. Without
-    // this we read a width of 0 or the pre-animation value.
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        if (!containerRef.current) return;
-        const w = Math.max(
-          320,
-          Math.min(900, containerRef.current.clientWidth),
-        );
-        if (w > 0) setWidth(w);
-      });
-    });
-    return () => {
-      if (raf1 !== null) cancelAnimationFrame(raf1);
-      if (raf2 !== null) cancelAnimationFrame(raf2);
-    };
-  }, []);
+  // Width-settle ResizeObserver. The panel slides in over ~250ms and
+  // the container width keeps changing every frame during the
+  // animation. If we react to each value, pdfjs paints the page at
+  // the wrong width, then paints again, leaving two canvases stacked
+  // (the visible double-render). Instead: every observed change
+  // resets a 220ms timer; setWidth only fires once the width has
+  // been stable for the full window. First <Page> render happens
+  // after the animation completes, on the real final width.
   useEffect(() => {
     if (!containerRef.current) return;
-    let pending: number | null = null;
+    let stableTimer: number | null = null;
+    let lastObserved = 0;
     const ro = new ResizeObserver((entries) => {
       for (const e of entries) {
         const w = Math.max(320, Math.min(900, e.contentRect.width));
-        if (pending !== null) window.clearTimeout(pending);
-        pending = window.setTimeout(() => {
-          setWidth(w);
-          pending = null;
-        }, 150);
+        lastObserved = w;
+        if (stableTimer !== null) window.clearTimeout(stableTimer);
+        stableTimer = window.setTimeout(() => {
+          setWidth(lastObserved);
+          stableTimer = null;
+        }, 220);
       }
     });
     ro.observe(containerRef.current);
     return () => {
-      if (pending !== null) window.clearTimeout(pending);
+      if (stableTimer !== null) window.clearTimeout(stableTimer);
       ro.disconnect();
     };
   }, []);
