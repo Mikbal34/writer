@@ -3,33 +3,39 @@
 /**
  * PDF viewer with text-selection highlighting.
  *
- * Wraps react-pdf's <Page> with `renderTextLayer={true}` so the user
- * can select text. On mouseup we read window.getSelection(), measure
- * each Range's bounding rects relative to the page container, and
- * normalise to 0-1 page-relative units — that keeps overlays
- * zoom-independent.
+ * Drives pdfjs-dist directly (no react-pdf) so we own the render
+ * lifecycle. The previous implementation went through react-pdf's
+ * <Page>, which doesn't expose pdfjs's RenderTask.cancel() — a width
+ * change during a parent animation would leave the old canvas paint
+ * in flight while a new one started, stacking two canvases in the DOM.
  *
- * Saved highlights are rendered as absolutely-positioned yellow
- * rectangles inside the page container. The text-layer behind them
- * remains selectable so the user can re-quote.
+ * Here there is exactly one <canvas> element and one text-layer
+ * container. Every page or width change cancels the in-flight render
+ * task and text-layer build before kicking off the new one, so the
+ * "same page rendered twice" symptom is impossible by construction.
  *
- * A small "Highlight" / "Highlight + Not" floating popup appears next
- * to the selection while text is selected.
- *
- * Page navigation is built-in: prev / next / jump. The viewer is
- * intentionally one-page-at-a-time — the citation flow shows a
- * specific page anyway, and pagination keeps memory predictable for
- * the 800+ page books in the corpus.
+ * Features preserved verbatim from the prior react-pdf-based version:
+ *   - text-selection → save highlight (window.getSelection + page-
+ *     relative [0,1] rangeRects)
+ *   - saved-highlights overlay (absolute %-positioned divs)
+ *   - AI-quote gold overlay (chatQuote prop → anchor-phrase scan of
+ *     text-layer spans, paint matching rects)
+ *   - page navigation (prev/next/jump input, external targetPage)
+ *   - error states + /pdf-status sidecar fetch (PdfErrorState)
  */
 
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
-import { Document, Page, pdfjs } from "react-pdf";
+import * as pdfjs from "pdfjs-dist";
+import type {
+  PDFDocumentProxy,
+  PDFDocumentLoadingTask,
+  RenderTask,
+} from "pdfjs-dist";
 import {
   Loader2,
   AlertTriangle,
@@ -86,10 +92,13 @@ interface SelectionPopup {
   anchorY: number;
 }
 
-// Counter so each viewer instance gets a stable id across renders —
-// helps tell "one instance re-rendering" from "two instances mounted"
-// in the dev console.
-let __viewerInstanceCounter = 0;
+type Status = "idle" | "loading-doc" | "loading-page" | "ready" | "error";
+
+const isCancelled = (err: unknown): boolean =>
+  !!err &&
+  typeof err === "object" &&
+  "name" in err &&
+  (err as { name?: string }).name === "RenderingCancelledException";
 
 export default function PdfViewerWithHighlights({
   entryId,
@@ -98,31 +107,29 @@ export default function PdfViewerWithHighlights({
   chatQuote,
   onHighlightsChanged,
 }: PdfViewerWithHighlightsProps) {
-  const instanceIdRef = useRef<string | null>(null);
-  if (instanceIdRef.current === null) {
-    __viewerInstanceCounter += 1;
-    instanceIdRef.current = `viewer-${__viewerInstanceCounter}`;
-  }
-  const iid = instanceIdRef.current;
-  useEffect(() => {
-    console.log("[PdfViewer mount]", iid, { entryId, volumeId });
-    return () => console.log("[PdfViewer unmount]", iid);
-  }, [iid, entryId, volumeId]);
-
   const fileUrl = volumeId
     ? `/api/library/${entryId}/pdf?volume=${encodeURIComponent(volumeId)}`
     : `/api/library/${entryId}/pdf`;
-  // pdfjs spawns a Web Worker that fetches the PDF bytes; by default
-  // its request omits cookies, so our auth-gated /pdf route returns
-  // 401 and Document.onLoadError fires before any /pdf entry shows up
-  // in the network panel. Wrapping the url in an object lets us flip
-  // withCredentials so the session cookie rides along.
-  const fileSpec = useMemo(
-    () => ({ url: fileUrl, withCredentials: true as const }),
-    [fileUrl],
-  );
 
-  const [error, setError] = useState<string | null>(null);
+  // ── DOM refs ────────────────────────────────────────────────────
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pageWrapRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
+
+  // ── pdfjs handle refs (not state — never re-render on change) ───
+  const docRef = useRef<PDFDocumentProxy | null>(null);
+  const loadingTaskRef = useRef<PDFDocumentLoadingTask | null>(null);
+  const renderTaskRef = useRef<RenderTask | null>(null);
+  const textLayerInstanceRef = useRef<{ cancel: () => void } | null>(null);
+  // Monotonic counter — every render attempt bumps this and each async
+  // stage checks `if (token !== renderTokenRef.current) return;` so a
+  // superseded promise can never write into the DOM.
+  const renderTokenRef = useRef(0);
+
+  // ── State ───────────────────────────────────────────────────────
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [errorContext, setErrorContext] = useState<{
     status: string;
     hasFile: boolean;
@@ -130,40 +137,274 @@ export default function PdfViewerWithHighlights({
   } | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
-  // Start at 0 so the viewer refuses to mount <Page> until the
-  // container has been measured. With a hardcoded default like 640
-  // pdfjs would render once at the wrong width during the panel's
-  // slide-in animation, then again at the real width once
-  // ResizeObserver fires — both canvases ended up in the DOM,
-  // producing the "same page rendered twice" symptom.
+  // 0 until the container is measured — Effect C refuses to render
+  // before then, eliminating the "first render at wrong width" race.
   const [width, setWidth] = useState(0);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [selection, setSelection] = useState<SelectionPopup | null>(null);
   const [creating, setCreating] = useState(false);
-  // Rects (page-relative 0-1) of the AI-quoted passage on the current
-  // page. Computed by scanning the rendered text layer for the quote's
-  // anchor phrase; null when no match (different page, OCR mismatch,
-  // span boundaries broke the substring, etc.).
   const [chatQuoteRects, setChatQuoteRects] = useState<RangeRect[] | null>(
     null,
   );
-  // Gates the visibility of the page wrapper. pdfjs writes the canvas
-  // asynchronously and the React-level remount can complete before
-  // pdfjs has finished painting, leaving the previous page's pixels
-  // briefly visible underneath the new one. We hide the wrapper on
-  // every page/width change and reveal it only when onRenderSuccess
-  // fires for the new page.
-  const [pageReady, setPageReady] = useState(false);
-  useEffect(() => {
-    setPageReady(false);
-  }, [page, width]);
+  // Bumped every time the text layer finishes rendering for the
+  // current page. The chat-quote scan effect uses this as a trigger so
+  // it knows when DOM spans are queryable.
+  const [textLayerVersion, setTextLayerVersion] = useState(0);
+  // Doc loaded flag — keeps Effect C off until Effect B has assigned
+  // docRef.current and we know numPages.
+  const [docReady, setDocReady] = useState(false);
 
-  // When the PDF document fails to load (404, network, parse error), ask
-  // the status sidecar why so we can show the user a meaningful message
-  // ("PDF yüklenmemiş" vs "işleniyor" vs "başarısız") instead of a
-  // generic "load failed".
+  // ── Effect: width settle ────────────────────────────────────────
+  // ResizeObserver still has 220ms settle; not a correctness gate
+  // anymore (cancellation is) but cuts wasted work during animations.
   useEffect(() => {
-    if (!error) {
+    if (!containerRef.current) return;
+    let timer: number | null = null;
+    let last = 0;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        const w = Math.max(320, Math.min(900, e.contentRect.width));
+        last = w;
+        if (timer !== null) window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          setWidth(last);
+          timer = null;
+        }, 220);
+      }
+    });
+    ro.observe(containerRef.current);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      ro.disconnect();
+    };
+  }, []);
+
+  // ── Effect: load document when fileUrl changes ──────────────────
+  useEffect(() => {
+    let cancelled = false;
+    setStatus("loading-doc");
+    setErrorMsg(null);
+    setDocReady(false);
+    setNumPages(0);
+    setPage((prev) => prev);
+    // Tear down any prior doc — we are about to replace it.
+    if (renderTaskRef.current) {
+      try {
+        renderTaskRef.current.cancel();
+      } catch {
+        /* ignore */
+      }
+      renderTaskRef.current = null;
+    }
+    if (textLayerInstanceRef.current) {
+      try {
+        textLayerInstanceRef.current.cancel();
+      } catch {
+        /* ignore */
+      }
+      textLayerInstanceRef.current = null;
+    }
+    if (loadingTaskRef.current) {
+      loadingTaskRef.current.destroy().catch(() => {});
+      loadingTaskRef.current = null;
+    }
+    if (docRef.current) {
+      docRef.current.destroy().catch(() => {});
+      docRef.current = null;
+    }
+
+    const task = pdfjs.getDocument({
+      url: fileUrl,
+      withCredentials: true,
+      isEvalSupported: false,
+    });
+    loadingTaskRef.current = task;
+
+    task.promise
+      .then((doc) => {
+        if (cancelled) {
+          doc.destroy().catch(() => {});
+          return;
+        }
+        docRef.current = doc;
+        setNumPages(doc.numPages);
+        setDocReady(true);
+      })
+      .catch((err: unknown) => {
+        if (cancelled || isCancelled(err)) return;
+        console.error("[pdfjs] Document load failed", {
+          entryId,
+          volumeId,
+          fileUrl,
+          err,
+        });
+        const e = err as { name?: string; message?: string } | undefined;
+        setErrorMsg(
+          e?.name
+            ? `${e.name}: ${e.message ?? ""}`
+            : e?.message ?? "load failed",
+        );
+        setStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+      if (loadingTaskRef.current === task) {
+        task.destroy().catch(() => {});
+        loadingTaskRef.current = null;
+      }
+    };
+  }, [fileUrl, entryId, volumeId]);
+
+  // ── Effect: render page when (doc, page, width) change ─────────
+  // The whole point of the rewrite. Cancel any in-flight render task
+  // and text-layer build before starting a new one. Token counter
+  // makes async writes safe even if cancellation has latency.
+  useEffect(() => {
+    if (!docReady || width <= 0) return;
+    const doc = docRef.current;
+    if (!doc) return;
+    const token = ++renderTokenRef.current;
+
+    // Cancel anything in flight from a previous render.
+    if (renderTaskRef.current) {
+      try {
+        renderTaskRef.current.cancel();
+      } catch {
+        /* ignore */
+      }
+      renderTaskRef.current = null;
+    }
+    if (textLayerInstanceRef.current) {
+      try {
+        textLayerInstanceRef.current.cancel();
+      } catch {
+        /* ignore */
+      }
+      textLayerInstanceRef.current = null;
+    }
+    if (textLayerRef.current) {
+      textLayerRef.current.replaceChildren();
+    }
+    setChatQuoteRects(null);
+    setStatus("loading-page");
+
+    let unmounted = false;
+    (async () => {
+      try {
+        const pageProxy = await doc.getPage(page);
+        if (unmounted || token !== renderTokenRef.current) {
+          pageProxy.cleanup();
+          return;
+        }
+        const baseViewport = pageProxy.getViewport({ scale: 1 });
+        const scale = width / baseViewport.width;
+        const viewport = pageProxy.getViewport({ scale });
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+        const canvas = canvasRef.current;
+        const textLayerContainer = textLayerRef.current;
+        const pageWrap = pageWrapRef.current;
+        if (!canvas || !textLayerContainer || !pageWrap) return;
+
+        // Match canvas backing store to dpr but keep CSS size at the
+        // viewport pixels — otherwise retina canvases are blurry.
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        textLayerContainer.style.width = `${viewport.width}px`;
+        textLayerContainer.style.height = `${viewport.height}px`;
+        pageWrap.style.width = `${viewport.width}px`;
+        pageWrap.style.height = `${viewport.height}px`;
+
+        const renderTask = pageProxy.render({
+          canvas,
+          viewport,
+          transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
+        });
+        renderTaskRef.current = renderTask;
+        try {
+          await renderTask.promise;
+        } catch (err: unknown) {
+          if (isCancelled(err)) return;
+          throw err;
+        }
+        if (unmounted || token !== renderTokenRef.current) return;
+
+        // Build text layer. pdfjs's TextLayer class produces span-
+        // based DOM identical to what react-pdf was wrapping, so the
+        // mouseup/selection math and findChatQuoteRects work unchanged.
+        const textContentSource = pageProxy.streamTextContent({
+          includeMarkedContent: false,
+          disableNormalization: false,
+        });
+        const TextLayerCtor = (
+          pdfjs as unknown as {
+            TextLayer: new (params: {
+              textContentSource: unknown;
+              container: HTMLElement;
+              viewport: unknown;
+            }) => { render: () => Promise<unknown>; cancel: () => void };
+          }
+        ).TextLayer;
+        const tl = new TextLayerCtor({
+          textContentSource,
+          container: textLayerContainer,
+          viewport,
+        });
+        textLayerInstanceRef.current = tl;
+        try {
+          await tl.render();
+        } catch (err: unknown) {
+          if (isCancelled(err)) return;
+          throw err;
+        }
+        if (unmounted || token !== renderTokenRef.current) return;
+
+        setStatus("ready");
+        setTextLayerVersion((v) => v + 1);
+      } catch (err: unknown) {
+        if (unmounted || token !== renderTokenRef.current) return;
+        if (isCancelled(err)) return;
+        console.error("[pdfjs] Page render failed", err);
+        const e = err as { name?: string; message?: string } | undefined;
+        setErrorMsg(
+          e?.name
+            ? `${e.name}: ${e.message ?? ""}`
+            : e?.message ?? "render failed",
+        );
+        setStatus("error");
+      }
+    })();
+
+    return () => {
+      unmounted = true;
+      // Token bump on next run handles late callbacks; cancelling
+      // here just halts pdfjs work earlier.
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {
+          /* ignore */
+        }
+      }
+      if (textLayerInstanceRef.current) {
+        try {
+          textLayerInstanceRef.current.cancel();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+  }, [docReady, page, width]);
+
+  // ── Effect: pdf-status sidecar on error ─────────────────────────
+  // Same shape as the prior implementation: when load/render fails,
+  // ask the server why so we can show "PDF işleniyor" vs "başarısız"
+  // vs "yüklenmemiş" instead of a generic failure.
+  useEffect(() => {
+    if (status !== "error") {
       setErrorContext(null);
       return;
     }
@@ -187,52 +428,16 @@ export default function PdfViewerWithHighlights({
     return () => {
       cancelled = true;
     };
-  }, [error, entryId, volumeId]);
+  }, [status, entryId, volumeId]);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const pageRef = useRef<HTMLDivElement>(null);
-
-  // Honour external page jumps once per change.
+  // ── Effect: honour external page-jump prop ──────────────────────
   useEffect(() => {
     if (typeof targetPage === "number" && targetPage > 0) {
       setPage(targetPage);
     }
   }, [targetPage]);
 
-  // Width-settle ResizeObserver. The panel slides in over ~250ms and
-  // the container width keeps changing every frame during the
-  // animation. If we react to each value, pdfjs paints the page at
-  // the wrong width, then paints again, leaving two canvases stacked
-  // (the visible double-render). Instead: every observed change
-  // resets a 220ms timer; setWidth only fires once the width has
-  // been stable for the full window. First <Page> render happens
-  // after the animation completes, on the real final width.
-  useEffect(() => {
-    if (!containerRef.current) return;
-    let stableTimer: number | null = null;
-    let lastObserved = 0;
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) {
-        const w = Math.max(320, Math.min(900, e.contentRect.width));
-        console.log("[PdfViewer resize-tick]", iid, w);
-        lastObserved = w;
-        if (stableTimer !== null) window.clearTimeout(stableTimer);
-        stableTimer = window.setTimeout(() => {
-          console.log("[PdfViewer width-settle]", iid, lastObserved);
-          setWidth(lastObserved);
-          stableTimer = null;
-        }, 220);
-      }
-    });
-    ro.observe(containerRef.current);
-    return () => {
-      if (stableTimer !== null) window.clearTimeout(stableTimer);
-      ro.disconnect();
-    };
-  }, []);
-
-  // Load highlights for the current entry (all pages — small payload;
-  // simpler than paginating, given users rarely have hundreds).
+  // ── Effect: load highlights for the entry ───────────────────────
   const loadHighlights = useCallback(async () => {
     try {
       const res = await fetch(`/api/library/entries/${entryId}/highlights`);
@@ -248,12 +453,9 @@ export default function PdfViewerWithHighlights({
     loadHighlights();
   }, [loadHighlights]);
 
-  // Compute selection rects relative to the rendered page DOM. We grab
-  // the page container's bounding box and divide; the SelectionPopup is
-  // then anchored to the end of the selection so it doesn't cover what
-  // the user just chose.
+  // ── Mouse-up → selection rect math (unchanged) ──────────────────
   function handleMouseUp() {
-    if (!pageRef.current) return;
+    if (!pageWrapRef.current) return;
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
       setSelection(null);
@@ -264,11 +466,9 @@ export default function PdfViewerWithHighlights({
       setSelection(null);
       return;
     }
-    const pageRect = pageRef.current.getBoundingClientRect();
+    const pageRect = pageWrapRef.current.getBoundingClientRect();
     if (pageRect.width === 0 || pageRect.height === 0) return;
 
-    // Some browsers report duplicate rects for a single selection on
-    // the same line; dedupe by stringifying.
     const seen = new Set<string>();
     const rects: RangeRect[] = [];
     let lastRectEnd: { x: number; y: number } | null = null;
@@ -286,8 +486,8 @@ export default function PdfViewerWithHighlights({
         seen.add(key);
         rects.push({ x, y, w, h });
         lastRectEnd = {
-          x: (r.right - pageRect.left),
-          y: (r.bottom - pageRect.top),
+          x: r.right - pageRect.left,
+          y: r.bottom - pageRect.top,
         };
       }
     }
@@ -303,24 +503,16 @@ export default function PdfViewerWithHighlights({
     });
   }
 
-  // ── AI-quote overlay ────────────────────────────────────────────
-  // Scans the rendered text layer for the citation's anchor phrase
-  // and returns page-relative rects for each matching span. Runs on
-  // text-layer ready (per page render) and whenever chatQuote changes.
+  // ── findChatQuoteRects: same algorithm, now queries textLayerRef ─
   const findChatQuoteRects = useCallback(
     (quote: string): RangeRect[] | null => {
-      if (!pageRef.current) return null;
-      const textLayer = pageRef.current.querySelector(
-        ".react-pdf__Page__textContent",
-      );
-      if (!textLayer) return null;
+      const textLayer = textLayerRef.current;
+      const pageWrap = pageWrapRef.current;
+      if (!textLayer || !pageWrap) return null;
       const norm = (s: string) =>
         s.toLowerCase().replace(/\s+/g, " ").trim();
       const normQuote = norm(quote);
       if (normQuote.length < 12) return null;
-      // Anchor: first sentence (if short) or first ~80 chars. Keeps
-      // the substring search forgiving when later sentences drift
-      // from what the AI quoted (paraphrase, OCR noise).
       const sentenceCut = normQuote.search(/[.!?؟]\s/);
       const anchorLen =
         sentenceCut > 12 && sentenceCut < 120
@@ -331,9 +523,6 @@ export default function PdfViewerWithHighlights({
       const rawSpans = Array.from(
         textLayer.querySelectorAll("span"),
       ) as HTMLElement[];
-      // Build a single normalized string from span textContents and
-      // remember each span's [start, end) offset in it, so we can map
-      // a substring match back to the spans whose rects to paint.
       let combined = "";
       const spanOffsets: Array<{
         span: HTMLElement;
@@ -352,7 +541,7 @@ export default function PdfViewerWithHighlights({
       if (idx === -1) return null;
       const matchEnd = idx + anchor.length;
 
-      const pageRect = pageRef.current.getBoundingClientRect();
+      const pageRect = pageWrap.getBoundingClientRect();
       if (pageRect.width === 0 || pageRect.height === 0) return null;
       const seen = new Set<string>();
       const rects: RangeRect[] = [];
@@ -375,21 +564,18 @@ export default function PdfViewerWithHighlights({
     [],
   );
 
-  const handleTextLayerReady = useCallback(() => {
+  // ── Effect: scan chat quote when text layer is ready or quote
+  //    changes mid-life (clicking a different citation on same page) ─
+  useEffect(() => {
+    if (status !== "ready") return;
     if (!chatQuote) {
       setChatQuoteRects(null);
       return;
     }
     setChatQuoteRects(findChatQuoteRects(chatQuote));
-  }, [chatQuote, findChatQuoteRects]);
+  }, [chatQuote, textLayerVersion, status, findChatQuoteRects]);
 
-  // Clear stale overlay rects when the user navigates pages or the
-  // citation changes — recompute happens once the next text layer is
-  // rendered (handleTextLayerReady).
-  useEffect(() => {
-    setChatQuoteRects(null);
-  }, [page, chatQuote]);
-
+  // ── Highlight save / delete ─────────────────────────────────────
   async function saveHighlight(opts: { withNote: boolean }) {
     if (!selection) return;
     setCreating(true);
@@ -412,7 +598,11 @@ export default function PdfViewerWithHighlights({
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error ?? "Kaydedilemedi");
       }
-      toast.success(opts.withNote ? "Highlight + not kaydedildi." : "Highlight kaydedildi.");
+      toast.success(
+        opts.withNote
+          ? "Highlight + not kaydedildi."
+          : "Highlight kaydedildi.",
+      );
       window.getSelection()?.removeAllRanges();
       setSelection(null);
       await loadHighlights();
@@ -440,9 +630,41 @@ export default function PdfViewerWithHighlights({
   }
 
   const pageHighlights = highlights.filter((h) => h.pageNumber === page);
+  const isError = status === "error";
+  const isLoadingDoc = status === "loading-doc";
+  const isLoadingPage = status === "loading-page";
 
   return (
     <div ref={containerRef} className="w-full flex flex-col gap-2">
+      {/* Inline CSS for the pdfjs text layer — picks the rules we need
+          from pdfjs-dist/web/pdf_viewer.css without pulling in the
+          whole stylesheet. Marked global via tailwind-friendly
+          arbitrary selectors. */}
+      <style jsx global>{`
+        .pdf-text-layer {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          opacity: 1;
+          line-height: 1;
+          text-size-adjust: none;
+          forced-color-adjust: none;
+          transform-origin: 0 0;
+          z-index: 2;
+        }
+        .pdf-text-layer span,
+        .pdf-text-layer br {
+          color: transparent;
+          position: absolute;
+          white-space: pre;
+          cursor: text;
+          transform-origin: 0% 0%;
+        }
+        .pdf-text-layer ::selection {
+          background: rgba(0, 0, 255, 0.25);
+        }
+      `}</style>
+
       {/* Toolbar */}
       <div className="flex items-center justify-between px-2">
         <div className="flex items-center gap-1">
@@ -484,99 +706,50 @@ export default function PdfViewerWithHighlights({
         </span>
       </div>
 
-      {/* PDF page */}
-      <div className="relative w-full bg-page/40 border border-sandy/50 rounded-sm flex justify-center overflow-hidden">
-        {/* Spinner shown while the new page is mid-render — wrapper
-            below is held at opacity 0 until pdfjs finishes painting,
-            so without this the user would briefly see an empty box
-            during page navigation. */}
-        {!error && !pageReady && (
-          <div className="absolute inset-0 flex items-center justify-center gap-2 text-ink-light font-ui text-sm pointer-events-none">
+      {/* PDF page area */}
+      <div className="relative w-full bg-page/40 border border-sandy/50 rounded-sm flex justify-center overflow-hidden min-h-[200px]">
+        {isError ? (
+          <PdfErrorState
+            entryId={entryId}
+            context={errorContext}
+            loadError={errorMsg}
+          />
+        ) : isLoadingDoc ? (
+          <div className="flex items-center gap-2 py-10 text-ink-light font-ui text-sm">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Sayfa yükleniyor…
+            PDF yükleniyor...
           </div>
-        )}
-        {error ? (
-          <PdfErrorState entryId={entryId} context={errorContext} loadError={error} />
         ) : (
-          <Document
-            file={fileSpec}
-            onLoadSuccess={(d) => setNumPages(d.numPages)}
-            onLoadError={(err) => {
-              // Surface the exact pdfjs error to the console so failures
-              // (worker init, 401, malformed PDF, etc.) are diagnosable
-              // from a user report without re-deploying instrumentation.
-              console.error("[pdfjs] Document load failed", {
-                entryId,
-                volumeId,
-                fileUrl,
-                name: err?.name,
-                message: err?.message,
-                err,
-              });
-              setError(
-                err?.name ? `${err.name}: ${err.message ?? ""}` : err?.message ?? "load failed",
-              );
-            }}
-            loading={
-              <div className="flex items-center gap-2 py-10 text-ink-light font-ui text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                PDF yükleniyor...
+          <>
+            {/* Small overlay spinner during page transitions. The
+                canvas underneath still shows the previous page until
+                the new render commits — one canvas, one swap, no
+                blank flash. */}
+            {isLoadingPage && (
+              <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded-sm bg-white/85 backdrop-blur text-ink-light font-ui text-[11px] pointer-events-none">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Sayfa yükleniyor…
               </div>
-            }
-            error={
-              <div className="flex items-center gap-2 py-10 text-destructive font-ui text-sm">
-                <AlertTriangle className="h-4 w-4" />
-                PDF yüklenemedi
-              </div>
-            }
-          >
+            )}
             <div
-              ref={pageRef}
-              // key on the wrapper (not just Page) forces React to
-              // destroy and recreate the entire inline-block subtree
-              // when page or width changes. pdfjs writes canvas
-              // asynchronously, so even with Page-level key the old
-              // canvas can linger long enough to overlap the new one;
-              // wrapper-level key guarantees the old DOM (canvas +
-              // text layer + highlight overlays) is gone before the
-              // new render begins.
-              key={`${page}-${width}`}
-              className="relative inline-block overflow-hidden"
-              // Held at opacity 0 until pdfjs reports the new canvas
-              // is painted (onRenderSuccess). Eliminates the half-
-              // second window where the old page's pixels show under
-              // the new wrapper after page navigation.
-              style={{
-                opacity: pageReady ? 1 : 0,
-                transition: "opacity 80ms ease-out",
-              }}
+              ref={pageWrapRef}
+              className="relative inline-block"
               onMouseUp={handleMouseUp}
             >
-              {width > 0 && (
-              <Page
-                pageNumber={page}
-                width={width}
-                renderAnnotationLayer={false}
-                renderTextLayer
-                onRenderSuccess={() => {
-                  console.log("[PdfViewer page-render-success]", iid, {
-                    page,
-                    width,
-                    canvasCount: document.querySelectorAll(
-                      ".react-pdf__Page canvas",
-                    ).length,
-                  });
-                  setPageReady(true);
+              {/* One stable canvas, never replaced. pdfjs writes
+                  pixels into this directly via canvasRef. */}
+              <canvas
+                ref={canvasRef}
+                style={{
+                  display: "block",
+                  position: "relative",
+                  zIndex: 0,
                 }}
-                onRenderTextLayerSuccess={handleTextLayerReady}
               />
-              )}
               {/* AI-citation overlay — translucent gold rectangles
-                  over the quoted passage so the reader can spot
-                  exactly which sentences the chat pulled from. Sits
-                  under saved highlights z-order-wise so user-saved
-                  yellows stay dominant. */}
+                  over the quoted passage. pointer-events:none so
+                  selection still works through it. z-index between
+                  canvas (0) and text layer (2). */}
               {chatQuoteRects?.map((r, i) => (
                 <div
                   key={`chat-quote-${i}`}
@@ -590,11 +763,11 @@ export default function PdfViewerWithHighlights({
                     opacity: 0.32,
                     pointerEvents: "none",
                     borderRadius: 1,
+                    zIndex: 1,
                   }}
                 />
               ))}
-              {/* Saved highlights overlay. Each rect is one absolutely-
-                  positioned div sized in % so it auto-tracks page width. */}
+              {/* Saved highlights overlay. */}
               {pageHighlights.map((h) => {
                 const rects = Array.isArray(h.rangeRects)
                   ? (h.rangeRects as RangeRect[])
@@ -612,10 +785,16 @@ export default function PdfViewerWithHighlights({
                       backgroundColor: h.color,
                       opacity: 0.35,
                       pointerEvents: "none",
+                      zIndex: 1,
                     }}
                   />
                 ));
               })}
+              {/* Text layer — pdfjs's TextLayer class populates this
+                  container with absolutely-positioned spans. Sits on
+                  top so window.getSelection picks up its transparent
+                  text rather than the canvas pixels. */}
+              <div ref={textLayerRef} className="pdf-text-layer" />
               {/* Selection popup */}
               {selection && (
                 <div
@@ -623,7 +802,7 @@ export default function PdfViewerWithHighlights({
                   style={{
                     left: Math.min(
                       Math.max(0, selection.anchorX),
-                      width - 200,
+                      Math.max(0, width - 200),
                     ),
                     top: Math.max(0, selection.anchorY + 6),
                   }}
@@ -650,12 +829,11 @@ export default function PdfViewerWithHighlights({
                 </div>
               )}
             </div>
-          </Document>
+          </>
         )}
       </div>
 
-      {/* Per-page highlight list — small handle to delete saved marks
-          without rebuilding the floating popup. */}
+      {/* Per-page highlight list */}
       {pageHighlights.length > 0 && (
         <div className="space-y-1 px-1 pt-1">
           {pageHighlights.map((h) => (
@@ -697,13 +875,8 @@ function PdfErrorState({
     hasFile: boolean;
     error: string | null;
   } | null;
-  /** Raw pdfjs error message (Name + message). Surfaced under the
-   *  friendly heading so user reports can include the exact failure
-   *  mode (401 vs InvalidPDFException vs worker init failure). */
   loadError: string | null;
 }) {
-  // No context yet → show a soft loading hint while the status fetch
-  // resolves so the panel doesn't flash a wrong message.
   if (!context) {
     return (
       <div className="flex items-center gap-2 py-10 text-ink-light font-ui text-sm">
@@ -755,15 +928,11 @@ function PdfErrorState({
     );
   }
 
-  // status === "none" / "ready" but no file / unknown → most common case:
-  // user added the bibliographic entry but never uploaded a PDF.
   return (
     <div className="flex flex-col items-center gap-2 py-10 px-6 text-center font-ui text-sm max-w-[440px]">
       <AlertTriangle className="h-5 w-5 text-ink-muted" />
       <div className="font-display italic text-[15px] text-ink">
-        {hasFile
-          ? "PDF okunamadı"
-          : "Bu kaynak için PDF yüklenmemiş"}
+        {hasFile ? "PDF okunamadı" : "Bu kaynak için PDF yüklenmemiş"}
       </div>
       <div className="text-[12.5px] text-ink-light">
         {hasFile
