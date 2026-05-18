@@ -27,7 +27,7 @@ import { extractPdfPages } from '@/lib/pdf-extract'
 import { chunkByPage } from '@/lib/chunker'
 import {
   buildEmbeddingText,
-  contextualizeChunks,
+  contextualizeChunksBatched,
 } from '@/lib/contextual-chunks'
 import { generateBookSummary } from '@/lib/book-summary'
 import { EntryType, Prisma } from '@prisma/client'
@@ -728,7 +728,11 @@ async function persistChunks(
       },
     })
     if (entryForCtx) {
-      contextMap = await contextualizeChunks(entryForCtx, created)
+      // Batched + serial: 10 chunks per Haiku call, one batch in
+      // flight at a time. Bursting (parallelBatches>1) is what
+      // crushed the first backfill's success rate — sustained
+      // throughput beats peak throughput here.
+      contextMap = await contextualizeChunksBatched(entryForCtx, created)
     }
   } catch (err) {
     console.warn(
