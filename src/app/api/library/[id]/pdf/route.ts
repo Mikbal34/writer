@@ -10,9 +10,10 @@
  * before durable storage was wired up have null filePaths.
  */
 import { NextRequest, NextResponse } from 'next/server'
+import fs from 'node:fs'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { pdfExists, openPdfStream } from '@/lib/library-storage'
+import { pdfExists } from '@/lib/library-storage'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -62,11 +63,23 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const stream = openPdfStream(filePath as string)
-    return new NextResponse(stream as unknown as ReadableStream, {
+    // Read into memory instead of piping a Node ReadStream — Next 16
+    // no longer accepts Node Readable inside NextResponse (the
+    // `stream as unknown as ReadableStream` cast silently breaks the
+    // body), so the Railway edge timed the connection out and we got
+    // 502 Bad Gateway on the client. PDFs in this corpus are small
+    // (single-digit MB at most), so the memory hit is fine.
+    const bytes = await fs.promises.readFile(filePath as string)
+    console.info(
+      '[GET /api/library/[id]/pdf]',
+      `${bytes.byteLength} bytes`,
+      filePath,
+    )
+    return new NextResponse(new Uint8Array(bytes), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
+        'Content-Length': String(bytes.byteLength),
         'Cache-Control': 'private, max-age=3600',
       },
     })
