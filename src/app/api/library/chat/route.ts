@@ -25,7 +25,11 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8
 // user-authored notes (curated, often higher-signal commentary). 8 + 4
 // stays under the same token budget as the previous 8-chunk-only setup
 // while letting notes carry weight.
-const TOP_K_CHUNKS = 8
+// Bumped from 8 → 15 because user reports of "kaynaklarda bulunamadı"
+// in library-wide mode traced back to relevant chunks sitting just
+// past the top-8 cutoff when 50+ books compete in the same ranking.
+// Notes stay narrower since they're already user-curated.
+const TOP_K_CHUNKS = 15
 const TOP_K_NOTES = 4
 const MAX_HISTORY_MESSAGES = 12
 
