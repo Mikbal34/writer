@@ -22,7 +22,13 @@
 
 import { generateJSONWithUsage, HAIKU } from "@/lib/claude";
 
-const CONTEXT_BATCH_PARALLEL = 8;
+// Parallel cap: keep well below Anthropic's per-key rate limit
+// floor. Earlier 8-parallel test on a 700-chunk book left ~half
+// without a context because Haiku 429'd on later waves. Three at
+// a time is the sweet spot we've seen for sustained throughput.
+const CONTEXT_BATCH_PARALLEL = 3;
+const CONTEXT_RETRY_ATTEMPTS = 2;
+const CONTEXT_RETRY_BASE_MS = 600;
 
 const SYSTEM_PROMPT =
   "You are summarizing where a passage sits within a book. " +
@@ -85,25 +91,43 @@ ${body}
 """
 
 Return JSON { "context": "..." } only.`;
-  try {
-    const result = await generateJSONWithUsage<{ context?: string }>(
-      prompt,
-      SYSTEM_PROMPT,
-      { model: HAIKU },
-    );
-    const ctx =
-      typeof result.data?.context === "string"
-        ? result.data.context.trim()
-        : null;
-    return { id: chunk.id, context: ctx && ctx.length > 0 ? ctx : null };
-  } catch (err) {
-    console.warn(
-      "[contextual-chunks] Haiku failed for chunk",
-      chunk.id,
-      err instanceof Error ? err.message : err,
-    );
-    return { id: chunk.id, context: null };
+  // Retry on transient failures (rate-limit, network blip). Haiku
+  // throws "Overloaded" / "rate_limit_error" intermittently when
+  // we push more than a couple parallel requests; a short backoff
+  // recovers the chunk so we don't leave half the corpus without
+  // contextual prefixes.
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= CONTEXT_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const result = await generateJSONWithUsage<{ context?: string }>(
+        prompt,
+        SYSTEM_PROMPT,
+        { model: HAIKU },
+      );
+      const ctx =
+        typeof result.data?.context === "string"
+          ? result.data.context.trim()
+          : null;
+      return { id: chunk.id, context: ctx && ctx.length > 0 ? ctx : null };
+    } catch (err) {
+      lastErr = err;
+      if (attempt < CONTEXT_RETRY_ATTEMPTS) {
+        // Exponential backoff with a small jitter to spread the
+        // recovery wave across the parallel batch — pure exponential
+        // would have all 3 chunks retry at the same instant.
+        const wait =
+          CONTEXT_RETRY_BASE_MS * Math.pow(2, attempt) +
+          Math.floor(Math.random() * 300);
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
   }
+  console.warn(
+    "[contextual-chunks] Haiku failed for chunk",
+    chunk.id,
+    lastErr instanceof Error ? lastErr.message : lastErr,
+  );
+  return { id: chunk.id, context: null };
 }
 
 /**

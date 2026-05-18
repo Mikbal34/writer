@@ -155,25 +155,34 @@ const HEADING_PATTERNS: RegExp[] = [
 
 function detectHeading(text: string): string | null {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-  // Only look at the first 6 lines (headings are at the top)
-  for (const line of lines.slice(0, 6)) {
+  // Look at the first 10 lines (headings sit at the top, but a
+  // header strip residual / standalone page number may consume the
+  // first 1-2 lines before the real heading appears).
+  const candidates = lines.slice(0, 10);
+  for (const line of candidates) {
     if (line.length < 4 || line.length > 100) continue;
-    // Skip page-number-looking lines
-    if (/^\d+$/.test(line)) continue;
+    // Skip lines that are obviously chrome rather than headings.
+    if (/^\d+$/.test(line)) continue; // bare page number "189"
+    if (/^\d+\s+\d+$/.test(line)) continue; // split page number "1 89"
     if (/^[Pp]age\s+\d/.test(line)) continue;
     for (const re of HEADING_PATTERNS) {
       if (re.test(line)) return line;
     }
-    // All-caps heading heuristic (e.g. "CONCEPTS OF POLLUTION")
+    // All-caps heading heuristic — must use Turkish-locale case
+    // mapping so İ/ı vs I/i ordering doesn't false-negative on
+    // Turkish chapter titles ("KENDİSİYLE SAVAŞAN SİSTEM", "DIŞ
+    // SINIRLAR"). Default toUpperCase() converts İ→İ (no-op) but
+    // ı→I, which then fails the strict identity check below.
     const letters = line.replace(/[^A-Za-zÇŞĞÜÖİçşğüöı]/g, "");
-    if (
-      letters.length >= 6 &&
-      letters.length <= 60 &&
-      letters === letters.toUpperCase() &&
-      !/\d{2,}/.test(line) // exclude things like "ISBN 978" that are uppercase
-    ) {
-      return line;
+    if (letters.length < 6 || letters.length > 60) continue;
+    if (/\d{2,}/.test(line)) continue;
+    let isAllCaps: boolean;
+    try {
+      isAllCaps = letters === letters.toLocaleUpperCase("tr");
+    } catch {
+      isAllCaps = letters === letters.toUpperCase();
     }
+    if (isAllCaps) return line;
   }
   return null;
 }
@@ -238,8 +247,17 @@ function cleanPageText(text: string): string {
   for (const line of lines) {
     const stripped = line.trim();
     // Lone page numbers / "Page X of Y" / separator runs are pure
-    // chrome and confuse downstream chunking.
+    // chrome and confuse downstream chunking. Two extra forms PDFs
+    // emit a lot: split-digit page numbers ("1 89" instead of
+    // "189") and "page-number + book-title in same line" headers
+    // ("186 SAFLIK VE TEHLİKE") that survive the cross-page header
+    // strip when each page has a different number on the front.
     if (/^\d{1,4}$/.test(stripped)) continue;
+    if (/^\d{1,4}(?:\s+\d{1,4})+$/.test(stripped)) continue;
+    if (
+      /^\d{1,4}\s+[A-ZÇŞĞÜÖİ][A-ZÇŞĞÜÖİ\s]{4,}$/.test(stripped) ||
+      /^[A-ZÇŞĞÜÖİ][A-ZÇŞĞÜÖİ\s]{4,}\s+\d{1,4}$/.test(stripped)
+    ) continue;
     if (/^[Pp]age\s+\d+\s+(?:of|\/)\s+\d+$/.test(stripped)) continue;
     if (/^[-_=]{3,}$/.test(stripped)) continue;
     cleaned.push(line);
