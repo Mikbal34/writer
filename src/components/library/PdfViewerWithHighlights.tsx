@@ -22,7 +22,14 @@
  * the 800+ page books in the corpus.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import {
   Loader2,
@@ -108,7 +115,13 @@ export default function PdfViewerWithHighlights({
   } | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
-  const [width, setWidth] = useState(640);
+  // Start at 0 so the viewer refuses to mount <Page> until the
+  // container has been measured. With a hardcoded default like 640
+  // pdfjs would render once at the wrong width during the panel's
+  // slide-in animation, then again at the real width once
+  // ResizeObserver fires — both canvases ended up in the DOM,
+  // producing the "same page rendered twice" symptom.
+  const [width, setWidth] = useState(0);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [selection, setSelection] = useState<SelectionPopup | null>(null);
   const [creating, setCreating] = useState(false);
@@ -171,12 +184,38 @@ export default function PdfViewerWithHighlights({
     }
   }, [targetPage]);
 
-  // Track container width for the responsive react-pdf Page. Debounced
-  // because every width change triggers a full Page remount (to clear
-  // text-layer ghosting), and the sources panel mount animation fires
-  // ResizeObserver multiple times in quick succession — without
-  // debouncing the user sees two stacked page renders during the
-  // ~250ms slide.
+  // Track container width for the responsive react-pdf Page. The
+  // tricky part is the panel's slide-in animation: width goes 0 →
+  // some intermediate → final over ~250ms, and every observed value
+  // would trigger a Page remount. We mitigate two ways:
+  //   1. useLayoutEffect reads the *post-animation* width by waiting
+  //      one frame, so the first <Page> mount happens at the real
+  //      final width, not the cramped intermediate.
+  //   2. ResizeObserver still listens for later resizes (user drags
+  //      window, etc.) but debounces by 150ms so a burst of changes
+  //      collapses into one remount.
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+    let raf1: number | null = null;
+    let raf2: number | null = null;
+    // Two RAFs: first lets the panel's slide-in transition begin
+    // applying, second reads the width after layout settles. Without
+    // this we read a width of 0 or the pre-animation value.
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        if (!containerRef.current) return;
+        const w = Math.max(
+          320,
+          Math.min(900, containerRef.current.clientWidth),
+        );
+        if (w > 0) setWidth(w);
+      });
+    });
+    return () => {
+      if (raf1 !== null) cancelAnimationFrame(raf1);
+      if (raf2 !== null) cancelAnimationFrame(raf2);
+    };
+  }, []);
   useEffect(() => {
     if (!containerRef.current) return;
     let pending: number | null = null;
@@ -187,7 +226,7 @@ export default function PdfViewerWithHighlights({
         pending = window.setTimeout(() => {
           setWidth(w);
           pending = null;
-        }, 120);
+        }, 150);
       }
     });
     ro.observe(containerRef.current);
@@ -519,6 +558,7 @@ export default function PdfViewerWithHighlights({
               }}
               onMouseUp={handleMouseUp}
             >
+              {width > 0 && (
               <Page
                 pageNumber={page}
                 width={width}
@@ -527,6 +567,7 @@ export default function PdfViewerWithHighlights({
                 onRenderSuccess={() => setPageReady(true)}
                 onRenderTextLayerSuccess={handleTextLayerReady}
               />
+              )}
               {/* AI-citation overlay — translucent gold rectangles
                   over the quoted passage so the reader can spot
                   exactly which sentences the chat pulled from. Sits
