@@ -539,7 +539,12 @@ export default function PdfViewerWithHighlights({
       }
       const idx = combined.indexOf(anchor);
       if (idx === -1) return null;
-      const matchEnd = idx + anchor.length;
+      // Paint forward as far as the *whole* normalized quote would
+      // extend, not just the anchor. Even if the tail of the quote
+      // drifts (ligatures, hyphen line-breaks, OCR noise), painting
+      // up to `idx + normQuote.length` keeps the entire cited passage
+      // visually highlighted instead of just the first sentence.
+      const matchEnd = Math.min(idx + normQuote.length, combined.length);
 
       const pageRect = pageWrap.getBoundingClientRect();
       if (pageRect.width === 0 || pageRect.height === 0) return null;
