@@ -669,7 +669,12 @@ async function persistChunks(
       // Mostly numeric / page-ref noise — more digits than letters
       // is almost always TOC/index leftover.
       const digits = (c.content.match(/\d/g) ?? []).length
-      const letters = (c.content.match(/[A-Za-zÇŞĞÜÖİçşğüöı]/g) ?? []).length
+      // Include the Arabic block U+0600-U+06FF so Arabic-language
+      // chunks aren't all classified as "100% digits" by virtue of
+      // their letters not being in the Latin/Turkish class. Before
+      // this fix every Arabic prose chunk failed the digit-ratio
+      // check and got silently dropped at the persistence boundary.
+      const letters = (c.content.match(/[A-Za-zÇŞĞÜÖİçşğüöı؀-ۿ]/g) ?? []).length
       if (letters > 0 && digits / (digits + letters) > 0.5) return false
       return true
     })

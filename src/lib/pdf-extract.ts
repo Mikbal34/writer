@@ -92,6 +92,16 @@ const FRONT_MATTER_PATTERNS = [
   /yayına hazırlayan/i,
   /yayın yönetmeni/i,
   /metis yayınları|i̇leti̇şi̇m yayınları|i̇mge ki̇tabevi̇|alfa yayınları|i̇nkılâp/i,
+  // Arabic publication / copyright phrases — classical Arabic works
+  // (Maturidi corpus, Ghazali editions) carry their colophons in
+  // Arabic, so the English/Turkish patterns alone don't catch the
+  // front matter and it ends up embedded as retrievable content.
+  /جميع الحقوق محفوظة/, // "all rights reserved"
+  /\bدار\s+(?:النشر|الكتب|الفكر|الكتاب|المعارف)\b/, // "House of (Press/Books/Thought/Knowledge)"
+  /\bمكتبة\s+\S+/, // "Library of …"
+  /\bالناشر\s*:/, // "Publisher:"
+  /\bرقم\s*الإيداع/, // "deposit number" — ISBN/registration equivalent
+  /\bالطبعة\s+(?:الأولى|الثانية|الثالثة|الرابعة)/, // "First/Second/Third/Fourth edition"
 ];
 
 const TOC_HEADINGS = [
@@ -99,6 +109,11 @@ const TOC_HEADINGS = [
   /^\s*contents\s*$/i,
   /^\s*table of contents\s*$/i,
   /^\s*fihrist\s*$/i,
+  // Arabic — "the index / contents" (Modern Standard Arabic and
+  // classical-era variants both appear in the corpus).
+  /^\s*الفهرس\s*$/,
+  /^\s*فهرس\s+(?:المحتويات|المواضيع|الكتاب)\s*$/,
+  /^\s*المحتويات\s*$/,
 ];
 
 const BACK_MATTER_HEADINGS = [
@@ -109,6 +124,11 @@ const BACK_MATTER_HEADINGS = [
   /^\s*dizin\s*$/i,
   /^\s*index\s*$/i,
   /^\s*notes?\s*$/i,
+  // Arabic — bibliography / source list / index. Classical works
+  // sometimes also use "ثبت المصادر" (lit. "register of sources").
+  /^\s*(?:المصادر(?: والمراجع)?|قائمة المصادر|ثبت المصادر)\s*$/,
+  /^\s*المراجع\s*$/,
+  /^\s*الكشاف\s*$/, // analytical index
 ];
 
 function isFrontMatterPage(text: string, pageNumber: number): boolean {
@@ -151,6 +171,11 @@ const HEADING_PATTERNS: RegExp[] = [
   /^\s*(?:BÖLÜM|B[oö]l[uü]m|CHAPTER|Chapter|KISIM|K[iı]s[iı]m|PART|Part|SECTION|Section)\s+(?:[0-9IVXLCM]+|BIR|İKİ|ÜÇ|DÖRT|BEŞ)\b.{0,100}$/,
   /^\s*[0-9]+\.[0-9]+(?:\.[0-9]+)?\s+\S.{2,80}$/, // 1.1 Heading, 2.3.1 Heading
   /^\s*[0-9]+\.?\s+[A-ZÇŞĞÜÖİ][A-ZÇŞĞÜÖİ\s]{4,80}$/, // 1. ALL CAPS
+  // Arabic chapter/section structure: book ("الباب"), chapter
+  // ("الفصل"), section ("القسم"), subsection ("المبحث"), part
+  // ("الجزء"). The ordinals can be either Arabic numerals ("الأول")
+  // or Western digits stamped alongside ("الفصل 1").
+  /^\s*(?:الباب|الفصل|القسم|المبحث|الجزء)\s+(?:الأول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر|[0-9٠-٩]+)\b.{0,100}$/,
 ];
 
 function detectHeading(text: string): string | null {

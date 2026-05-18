@@ -154,7 +154,7 @@ export async function GET(req: NextRequest) {
         FROM "LibraryChunk"
         WHERE "libraryEntryId" = ${entryId}
           AND LENGTH(content) >= 300
-          AND length(regexp_replace(content, '[^A-Za-zÇŞĞÜÖİçşğüöı]', '', 'g')) >= 100
+          AND length(regexp_replace(content, '[^A-Za-zÇŞĞÜÖİçşğüöı؀-ۿ]', '', 'g')) >= 100
         ORDER BY "chunkIndex" ASC
       `;
       if (chunks.length === 0) {
@@ -244,7 +244,7 @@ ${passageBlock}
           FROM "LibraryChunk"
           WHERE "libraryEntryId" = ${e.id}
             AND LENGTH(content) >= 300
-            AND length(regexp_replace(content, '[^A-Za-zÇŞĞÜÖİçşğüöı]', '', 'g')) >= 100
+            AND length(regexp_replace(content, '[^A-Za-zÇŞĞÜÖİçşğüöı؀-ۿ]', '', 'g')) >= 100
           ORDER BY "chunkIndex" ASC
         `;
         if (candidates.length === 0) return null;

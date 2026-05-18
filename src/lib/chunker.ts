@@ -49,6 +49,9 @@ export interface ChunkOptions {
 const CHUNKER_HEADING_PATTERNS: RegExp[] = [
   /^\s*(?:BÖLÜM|B[oö]l[uü]m|CHAPTER|Chapter|KISIM|K[iı]s[iı]m|PART|Part|SECTION|Section)\s+[0-9IVXLCM]+/,
   /^\s*[0-9]+\.[0-9]+(?:\.[0-9]+)?\s+\S/, // 1.1 Heading
+  // Arabic chapter / section heads — mirror the pdf-extract list so
+  // the chunker can also start a new chunk at these boundaries.
+  /^\s*(?:الباب|الفصل|القسم|المبحث|الجزء)\s+(?:الأول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر|[0-9٠-٩]+)/,
 ];
 
 function looksLikeHeading(line: string): boolean {
