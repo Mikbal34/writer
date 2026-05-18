@@ -11,6 +11,8 @@ export interface SourceTab {
   entryId: string;
   volumeId: string | null;
   page: number | null;
+  /** Printed book page (preferred for chip display). */
+  pageLabel: string | null;
   title: string;
   authorSurname: string | null;
 }
@@ -35,6 +37,7 @@ export function useSourceTabs() {
               entryId: src.entryId,
               volumeId: src.volumeId ?? null,
               page: src.page,
+              pageLabel: src.pageLabel ?? null,
               title: src.title,
               authorSurname: src.authorSurname,
             },

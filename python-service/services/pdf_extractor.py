@@ -140,7 +140,11 @@ def _pypdf_extract_pages(file_path: str, max_pages: int = 0) -> list[dict]:
             raw = ""
         cleaned = _clean_page_text(raw)
         if cleaned.strip():
-            pages.append({"page_number": i + 1, "content": cleaned})
+            # pypdf fallback doesn't surface printed page labels; the
+            # downstream chunker treats page_label=None as "use the
+            # PDF index". Only a small minority of corpora hit this
+            # path so the precision loss is acceptable.
+            pages.append({"page_number": i + 1, "page_label": None, "content": cleaned})
     return pages
 
 
@@ -229,14 +233,44 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
             if pages_to_ocr:
                 ocr_texts = _parallel_ocr(file_path, pages_to_ocr)
 
+        # Pull printed-page labels (the "49" the book shows even when
+        # the PDF index is 64 because of front matter). PyMuPDF exposes
+        # them via doc.get_page_labels() when the PDF /PageLabels tree
+        # is present; many academic PDFs include this. Falls back to
+        # None per-page when missing or when the index is out of range,
+        # and the downstream chunker uses pageNumber in that case.
+        page_labels: list[str | None] = []
+        try:
+            raw_labels = doc.get_page_labels()
+            # PyMuPDF returns either a list of strings (one per page)
+            # or a list of label dict structs depending on version. We
+            # only care about per-page label strings, so handle both.
+            if isinstance(raw_labels, list):
+                for entry in raw_labels:
+                    if isinstance(entry, str):
+                        page_labels.append(entry or None)
+                    else:
+                        # Unsupported shape — abandon labels rather than
+                        # half-fill; chunker will drop back to pageNumber.
+                        page_labels = []
+                        break
+        except Exception:
+            page_labels = []
+
         # Stitch + clean.
         pages: list[dict] = []
         for page_num in range(page_count):
             raw_text = ocr_texts.get(page_num) or native_texts.get(page_num, "")
             cleaned = _clean_page_text(raw_text)
             if cleaned.strip():
+                label = (
+                    page_labels[page_num]
+                    if 0 <= page_num < len(page_labels)
+                    else None
+                )
                 pages.append({
                     "page_number": page_num + 1,
+                    "page_label": label,
                     "content": cleaned,
                 })
 

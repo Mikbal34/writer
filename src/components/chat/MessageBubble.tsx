@@ -21,7 +21,13 @@ export interface ChatSource {
   volumeId?: string | null;
   title: string;
   authorSurname: string | null;
+  /** PDF index — used to jump the viewer to the right page. */
   page: number | null;
+  /** Printed page label from the book (e.g. "49" when page is 64).
+   *  Prefer this over `page` for citation/chip display. NULL when the
+   *  PDF lacks /PageLabels or the chunk was created pre-pageLabel
+   *  pipeline; UI should fall back to `page`. */
+  pageLabel?: string | null;
   noteTitle?: string | null;
   /** First ~280 chars of the cited chunk/note. Powers the inline
    *  "AI bu metni gösterdi" preview banner above the PDF viewer. */

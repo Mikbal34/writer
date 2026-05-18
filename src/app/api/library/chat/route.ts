@@ -45,6 +45,10 @@ interface RetrievedChunk {
   title: string
   authorSurname: string | null
   pageNumber: number | null
+  /** Printed page label (e.g. "49") when the PDF has /PageLabels.
+   *  NULL for older chunks pre-pageLabel pipeline or PDFs without
+   *  labels. UI prefers this over pageNumber for citation display. */
+  pdfPageLabel: string | null
   content: string
   noteTitle: string | null
 }
@@ -173,6 +177,7 @@ export async function POST(req: NextRequest) {
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      lc."pageNumber" AS "pageNumber",
+                     lc."pdfPageLabel" AS "pdfPageLabel",
                      lc.content AS content,
                      NULL AS "noteTitle"
               FROM "LibraryChunk" lc
@@ -189,6 +194,7 @@ export async function POST(req: NextRequest) {
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      lc."pageNumber" AS "pageNumber",
+                     lc."pdfPageLabel" AS "pdfPageLabel",
                      lc.content AS content,
                      NULL AS "noteTitle"
               FROM "LibraryChunk" lc
@@ -208,6 +214,7 @@ export async function POST(req: NextRequest) {
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      ln."pageNumber" AS "pageNumber",
+                     NULL AS "pdfPageLabel",
                      ln."contentText" AS content,
                      ln.title AS "noteTitle"
               FROM "LibraryNote" ln
@@ -224,6 +231,7 @@ export async function POST(req: NextRequest) {
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      ln."pageNumber" AS "pageNumber",
+                     NULL AS "pdfPageLabel",
                      ln."contentText" AS content,
                      ln.title AS "noteTitle"
               FROM "LibraryNote" ln
@@ -249,7 +257,15 @@ export async function POST(req: NextRequest) {
         : retrieved
             .map((c, i) => {
               const author = c.authorSurname ? `${c.authorSurname}, ` : ''
-              const page = c.pageNumber !== null ? ` (s. ${c.pageNumber})` : ''
+              // Prefer the printed page label (the "49" stamped on
+              // the page) over the PDF index — the LLM should cite
+              // pages the way the book itself numbers them, not by
+              // raw PDF offset.
+              const pageDisplay = c.pdfPageLabel ?? c.pageNumber
+              const page =
+                pageDisplay !== null && pageDisplay !== undefined
+                  ? ` (s. ${pageDisplay})`
+                  : ''
               if (c.kind === 'note') {
                 const noteLabel = c.noteTitle ? ` — "${c.noteTitle}"` : ''
                 return `[${i + 1}] NOT (${author}${c.title}${noteLabel}${page})\n${c.content}`
@@ -294,7 +310,11 @@ export async function POST(req: NextRequest) {
       volumeId: c.volumeId,
       title: c.title,
       authorSurname: c.authorSurname,
+      // page is the PDF index — used to jump the viewer to the right
+      // place. pageLabel is the printed book page, used for display
+      // in chips, citation chips, and downstream rendering.
       page: c.pageNumber,
+      pageLabel: c.pdfPageLabel,
       noteTitle: c.noteTitle,
       // First ~280 chars of the cited chunk/note so the PDF panel can
       // surface a "AI bu metni gösterdi" preview when the user opens

@@ -28,6 +28,10 @@ def chunk_by_page(
 
     for page in pages:
         page_number = page["page_number"]
+        # Optional printed-page label — None when the PDF lacks
+        # /PageLabels (or the pypdf fallback path was used). Citation
+        # renderers prefer this over page_number when present.
+        page_label = page.get("page_label")
         # Strip NUL bytes that some PDFs contain — Postgres UTF-8 columns
         # reject them and the whole chunk insert fails.
         text = (page["content"] or "").replace("\x00", "")
@@ -45,6 +49,7 @@ def chunk_by_page(
                 continue
             all_chunks.append({
                 "page_number": page_number,
+                "page_label": page_label,
                 "chunk_index": idx,
                 "content": cleaned,
             })

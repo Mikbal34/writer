@@ -137,6 +137,10 @@ export default function PdfViewerWithHighlights({
   } | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
+  // PyMuPDF/pdfjs page labels (the printed book number on each page).
+  // pageLabels[i] = label for pdfjs page (i+1). Empty array when the
+  // PDF has no /PageLabels — toolbar then shows the raw index.
+  const [pageLabels, setPageLabels] = useState<string[]>([]);
   // 0 until the container is measured — Effect C refuses to render
   // before then, eliminating the "first render at wrong width" race.
   const [width, setWidth] = useState(0);
@@ -229,6 +233,19 @@ export default function PdfViewerWithHighlights({
         docRef.current = doc;
         setNumPages(doc.numPages);
         setDocReady(true);
+        // Pull page labels (printed book numbers) for the toolbar. Some
+        // PDFs return labels for every page, others return an empty
+        // string for unlabeled pages — we keep raw values and let the
+        // toolbar fall back when blank.
+        doc
+          .getPageLabels()
+          .then((labels) => {
+            if (cancelled) return;
+            setPageLabels(Array.isArray(labels) ? labels : []);
+          })
+          .catch(() => {
+            if (!cancelled) setPageLabels([]);
+          });
       })
       .catch((err: unknown) => {
         if (cancelled || isCancelled(err)) return;
@@ -776,6 +793,18 @@ export default function PdfViewerWithHighlights({
           <span className="font-ui text-xs text-ink-light">
             / {numPages || "?"}
           </span>
+          {/* Book-page badge — when the PDF carries /PageLabels and
+              the current label differs from the PDF index (front
+              matter, roman numerals, etc.), show it inline so the
+              reader can tell which printed page they're on. */}
+          {pageLabels[page - 1] && pageLabels[page - 1] !== String(page) && (
+            <span
+              className="ml-1 px-1.5 py-0.5 rounded-sm bg-page font-ui text-[10px] text-ink-light tabular-nums"
+              title="Kitabın basılı sayfa numarası"
+            >
+              kitap s. {pageLabels[page - 1]}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setPage((p) => Math.min(numPages || p + 1, p + 1))}

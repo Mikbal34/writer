@@ -1075,7 +1075,7 @@ function CitationCard({
           s.
         </span>
         <span className="font-display font-semibold text-[13px] leading-none">
-          {src.page ?? "—"}
+          {src.pageLabel ?? src.page ?? "—"}
         </span>
       </span>
 

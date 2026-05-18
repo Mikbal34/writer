@@ -118,9 +118,9 @@ function TabChip({ tab, active, onActivate, onClose }: TabChipProps) {
       <span className="font-display text-[12px] truncate">
         {tab.authorSurname ?? tab.title}
       </span>
-      {tab.page !== null && (
+      {(tab.pageLabel ?? tab.page) !== null && (
         <span className="font-ui text-[10px] text-ink-muted shrink-0">
-          s.{tab.page}
+          s.{tab.pageLabel ?? tab.page}
         </span>
       )}
       <button

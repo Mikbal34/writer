@@ -118,6 +118,11 @@ class ProcessRequest(BaseModel):
 
 class ChunkItem(BaseModel):
     pageNumber: int
+    # Printed page label from the PDF (the "49" stamped on the page
+    # even when the PDF index is 64 because of front matter). Comes
+    # from PyMuPDF's doc.get_page_labels(); None when the PDF lacks
+    # /PageLabels or when we fell back to the pypdf path.
+    pageLabel: Optional[str] = None
     chunkIndex: int
     content: str
 
@@ -197,6 +202,7 @@ async def process_source(req: ProcessRequest, background_tasks: BackgroundTasks)
             chunks = [
                 ChunkItem(
                     pageNumber=c["page_number"],
+                    pageLabel=c.get("page_label"),
                     chunkIndex=c["chunk_index"],
                     content=c["content"],
                 )
@@ -239,6 +245,7 @@ async def ocr_status(source_id: str):
     chunks = [
         ChunkItem(
             pageNumber=c["page_number"],
+            pageLabel=c.get("page_label"),
             chunkIndex=c["chunk_index"],
             content=c["content"],
         )
@@ -301,6 +308,7 @@ def _process_local_path(
         chunks = [
             ChunkItem(
                 pageNumber=c["page_number"],
+                pageLabel=c.get("page_label"),
                 chunkIndex=c["chunk_index"],
                 content=c["content"],
             )
@@ -335,6 +343,7 @@ def _process_local_path(
     chunks = [
         ChunkItem(
             pageNumber=c["page_number"],
+            pageLabel=c.get("page_label"),
             chunkIndex=c["chunk_index"],
             content=c["content"],
         )
@@ -421,6 +430,7 @@ def _process_doc_bytes(
     chunks = [
         ChunkItem(
             pageNumber=c["page_number"],
+            pageLabel=c.get("page_label"),
             chunkIndex=c["chunk_index"],
             content=c["content"],
         )

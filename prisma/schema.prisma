@@ -595,7 +595,13 @@ model LibraryChunk {
   // the volume it came from. NULL means "the entry's primary PDF" —
   // single-volume legacy entries leave this empty.
   volumeId       String?
+  // pageNumber is the 1-indexed PDF page (what pdfjs/PyMuPDF call
+  // "page N of N"). pdfPageLabel is the *printed* page number from
+  // the book itself ("49" when the PDF page is 64 because of front
+  // matter). Citation renderers should prefer pdfPageLabel; viewer
+  // input still navigates by pageNumber.
   pageNumber     Int?
+  pdfPageLabel   String?
   chunkIndex     Int
   content        String                      @db.Text
   embedding      Unsupported("vector(768)")?

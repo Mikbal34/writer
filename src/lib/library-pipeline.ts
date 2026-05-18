@@ -381,7 +381,15 @@ interface ProcessResponse {
   sourceId: string
   totalPages: number
   extractedText: string
-  chunks: Array<{ pageNumber: number; chunkIndex: number; content: string }>
+  chunks: Array<{
+    pageNumber: number
+    /** Printed page label from the PDF (e.g. "49" when pageNumber is
+     *  64). NULL when the PDF lacks /PageLabels or fell back to pypdf;
+     *  citation renderers should prefer it over pageNumber when set. */
+    pageLabel?: string | null
+    chunkIndex: number
+    content: string
+  }>
   ocrPending: boolean
   // Native bibliographic fields when the source format exposes them
   // (EPUB Dublin Core, DOCX core_properties). Empty/null for PDFs.
@@ -581,6 +589,7 @@ async function persistChunks(
       libraryEntryId: entryId,
       volumeId,
       pageNumber: c.pageNumber,
+      pdfPageLabel: c.pageLabel ?? null,
       chunkIndex: c.chunkIndex,
       content: c.content,
     })),
