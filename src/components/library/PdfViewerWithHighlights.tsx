@@ -564,6 +564,16 @@ export default function PdfViewerWithHighlights({
     [],
   );
 
+  // Once-per-quote guard for the ±2 neighbor jump below: if the chunk's
+  // pageNumber is off-by-1/2 (very common — extraction pipeline page
+  // counts don't always match the PDF's), we only auto-jump once when
+  // the quote arrives. Subsequent manual nav stays under the user's
+  // control.
+  const neighborJumpRef = useRef<{ quote: string; tried: boolean }>({
+    quote: "",
+    tried: false,
+  });
+
   // ── Effect: scan chat quote when text layer is ready or quote
   //    changes mid-life (clicking a different citation on same page) ─
   useEffect(() => {
@@ -572,8 +582,77 @@ export default function PdfViewerWithHighlights({
       setChatQuoteRects(null);
       return;
     }
-    setChatQuoteRects(findChatQuoteRects(chatQuote));
-  }, [chatQuote, textLayerVersion, status, findChatQuoteRects]);
+    // Quote changed → allow a fresh neighbor search.
+    if (neighborJumpRef.current.quote !== chatQuote) {
+      neighborJumpRef.current = { quote: chatQuote, tried: false };
+    }
+
+    // First: try the current page (the chip's target page).
+    const onPage = findChatQuoteRects(chatQuote);
+    if (onPage) {
+      setChatQuoteRects(onPage);
+      return;
+    }
+    setChatQuoteRects(null);
+
+    // Not on this page. If we already jumped for this quote, stop —
+    // user is now in control of navigation, banner stays visible
+    // either way.
+    if (neighborJumpRef.current.tried) return;
+    neighborJumpRef.current.tried = true;
+
+    const doc = docRef.current;
+    if (!doc) return;
+
+    // Build the same anchor used by findChatQuoteRects so success
+    // criteria are identical on the destination page.
+    const norm = (s: string) =>
+      s.toLowerCase().replace(/\s+/g, " ").trim();
+    const normQuote = norm(chatQuote);
+    if (normQuote.length < 12) return;
+    const sentenceCut = normQuote.search(/[.!?؟]\s/);
+    const anchorLen =
+      sentenceCut > 12 && sentenceCut < 120
+        ? sentenceCut
+        : Math.min(80, normQuote.length);
+    const anchor = normQuote.slice(0, anchorLen);
+
+    // Interleave near→far so off-by-1 wins over off-by-2.
+    const total = numPages || 0;
+    const candidates = [page + 1, page - 1, page + 2, page - 2].filter(
+      (p) => p >= 1 && p <= total && p !== page,
+    );
+
+    let cancelled = false;
+    (async () => {
+      for (const candidate of candidates) {
+        if (cancelled) return;
+        try {
+          const p = await doc.getPage(candidate);
+          const tc = await p.getTextContent({
+            includeMarkedContent: false,
+            disableNormalization: false,
+          });
+          const raw = (tc.items as Array<{ str?: string }>)
+            .map((item) => item.str ?? "")
+            .join(" ");
+          const normRaw = norm(raw);
+          p.cleanup();
+          if (normRaw.indexOf(anchor) !== -1) {
+            if (!cancelled) setPage(candidate);
+            return;
+          }
+        } catch {
+          /* skip this candidate */
+        }
+      }
+      // No neighbor matches — banner stays, no gold rects.
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatQuote, textLayerVersion, status, findChatQuoteRects, page, numPages]);
 
   // ── Highlight save / delete ─────────────────────────────────────
   async function saveHighlight(opts: { withNote: boolean }) {
