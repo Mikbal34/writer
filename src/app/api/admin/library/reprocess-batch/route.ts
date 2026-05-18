@@ -39,15 +39,23 @@ export async function POST(req: NextRequest) {
   // dropping this to an empty string when read at module scope.
   const adminSecret = process.env.ADMIN_SESSION_SECRET;
   const secret = req.headers.get("x-admin-secret");
-  console.error("[reprocess-batch] auth check", {
-    envLen: adminSecret?.length ?? 0,
-    envFirst8: adminSecret?.slice(0, 8) ?? "",
-    headerLen: secret?.length ?? 0,
-    headerFirst8: secret?.slice(0, 8) ?? "",
-    match: !!adminSecret && !!secret && secret === adminSecret,
-  });
   if (!adminSecret || !secret || secret !== adminSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      {
+        error: "Unauthorized",
+        // Temporary diag — these only ship the first 8 chars so we
+        // can see why the compare fails without exposing the secret.
+        debug: {
+          envLen: adminSecret?.length ?? 0,
+          envFirst8: adminSecret?.slice(0, 8) ?? "(empty)",
+          headerLen: secret?.length ?? 0,
+          headerFirst8: secret?.slice(0, 8) ?? "(empty)",
+          haveEnv: !!adminSecret,
+          haveHeader: !!secret,
+        },
+      },
+      { status: 401 },
+    );
   }
 
   let body: { entryIds?: unknown };
