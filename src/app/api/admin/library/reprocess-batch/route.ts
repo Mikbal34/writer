@@ -31,11 +31,15 @@ import {
   processLibraryPdfFromUrl,
 } from "@/lib/library-pipeline";
 
-const ADMIN_SECRET = process.env.ADMIN_SESSION_SECRET;
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  // Read at request time — Next 16's build-time env inlining was
+  // dropping this to an empty string when read at module scope.
+  const adminSecret = process.env.ADMIN_SESSION_SECRET;
   const secret = req.headers.get("x-admin-secret");
-  if (!ADMIN_SECRET || !secret || secret !== ADMIN_SECRET) {
+  if (!adminSecret || !secret || secret !== adminSecret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
