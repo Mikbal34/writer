@@ -112,10 +112,23 @@ interface ActiveSource {
   quote: string | null;
 }
 
-export default function LibraryChat() {
+interface LibraryChatProps {
+  /** Server-supplied entryId. Without this prop the component would
+   *  fall back to useSearchParams, which returns undefined during
+   *  SSR — that produced a one-frame flash of the library-wide
+   *  header + fallback suggestions before the client mount swapped
+   *  to single-book mode. */
+  initialEntryId?: string;
+}
+
+export default function LibraryChat({ initialEntryId: serverEntryId }: LibraryChatProps = {}) {
   const router = useRouter();
   const params = useSearchParams();
-  const initialEntryId = params.get("entryId") ?? undefined;
+  // Server prop is authoritative on first paint; fall back to the
+  // client-side URL parse only when the page was rendered without
+  // one (legacy routes, programmatic mounts).
+  const initialEntryId =
+    serverEntryId ?? params.get("entryId") ?? undefined;
 
   const session = useLibraryChatSession({ initialEntryId });
   const {
