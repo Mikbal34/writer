@@ -161,17 +161,30 @@ export default function PdfViewerWithHighlights({
     }
   }, [targetPage]);
 
-  // Track container width for the responsive react-pdf Page.
+  // Track container width for the responsive react-pdf Page. Debounced
+  // because every width change triggers a full Page remount (to clear
+  // text-layer ghosting), and the sources panel mount animation fires
+  // ResizeObserver multiple times in quick succession — without
+  // debouncing the user sees two stacked page renders during the
+  // ~250ms slide.
   useEffect(() => {
     if (!containerRef.current) return;
+    let pending: number | null = null;
     const ro = new ResizeObserver((entries) => {
       for (const e of entries) {
         const w = Math.max(320, Math.min(900, e.contentRect.width));
-        setWidth(w);
+        if (pending !== null) window.clearTimeout(pending);
+        pending = window.setTimeout(() => {
+          setWidth(w);
+          pending = null;
+        }, 120);
       }
     });
     ro.observe(containerRef.current);
-    return () => ro.disconnect();
+    return () => {
+      if (pending !== null) window.clearTimeout(pending);
+      ro.disconnect();
+    };
   }, []);
 
   // Load highlights for the current entry (all pages — small payload;
@@ -466,15 +479,19 @@ export default function PdfViewerWithHighlights({
           >
             <div
               ref={pageRef}
+              // key on the wrapper (not just Page) forces React to
+              // destroy and recreate the entire inline-block subtree
+              // when page or width changes. pdfjs writes canvas
+              // asynchronously, so even with Page-level key the old
+              // canvas can linger long enough to overlap the new one;
+              // wrapper-level key guarantees the old DOM (canvas +
+              // text layer + highlight overlays) is gone before the
+              // new render begins.
+              key={`${page}-${width}`}
               className="relative inline-block overflow-hidden"
               onMouseUp={handleMouseUp}
             >
-              {/* key forces a full unmount/remount when page or width
-                  changes — without it react-pdf leaves the previous
-                  page's text layer DOM behind, producing the ghost
-                  overlap seen in the reader. */}
               <Page
-                key={`${page}-${width}`}
                 pageNumber={page}
                 width={width}
                 renderAnnotationLayer={false}
