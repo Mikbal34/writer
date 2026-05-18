@@ -687,6 +687,57 @@ async function persistChunks(
   }
 }
 
+/**
+ * Local-first variant of tryProcessUrl: downloads the PDF in Node
+ * and runs it through the pdfjs extractor before falling back to
+ * the Python /process-url path. Same intent as the byte-upload
+ * paths — chunks should come from pdfjs whenever possible so they
+ * match what the viewer renders. Python OCR remains the safety net
+ * for scanned PDFs.
+ */
+async function tryProcessUrlLocalFirst(
+  entryId: string,
+  url: string,
+): Promise<{ ok: true; data: ProcessResponse } | { ok: false; error: string; status: number }> {
+  try {
+    const dl = await fetch(url, {
+      signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
+      redirect: 'follow',
+    })
+    if (!dl.ok) {
+      return {
+        ok: false,
+        error: `download HTTP ${dl.status}`,
+        status: dl.status,
+      }
+    }
+    const ct = dl.headers.get('content-type') ?? ''
+    if (ct && !ct.includes('pdf') && !ct.includes('octet-stream')) {
+      return {
+        ok: false,
+        error: `non-PDF content-type ${ct.slice(0, 80)}`,
+        status: 415,
+      }
+    }
+    const ab = await dl.arrayBuffer()
+    const bytes = Buffer.from(ab)
+    try {
+      const data = await extractPdfLocalAsProcessResponse(bytes, entryId)
+      if (data) return { ok: true, data }
+    } catch (err) {
+      console.warn(
+        `[library-pipeline] ${entryId}: pdfjs URL extract threw, falling back to Python:`,
+        err,
+      )
+    }
+    // pdfjs returned null (needsOcr) or threw — fall back to Python.
+    return tryProcessUrl(entryId, url)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: message, status: 0 }
+  }
+}
+
 async function tryProcessUrl(
   entryId: string,
   url: string
@@ -733,7 +784,7 @@ export async function processLibraryPdfFromUrl(entryId: string, pdfUrl: string):
     const attemptLog: string[] = []
 
     for (const url of candidates) {
-      const result = await tryProcessUrl(entryId, url)
+      const result = await tryProcessUrlLocalFirst(entryId, url)
       if (!result.ok) {
         attemptLog.push(`${shortUrl(url)} → ${result.error.slice(0, 120)}`)
         continue
