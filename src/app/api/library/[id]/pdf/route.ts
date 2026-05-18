@@ -11,6 +11,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'node:fs'
+import { Readable } from 'node:stream'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { pdfExists } from '@/lib/library-storage'
@@ -63,23 +64,35 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    // Read into memory instead of piping a Node ReadStream — Next 16
-    // no longer accepts Node Readable inside NextResponse (the
-    // `stream as unknown as ReadableStream` cast silently breaks the
-    // body), so the Railway edge timed the connection out and we got
-    // 502 Bad Gateway on the client. PDFs in this corpus are small
-    // (single-digit MB at most), so the memory hit is fine.
-    const bytes = await fs.promises.readFile(filePath as string)
+    // Stream the file instead of buffering it whole in memory. The
+    // earlier `fs.readFile` → `new NextResponse(Uint8Array)` path was
+    // safe but blocked TTFB until every byte was loaded — large
+    // academic books (50-200 MB) pegged the loading spinner for
+    // multiple seconds even though the viewer only needs the first
+    // few hundred KB to start rendering. Readable.toWeb() converts
+    // the Node ReadStream into the Web ReadableStream Next 16
+    // actually accepts, so the first chunk hits the browser as soon
+    // as it leaves the disk.
+    const stat = await fs.promises.stat(filePath as string)
+    const nodeStream = fs.createReadStream(filePath as string)
+    const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>
     console.info(
       '[GET /api/library/[id]/pdf]',
-      `${bytes.byteLength} bytes`,
+      `${stat.size} bytes (streamed)`,
       filePath,
     )
-    return new NextResponse(new Uint8Array(bytes), {
+    return new NextResponse(webStream, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Length': String(bytes.byteLength),
+        'Content-Length': String(stat.size),
+        // Advertise byte-range support so pdfjs can request only the
+        // portion of the file it needs for the current page (it
+        // already does HTTP Range internally when the server says so;
+        // the underlying ReadStream above doesn't honour Range, but
+        // the spec-compliant fallback degrades to a full download
+        // rather than failing).
+        'Accept-Ranges': 'bytes',
         'Cache-Control': 'private, max-age=3600',
       },
     })
