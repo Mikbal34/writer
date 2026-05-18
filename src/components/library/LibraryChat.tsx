@@ -1143,6 +1143,17 @@ function CitationCard({
           <span className="font-display italic truncate">
             {src.authorSurname ?? "—"}
           </span>
+          {src.sectionTitle && (
+            <>
+              <span className="text-ink-muted">·</span>
+              <span
+                className="truncate"
+                title={src.sectionTitle}
+              >
+                {src.sectionTitle}
+              </span>
+            </>
+          )}
           {src.noteTitle && (
             <>
               <span className="text-ink-muted">·</span>

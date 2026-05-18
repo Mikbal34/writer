@@ -29,6 +29,7 @@ import {
   buildEmbeddingText,
   contextualizeChunks,
 } from '@/lib/contextual-chunks'
+import { generateBookSummary } from '@/lib/book-summary'
 import { EntryType, Prisma } from '@prisma/client'
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
@@ -774,6 +775,48 @@ async function persistChunks(
   // status to "failed" with a real error message.
   if (created.length > 0 && embeddedChunks === 0) {
     throw new Error('Embedding başarısız: /embed her batch için hata döndü')
+  }
+
+  // Volume reprocesses don't refresh the entry summary — let the
+  // primary entry-level pipeline own that field so multi-volume
+  // works don't have their summary regenerated for every cilt.
+  if (volumeId) return
+
+  // Book summary cache: pull the freshly-inserted chunks back and
+  // ask Haiku for a 250-400 word summary. Stored on
+  // LibraryEntry.summary so the chat router can answer generic
+  // "bu kitap ne anlatıyor" questions directly without round-
+  // tripping through RAG (which usually misroutes those to the
+  // colophon page).
+  try {
+    const entryForSummary = await prisma.libraryEntry.findUnique({
+      where: { id: entryId },
+      select: { title: true, authorSurname: true, authorName: true },
+    })
+    if (entryForSummary) {
+      const chunkRows = await prisma.libraryChunk.findMany({
+        where: { libraryEntryId: entryId },
+        orderBy: { chunkIndex: 'asc' },
+        select: { content: true, pageNumber: true },
+      })
+      const summary = await generateBookSummary({
+        title: entryForSummary.title,
+        authorSurname: entryForSummary.authorSurname,
+        authorName: entryForSummary.authorName,
+        sampleChunks: chunkRows,
+      })
+      if (summary) {
+        await prisma.libraryEntry.update({
+          where: { id: entryId },
+          data: { summary },
+        })
+      }
+    }
+  } catch (err) {
+    console.warn(
+      '[library-pipeline] book summary generation failed (continuing):',
+      err,
+    )
   }
 }
 

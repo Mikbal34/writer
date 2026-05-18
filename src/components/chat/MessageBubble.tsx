@@ -28,6 +28,11 @@ export interface ChatSource {
    *  PDF lacks /PageLabels or the chunk was created pre-pageLabel
    *  pipeline; UI should fall back to `page`. */
   pageLabel?: string | null;
+  /** Closest preceding chapter / section heading on the chunk's
+   *  page (e.g. "BÖLÜM 3", "1.1 Concepts"). Used as a breadcrumb
+   *  under the title in the source chip so the reader can see at
+   *  a glance which part of the book the citation comes from. */
+  sectionTitle?: string | null;
   noteTitle?: string | null;
   /** First ~280 chars of the cited chunk/note. Powers the inline
    *  "AI bu metni gösterdi" preview banner above the PDF viewer. */

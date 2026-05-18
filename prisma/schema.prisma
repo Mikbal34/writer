@@ -542,6 +542,12 @@ model LibraryEntry {
   openAccessUrl  String? // Direct PDF URL when open access
   pdfStatus      String   @default("none") // "none" | "pending" | "downloading" | "extracting" | "embedding" | "ready" | "failed"
   pdfError       String?
+  // AI-generated book summary, generated once when extraction
+  // completes (~500 words). Used by chat to answer generic "bu
+  // kitap ne anlatıyor / ana fikri" questions directly without
+  // running them through RAG — vector search misroutes those to
+  // the colophon page because the title repeats there.
+  summary        String?  @db.Text
 
   user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   bibliographies Bibliography[]

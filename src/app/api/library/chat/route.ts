@@ -14,6 +14,8 @@ import { NextRequest } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { streamChatWithUsage } from '@/lib/claude'
+import { rerankChunks } from '@/lib/rerank'
+import { isGenericBookQuery } from '@/lib/book-summary'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 
@@ -29,13 +31,24 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8
 // in library-wide mode traced back to relevant chunks sitting just
 // past the top-8 cutoff when 50+ books compete in the same ranking.
 // Notes stay narrower since they're already user-curated.
-const TOP_K_CHUNKS = 15
+// Two-stage retrieval: pgvector returns RETRIEVAL_POOL chunks (cast
+// a wide net, recall-oriented), then a Haiku reranker drops the
+// list to TOP_K_CHUNKS that actually answer the question. Same
+// pattern for notes, smaller pool since they're already user-
+// curated. Hard-disabling rerank (RERANK_ENABLED=false) collapses
+// the pipeline back to vector-only as a safety hatch.
+const RETRIEVAL_POOL_CHUNKS = 30
+const RETRIEVAL_POOL_NOTES = 10
+const TOP_K_CHUNKS = 8
 const TOP_K_NOTES = 4
 const MAX_HISTORY_MESSAGES = 12
 
 type Scope = 'all' | 'picked' | 'single'
 
 interface RetrievedChunk {
+  /** Stable id of the underlying LibraryChunk / LibraryNote row.
+   *  Needed by the reranker to re-map score → original record. */
+  id: string
   kind: 'chunk' | 'note'
   entryId: string
   // Multi-volume entries: identifies which volume the chunk/note came
@@ -49,6 +62,10 @@ interface RetrievedChunk {
    *  NULL for older chunks pre-pageLabel pipeline or PDFs without
    *  labels. UI prefers this over pageNumber for citation display. */
   pdfPageLabel: string | null
+  /** Closest preceding section heading on the page. NULL for notes
+   *  and pre-pipeline chunks. Used by the reranker prompt and the
+   *  chip breadcrumb. */
+  sectionTitle: string | null
   content: string
   noteTitle: string | null
 }
@@ -166,18 +183,22 @@ export async function POST(req: NextRequest) {
     const queryVec = await embedQueryText(message)
     let retrievedChunks: RetrievedChunk[] = []
     let retrievedNotes: RetrievedChunk[] = []
+    // Note: both let-bound because the rerank pass below replaces
+    // them with the slim top-K subsets.
     if (queryVec) {
       const vecLiteral = JSON.stringify(queryVec)
       retrievedChunks =
         scope === 'all'
           ? await prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT 'chunk' AS kind,
+              SELECT lc.id AS id,
+                     'chunk' AS kind,
                      le.id AS "entryId",
                      lc."volumeId" AS "volumeId",
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      lc."pageNumber" AS "pageNumber",
                      lc."pdfPageLabel" AS "pdfPageLabel",
+                     lc."sectionTitle" AS "sectionTitle",
                      lc.content AS content,
                      NULL AS "noteTitle"
               FROM "LibraryChunk" lc
@@ -185,16 +206,18 @@ export async function POST(req: NextRequest) {
               WHERE le."userId" = ${session.user.id}
                 AND lc.embedding IS NOT NULL
               ORDER BY lc.embedding <-> ${vecLiteral}::vector
-              LIMIT ${TOP_K_CHUNKS}
+              LIMIT ${RETRIEVAL_POOL_CHUNKS}
             `
           : await prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT 'chunk' AS kind,
+              SELECT lc.id AS id,
+                     'chunk' AS kind,
                      le.id AS "entryId",
                      lc."volumeId" AS "volumeId",
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      lc."pageNumber" AS "pageNumber",
                      lc."pdfPageLabel" AS "pdfPageLabel",
+                     lc."sectionTitle" AS "sectionTitle",
                      lc.content AS content,
                      NULL AS "noteTitle"
               FROM "LibraryChunk" lc
@@ -203,18 +226,20 @@ export async function POST(req: NextRequest) {
                 AND le.id = ANY(${entryIds}::text[])
                 AND lc.embedding IS NOT NULL
               ORDER BY lc.embedding <-> ${vecLiteral}::vector
-              LIMIT ${TOP_K_CHUNKS}
+              LIMIT ${RETRIEVAL_POOL_CHUNKS}
             `
       retrievedNotes =
         scope === 'all'
           ? await prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT 'note' AS kind,
+              SELECT ln.id AS id,
+                     'note' AS kind,
                      le.id AS "entryId",
                      ln."volumeId" AS "volumeId",
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      ln."pageNumber" AS "pageNumber",
                      ln."pdfPageLabel" AS "pdfPageLabel",
+                     NULL AS "sectionTitle",
                      ln."contentText" AS content,
                      ln.title AS "noteTitle"
               FROM "LibraryNote" ln
@@ -222,16 +247,18 @@ export async function POST(req: NextRequest) {
               WHERE ln."userId" = ${session.user.id}
                 AND ln.embedding IS NOT NULL
               ORDER BY ln.embedding <-> ${vecLiteral}::vector
-              LIMIT ${TOP_K_NOTES}
+              LIMIT ${RETRIEVAL_POOL_NOTES}
             `
           : await prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT 'note' AS kind,
+              SELECT ln.id AS id,
+                     'note' AS kind,
                      le.id AS "entryId",
                      ln."volumeId" AS "volumeId",
                      le.title AS title,
                      le."authorSurname" AS "authorSurname",
                      ln."pageNumber" AS "pageNumber",
                      ln."pdfPageLabel" AS "pdfPageLabel",
+                     NULL AS "sectionTitle",
                      ln."contentText" AS content,
                      ln.title AS "noteTitle"
               FROM "LibraryNote" ln
@@ -240,9 +267,58 @@ export async function POST(req: NextRequest) {
                 AND le.id = ANY(${entryIds}::text[])
                 AND ln.embedding IS NOT NULL
               ORDER BY ln.embedding <-> ${vecLiteral}::vector
-              LIMIT ${TOP_K_NOTES}
+              LIMIT ${RETRIEVAL_POOL_NOTES}
             `
     }
+
+    // Two-stage retrieval — rerank the wide pool down to the final
+    // top-K. Haiku judges each candidate vs the original question
+    // and returns a 0-10 relevance score; we then keep the highest-
+    // scoring TOP_K_CHUNKS / TOP_K_NOTES. Falls back to vector
+    // order on Haiku failure.
+    if (retrievedChunks.length > TOP_K_CHUNKS) {
+      const ranked = await rerankChunks(
+        message,
+        retrievedChunks.map((c) => ({
+          id: c.id,
+          content: c.content,
+          title: c.title,
+          sectionTitle: c.sectionTitle,
+          pageLabel: c.pdfPageLabel,
+        })),
+      )
+      const order = new Map(ranked.map((r, i) => [r.id, i]))
+      retrievedChunks = retrievedChunks
+        .slice()
+        .sort(
+          (a, b) =>
+            (order.get(a.id) ?? Number.POSITIVE_INFINITY) -
+            (order.get(b.id) ?? Number.POSITIVE_INFINITY),
+        )
+        .slice(0, TOP_K_CHUNKS)
+    }
+    if (retrievedNotes.length > TOP_K_NOTES) {
+      const ranked = await rerankChunks(
+        message,
+        retrievedNotes.map((c) => ({
+          id: c.id,
+          content: c.content,
+          title: c.title,
+          sectionTitle: c.sectionTitle,
+          pageLabel: c.pdfPageLabel,
+        })),
+      )
+      const order = new Map(ranked.map((r, i) => [r.id, i]))
+      retrievedNotes = retrievedNotes
+        .slice()
+        .sort(
+          (a, b) =>
+            (order.get(a.id) ?? Number.POSITIVE_INFINITY) -
+            (order.get(b.id) ?? Number.POSITIVE_INFINITY),
+        )
+        .slice(0, TOP_K_NOTES)
+    }
+
     // Interleave: notes first (curated, usually more relevant) then
     // chunks. The prompt block stays in the merged order so [1]..[N]
     // numbering matches what we send to the model.
@@ -274,12 +350,48 @@ export async function POST(req: NextRequest) {
             })
             .join('\n\n')
 
+    // Single-entry summary block: when the user is scoped to one
+    // book AND asked a generic "what's it about" question, inject
+    // the precomputed book summary into the system prompt so the
+    // LLM can answer the spirit of the question even when vector
+    // retrieval surfaces narrow passages. RAG excerpts still go in
+    // beneath for specific factual followups.
+    let bookSummaryBlock = ''
+    if (
+      scope !== 'all' &&
+      entryIds.length === 1 &&
+      isGenericBookQuery(message)
+    ) {
+      const summaryEntry = await prisma.libraryEntry.findFirst({
+        where: { id: entryIds[0], userId: session.user.id },
+        select: { title: true, summary: true },
+      })
+      if (summaryEntry?.summary) {
+        bookSummaryBlock =
+          `\n\nKİTAP ÖZETİ (${summaryEntry.title}):\n${summaryEntry.summary}\n` +
+          '↑ Yukarıdaki özet bu kitabın bütünsel tezini ve yaklaşımını\n' +
+          'aktarır; "ne anlatıyor / ana fikir" tipi genel sorularda\n' +
+          'önce buradan yararlan, ardından excerpt\'lerden somut atıflar ekle.'
+      }
+    }
+
     const systemPrompt =
-      'Sen kullanıcının PDF kütüphanesi üzerinde çalışan bir araştırma asistanısın. Aşağıdaki excerpt\'lerden yararlanarak Türkçe yanıtla. ' +
-      'Her bilgi parçasını [1], [2] gibi numaralı atıflarla işaretle (kaynak listesi cevabın altında değil, cümle içinde olsun). ' +
-      'Excerpt\'lerde olmayan bir iddiada bulunma; bilgi yetersizse "Verilen kaynaklarda bunu doğrulayan bir bilgi yok." de. ' +
-      'Yeni atıf uydurma; sadece sana verilen [n] numaralarını kullan.\n\n' +
-      `KAYNAK EXCERPTS:\n${excerptBlock}`
+      'Sen kullanıcının PDF kütüphanesi üzerinde çalışan bir araştırma asistanısın. Türkçe yanıtla.\n\n' +
+      'KURALLAR:\n' +
+      '1) Her bilgi parçasını [1], [2] gibi numaralı atıflarla işaretle (cümle içinde, ' +
+      'satır altında listeleme).\n' +
+      '2) Excerpt\'lerde olmayan bir iddiada BULUNMA. Excerpt\'leri zorlama; bağlamı yorumlama. ' +
+      'Pasajda olmayan kavramı pasajdaymış gibi sunma.\n' +
+      '3) ÖNCE excerpt\'leri değerlendir: soruya doğrudan cevap veriyorlar mı? ' +
+      'Eğer kaynaklarda soruya cevap YOKSA veya excerpt\'ler konuyla yalnızca dolaylı ilgiliyse, ' +
+      'şöyle yanıtla: "Verilen kaynaklarda bu soruyu doğrudan yanıtlayan bir pasaj yok. ' +
+      'Yakın bağlamda şunlardan söz ediliyor: [kısa, doğru özet][n]. ' +
+      'Daha spesifik bir alıntı için \'X kitabının Y kavramı\' gibi daraltılmış bir soru sorabilirsin." ' +
+      'Bu durumu bir mağlubiyet olarak değil, akademik dürüstlük olarak ele al.\n' +
+      '4) Yeni atıf uydurma; sadece sana verilen [n] numaralarını kullan.\n' +
+      '5) Türkçe akademik üslup. Diakritikleri koru (İ, ı, ğ, ş, ç, ü, ö).\n\n' +
+      `KAYNAK EXCERPTS:\n${excerptBlock}` +
+      bookSummaryBlock
 
     const messagesForLlm = [
       ...compressed.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -315,6 +427,10 @@ export async function POST(req: NextRequest) {
       // in chips, citation chips, and downstream rendering.
       page: c.pageNumber,
       pageLabel: c.pdfPageLabel,
+      // Chapter/section heading the chunk lives under; surfaced
+      // as a breadcrumb on the chip so the reader sees "Bölüm 3"
+      // alongside the book title.
+      sectionTitle: c.sectionTitle,
       noteTitle: c.noteTitle,
       // First ~280 chars of the cited chunk/note so the PDF panel can
       // surface a "AI bu metni gösterdi" preview when the user opens
