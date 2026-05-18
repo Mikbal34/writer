@@ -450,9 +450,17 @@ export default function PdfViewerWithHighlights({
   // ── Effect: honour external page-jump prop ──────────────────────
   useEffect(() => {
     if (typeof targetPage === "number" && targetPage > 0) {
-      setPage(targetPage);
+      // Clamp to the actual document length. Reprocessing a PDF can
+      // change its total page count (e.g. PyMuPDF vs pdfjs disagree
+      // on what counts as a page), but chunk.pageNumber rows the
+      // viewer receives may still point at the old layout's index.
+      // Without clamping we land on a phantom page (input shows
+      // "139/124") and the renderer just sits there.
+      const clamped =
+        numPages > 0 ? Math.min(targetPage, numPages) : targetPage;
+      setPage(clamped);
     }
-  }, [targetPage]);
+  }, [targetPage, numPages]);
 
   // ── Effect: load highlights for the entry ───────────────────────
   const loadHighlights = useCallback(async () => {
