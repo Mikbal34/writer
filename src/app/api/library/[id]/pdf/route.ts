@@ -11,7 +11,6 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'node:fs'
-import { Readable } from 'node:stream'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { pdfExists } from '@/lib/library-storage'
@@ -64,34 +63,32 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    // Stream the file without advertising Range support. pdfjs
-    // aggressively issues HTTP Range requests when it sees
-    // `Accept-Ranges: bytes`, including suffix ranges like
-    // `bytes=-512` for the PDF trailer — our half-implemented
-    // handler rejected those and the whole Document.getDocument
-    // promise silently failed, leaving the viewer with numPages=0
-    // and a perpetual loading spinner.
+    // Back to the buffered response: load the whole file into
+    // memory and hand pdfjs a Uint8Array. Streaming via
+    // Readable.toWeb cut TTFB but silently corrupted large PDFs
+    // (50 MB books opened with numPages=0 or "Invalid PDF
+    // structure"), even though the same files parsed fine when
+    // loaded directly by pdfjs in the container. Container-side
+    // pdfjs proved the files are sound, so the streaming layer is
+    // what's losing data — most likely Railway's edge proxy
+    // truncating long chunked responses.
     //
-    // Without Accept-Ranges, pdfjs does a single full GET and
-    // streams the response. Readable.toWeb() converts the Node
-    // ReadStream into the Web ReadableStream Next 16 accepts so
-    // the first chunk reaches pdfjs as soon as it leaves the disk
-    // — TTFB is still much better than the old fs.readFile +
-    // Uint8Array buffer path, even without partial-range fetches.
-    const stat = await fs.promises.stat(filePath as string)
-    const fileSize = stat.size
-    const nodeStream = fs.createReadStream(filePath as string)
-    const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>
+    // Buffering is the slow-but-reliable path. Modest perf cost
+    // (TTFB grows with file size) trades for "every PDF opens
+    // every time", which we need before any further optimization.
+    // A proper HTTP Range handler can win the performance back
+    // later without breaking reliability.
+    const bytes = await fs.promises.readFile(filePath as string)
     console.info(
       '[GET /api/library/[id]/pdf]',
-      `${fileSize} bytes (streamed)`,
+      `${bytes.byteLength} bytes (buffered)`,
       filePath,
     )
-    return new NextResponse(webStream, {
+    return new NextResponse(new Uint8Array(bytes), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Length': String(fileSize),
+        'Content-Length': String(bytes.byteLength),
         'Cache-Control': 'private, max-age=3600',
       },
     })
