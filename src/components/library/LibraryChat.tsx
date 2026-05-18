@@ -179,8 +179,13 @@ export default function LibraryChat() {
   const handleStartNewSession = useCallback(() => {
     startNewSession();
     setActiveSource(null);
-    if (initialEntryId) router.replace("/library/chat");
-  }, [startNewSession, initialEntryId, router]);
+    // Previously we router.replaced to /library/chat here, which
+    // silently dropped the ?entryId query param — every "new
+    // session" in a per-book chat surface bounced the user out to
+    // the library-wide mode (Kütüphanenle konuş header, fallback
+    // suggestions). Keep the entryId in the URL so a new session
+    // started inside a single-book chat stays single-book.
+  }, [startNewSession]);
 
   const handleSuggestion = useCallback(
     (text: string) => {
@@ -288,6 +293,8 @@ export default function LibraryChat() {
           pdfOpen={pdfOpen}
           messages={messages}
           currentSessionPreview={currentSessionPreview}
+          initialEntryId={initialEntryId}
+          allEntries={allEntries}
         />
 
         {/* Body */}
@@ -566,10 +573,14 @@ function ChatHeader({
   pdfOpen,
   messages,
   currentSessionPreview,
+  initialEntryId,
+  allEntries,
 }: {
   pdfOpen: boolean;
   messages: ChatMessage[];
   currentSessionPreview: string | null;
+  initialEntryId?: string;
+  allEntries: Array<{ id: string; title: string }>;
 }) {
   const titleEntry =
     currentSessionPreview ??
@@ -585,34 +596,49 @@ function ChatHeader({
           "linear-gradient(135deg, var(--color-forest-deep) 0%, #1a2818 100%)",
       }}
     >
-      <div className="font-ui inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-gold-soft/65 mb-1">
-        <Sparkles className="h-3 w-3" />
-        Kütüphane sohbeti
-      </div>
-      <div className="flex items-baseline gap-3 flex-wrap">
-        <h2
-          className={cn(
-            "font-display italic font-medium text-white leading-tight",
-            pdfOpen ? "text-[20px]" : "text-[28px]",
-          )}
-        >
-          {pdfOpen && titleEntry
-            ? truncate(titleEntry, 60)
-            : "Kütüphanenle konuş"}
-        </h2>
-        {pdfOpen && (
-          <span className="font-ui text-[11px] text-gold-soft/65">
-            · {messages.length} mesaj
-          </span>
-        )}
-      </div>
-      {!pdfOpen && (
-        <p className="mt-2 font-body text-[13px] leading-relaxed text-gold-soft/85 max-w-[520px]">
-          Kaynaklarına birden sor. Yanıt, kullandığı kitaplardan başlık ve
-          sayfa numarasıyla alıntılanır. Bir kaynak chip&apos;ine tıkla — PDF
-          solda açılır.
-        </p>
-      )}
+      {(() => {
+        // When the chat is scoped to a single book, surface that
+        // up front so the user knows the suggestions / retrieval
+        // are book-scoped rather than library-wide.
+        const singleBookEntry = initialEntryId
+          ? allEntries.find((e) => e.id === initialEntryId)
+          : null;
+        const singleBookTitle = singleBookEntry?.title ?? null;
+        return (
+          <>
+            <div className="font-ui inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-gold-soft/65 mb-1">
+              <Sparkles className="h-3 w-3" />
+              {singleBookTitle ? "Kitap sohbeti" : "Kütüphane sohbeti"}
+            </div>
+            <div className="flex items-baseline gap-3 flex-wrap">
+              <h2
+                className={cn(
+                  "font-display italic font-medium text-white leading-tight",
+                  pdfOpen ? "text-[20px]" : "text-[28px]",
+                )}
+              >
+                {pdfOpen && titleEntry
+                  ? truncate(titleEntry, 60)
+                  : singleBookTitle
+                    ? truncate(singleBookTitle, 70)
+                    : "Kütüphanenle konuş"}
+              </h2>
+              {pdfOpen && (
+                <span className="font-ui text-[11px] text-gold-soft/65">
+                  · {messages.length} mesaj
+                </span>
+              )}
+            </div>
+            {!pdfOpen && (
+              <p className="mt-2 font-body text-[13px] leading-relaxed text-gold-soft/85 max-w-[520px]">
+                {singleBookTitle
+                  ? "Bu kitabın içeriğine sor. Yanıt, kitabın pasajlarından sayfa numarasıyla alıntılanır."
+                  : "Kaynaklarına birden sor. Yanıt, kullandığı kitaplardan başlık ve sayfa numarasıyla alıntılanır. Bir kaynak chip'ine tıkla — PDF solda açılır."}
+              </p>
+            )}
+          </>
+        );
+      })()}
     </header>
   );
 }
