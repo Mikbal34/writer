@@ -64,61 +64,27 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
+    // Stream the file without advertising Range support. pdfjs
+    // aggressively issues HTTP Range requests when it sees
+    // `Accept-Ranges: bytes`, including suffix ranges like
+    // `bytes=-512` for the PDF trailer — our half-implemented
+    // handler rejected those and the whole Document.getDocument
+    // promise silently failed, leaving the viewer with numPages=0
+    // and a perpetual loading spinner.
+    //
+    // Without Accept-Ranges, pdfjs does a single full GET and
+    // streams the response. Readable.toWeb() converts the Node
+    // ReadStream into the Web ReadableStream Next 16 accepts so
+    // the first chunk reaches pdfjs as soon as it leaves the disk
+    // — TTFB is still much better than the old fs.readFile +
+    // Uint8Array buffer path, even without partial-range fetches.
     const stat = await fs.promises.stat(filePath as string)
     const fileSize = stat.size
-
-    // Honour HTTP Range requests — pdfjs issues them aggressively
-    // when it sees Accept-Ranges: bytes, fetching only the bytes
-    // for the current page instead of the whole document. Without
-    // proper Range handling pdfjs ends up with a malformed view of
-    // the file (got 200 + full body when it expected 206 + slice)
-    // and the canvas never renders even though numPages is known.
-    const rangeHeader = req.headers.get('range')
-    if (rangeHeader) {
-      const m = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader)
-      if (m) {
-        const start = parseInt(m[1], 10)
-        const end = m[2] ? parseInt(m[2], 10) : fileSize - 1
-        if (
-          Number.isFinite(start) &&
-          Number.isFinite(end) &&
-          start >= 0 &&
-          end < fileSize &&
-          start <= end
-        ) {
-          const chunk = fs.createReadStream(filePath as string, { start, end })
-          const webStream = Readable.toWeb(chunk) as unknown as ReadableStream<Uint8Array>
-          return new NextResponse(webStream, {
-            status: 206,
-            headers: {
-              'Content-Type': 'application/pdf',
-              'Content-Length': String(end - start + 1),
-              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-              'Accept-Ranges': 'bytes',
-              'Cache-Control': 'private, max-age=3600',
-            },
-          })
-        }
-      }
-      // Malformed Range → 416 per spec.
-      return new NextResponse(null, {
-        status: 416,
-        headers: {
-          'Content-Range': `bytes */${fileSize}`,
-        },
-      })
-    }
-
-    // No Range header → stream the whole file. Readable.toWeb()
-    // gives us the Web ReadableStream shape Next 16 actually
-    // accepts, so the first chunk hits the wire as soon as it leaves
-    // the disk instead of waiting for fs.readFile to load the entire
-    // 50-200 MB academic book into memory first.
     const nodeStream = fs.createReadStream(filePath as string)
     const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>
     console.info(
       '[GET /api/library/[id]/pdf]',
-      `${fileSize} bytes (streamed, full)`,
+      `${fileSize} bytes (streamed)`,
       filePath,
     )
     return new NextResponse(webStream, {
@@ -126,7 +92,6 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Length': String(fileSize),
-        'Accept-Ranges': 'bytes',
         'Cache-Control': 'private, max-age=3600',
       },
     })
