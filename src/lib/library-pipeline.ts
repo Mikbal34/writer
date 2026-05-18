@@ -25,6 +25,10 @@ import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
 import { deductCredits } from '@/lib/credits'
 import { extractPdfPages } from '@/lib/pdf-extract'
 import { chunkByPage } from '@/lib/chunker'
+import {
+  buildEmbeddingText,
+  contextualizeChunks,
+} from '@/lib/contextual-chunks'
 import { EntryType, Prisma } from '@prisma/client'
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
@@ -686,7 +690,13 @@ async function persistChunks(
       chunkIndex: c.chunkIndex,
       content: c.content,
     })),
-    select: { id: true, content: true },
+    select: {
+      id: true,
+      content: true,
+      pageNumber: true,
+      pdfPageLabel: true,
+      sectionTitle: true,
+    },
   })
 
   if (volumeId) {
@@ -695,10 +705,53 @@ async function persistChunks(
     await setStatus(entryId, 'embedding')
   }
 
+  // Contextual retrieval (Anthropic 2024): generate a 1-2 sentence
+  // context per chunk via Haiku, prepend it to the chunk text, and
+  // embed the combined string. Vector then incorporates the
+  // chunk's identity (book + section + topic) instead of judging
+  // bare prose in isolation — ~35% precision lift @ top-K.
+  let contextMap = new Map<string, string | null>()
+  try {
+    const entryForCtx = await prisma.libraryEntry.findUnique({
+      where: { id: entryId },
+      select: {
+        title: true,
+        authorSurname: true,
+        authorName: true,
+        year: true,
+      },
+    })
+    if (entryForCtx) {
+      contextMap = await contextualizeChunks(entryForCtx, created)
+    }
+  } catch (err) {
+    console.warn(
+      '[library-pipeline] contextualize failed (continuing without prefix):',
+      err,
+    )
+  }
+
+  // Persist the generated prefixes alongside the chunks so the
+  // backfill / migration tool can re-run embeddings later without
+  // re-paying Haiku for the context.
+  for (const [chunkId, ctx] of contextMap) {
+    if (!ctx) continue
+    await prisma.libraryChunk.update({
+      where: { id: chunkId },
+      data: { contextualPrefix: ctx },
+    })
+  }
+
   let embeddedChunks = 0
   for (let i = 0; i < created.length; i += EMBED_BATCH_SIZE) {
     const batch = created.slice(i, i + EMBED_BATCH_SIZE)
-    const vectors = await embedBatch(batch.map((c) => c.content))
+    // Embed prefix + content so the vector reflects the chunk's
+    // contextual identity. Falls back to bare content for any
+    // chunk whose contextualize call failed.
+    const texts = batch.map((c) =>
+      buildEmbeddingText(c.content, contextMap.get(c.id) ?? null),
+    )
+    const vectors = await embedBatch(texts)
     if (!vectors || vectors.length !== batch.length) continue
     for (let j = 0; j < batch.length; j++) {
       await prisma.$executeRawUnsafe(

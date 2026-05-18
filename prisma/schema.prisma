@@ -608,6 +608,15 @@ model LibraryChunk {
   // sits under it. Used both for richer retrieval prompts and for
   // letting the UI show a section breadcrumb on each citation chip.
   sectionTitle   String?
+  // Short LLM-generated context prepended to `content` before
+  // embedding — e.g. "From Mary Douglas, Saflık ve Tehlike, ch. 3
+  // on pollution rituals: …". Anthropic's "Contextual Retrieval"
+  // (2024) paper shows this lifts retrieval precision ~35% by
+  // anchoring every chunk to its source's identity and topic
+  // instead of leaving embedding to guess from bare prose.
+  // `content` stays as the raw passage so display/highlight code
+  // doesn't change. NULL on chunks that pre-date this pass.
+  contextualPrefix String?
   chunkIndex     Int
   content        String                      @db.Text
   embedding      Unsupported("vector(768)")?

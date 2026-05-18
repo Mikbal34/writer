@@ -1,0 +1,145 @@
+/**
+ * Contextual chunks — Anthropic's "Contextual Retrieval" pattern.
+ *
+ * For each chunk, we ask Haiku to generate a 1-2 sentence context
+ * that says where the chunk sits in the book (chapter, topic). This
+ * context is then PREPENDED to the chunk text before embedding, so
+ * the vector incorporates the chunk's identity rather than treating
+ * raw prose in isolation. Result (per the 2024 paper): ~35% lift in
+ * retrieval precision @ top-K, with no change to chunking or
+ * embedding-model architecture.
+ *
+ * `content` in the DB stays the raw passage so display, AI-quote
+ * highlighting, and any verbatim-citation paths are untouched. The
+ * generated prefix is stored separately in `pdfPageLabel`-sibling
+ * column `contextualPrefix`, and `prefix + "\n\n" + content` is
+ * what we feed the /embed endpoint with.
+ *
+ * Cost: Haiku ~$0.0001 per chunk. 60K-chunk backfill ≈ $6.
+ * Throughput: Anthropic's API tolerates ~10 parallel requests per
+ * key without rate-limit grief, so we batch.
+ */
+
+import { generateJSONWithUsage, HAIKU } from "@/lib/claude";
+
+const CONTEXT_BATCH_PARALLEL = 8;
+
+const SYSTEM_PROMPT =
+  "You are summarizing where a passage sits within a book. " +
+  "Given the book's title, author, the section heading the passage falls under, " +
+  "and the passage text itself, output a 1-2 sentence context (max 30 words) that " +
+  "(a) names the book + author succinctly, (b) describes what the passage discusses. " +
+  "Write in the same primary language as the passage (Turkish passages → Turkish " +
+  "context, English passages → English context). " +
+  'Output ONLY JSON: { "context": "..." }. No commentary, no markdown.';
+
+export interface ContextualizableChunk {
+  id: string;
+  content: string;
+  pageNumber?: number | null;
+  pageLabel?: string | null;
+  sectionTitle?: string | null;
+}
+
+export interface BookInfo {
+  title: string;
+  authorSurname?: string | null;
+  authorName?: string | null;
+  /** Year may arrive as either a number (legacy) or a string
+   *  ("1996" / "2017") depending on which schema column we read. */
+  year?: number | string | null;
+}
+
+interface OneResult {
+  id: string;
+  context: string | null;
+}
+
+async function contextualizeOne(
+  book: BookInfo,
+  chunk: ContextualizableChunk,
+): Promise<OneResult> {
+  const author = chunk
+    ? [book.authorName, book.authorSurname].filter(Boolean).join(" ").trim() ||
+      "unknown author"
+    : "unknown author";
+  const sectionLine = chunk.sectionTitle
+    ? `Section heading: ${chunk.sectionTitle}\n`
+    : "";
+  const pageLine = chunk.pageLabel
+    ? `Printed page: ${chunk.pageLabel}\n`
+    : chunk.pageNumber
+      ? `PDF page: ${chunk.pageNumber}\n`
+      : "";
+  // Trim the body — Haiku doesn't need the whole chunk to write a
+  // 30-word context, and shorter input is cheaper + faster.
+  const body = chunk.content.length > 1200
+    ? chunk.content.slice(0, 1200) + " …"
+    : chunk.content;
+  const prompt = `Book: ${book.title}
+Author: ${author}${book.year ? ` (${book.year})` : ""}
+${sectionLine}${pageLine}
+Passage:
+"""
+${body}
+"""
+
+Return JSON { "context": "..." } only.`;
+  try {
+    const result = await generateJSONWithUsage<{ context?: string }>(
+      prompt,
+      SYSTEM_PROMPT,
+      { model: HAIKU },
+    );
+    const ctx =
+      typeof result.data?.context === "string"
+        ? result.data.context.trim()
+        : null;
+    return { id: chunk.id, context: ctx && ctx.length > 0 ? ctx : null };
+  } catch (err) {
+    console.warn(
+      "[contextual-chunks] Haiku failed for chunk",
+      chunk.id,
+      err instanceof Error ? err.message : err,
+    );
+    return { id: chunk.id, context: null };
+  }
+}
+
+/**
+ * Generate contextual prefixes for every chunk in `chunks`, run
+ * up to CONTEXT_BATCH_PARALLEL requests at a time. Returns a map
+ * from chunkId → prefix (null when generation failed; caller can
+ * fall back to embedding bare content for those).
+ */
+export async function contextualizeChunks(
+  book: BookInfo,
+  chunks: ContextualizableChunk[],
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  if (chunks.length === 0) return out;
+
+  // Process in fixed-size waves so we never have more than
+  // CONTEXT_BATCH_PARALLEL outstanding Haiku requests at once.
+  for (let i = 0; i < chunks.length; i += CONTEXT_BATCH_PARALLEL) {
+    const batch = chunks.slice(i, i + CONTEXT_BATCH_PARALLEL);
+    const results = await Promise.all(
+      batch.map((c) => contextualizeOne(book, c)),
+    );
+    for (const r of results) out.set(r.id, r.context);
+  }
+  return out;
+}
+
+/**
+ * Helper for the embedding stage: when we have a contextualPrefix,
+ * prepend it before embedding so the vector incorporates the
+ * chunk's identity. Plain content otherwise.
+ */
+export function buildEmbeddingText(
+  content: string,
+  contextualPrefix: string | null | undefined,
+): string {
+  if (!contextualPrefix) return content;
+  return `${contextualPrefix.trim()}\n\n${content}`;
+}
