@@ -250,6 +250,12 @@ export default function LibraryChat() {
       {pdfOpen && activeSource && (
         <section className="flex-[1.05] min-w-0 flex flex-col rounded-2xl bg-elevated overflow-hidden relative">
           <PdfReaderPanel
+            // Full remount when the citation switches to a different
+            // entry/volume so internal PDF state (page index, render
+            // canvas, highlight list) is not carried across between
+            // two unrelated books — that mid-state carry-over showed
+            // up as "two pages loading at once".
+            key={`${activeSource.entryId}:${activeSource.volumeId ?? "x"}`}
             entryId={activeSource.entryId}
             volumeId={activeSource.volumeId}
             title={activeSource.title}
