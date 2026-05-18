@@ -86,7 +86,7 @@ async function main() {
   for (let i = 0; i < all.length; i += BATCH_SIZE) {
     const batch = all.slice(i, i + BATCH_SIZE);
     const res = await fetch(
-      `${APP_URL}/api/library/_internal/reprocess-batch`,
+      `${APP_URL}/api/library/batch-reprocess`,
       {
         method: "POST",
         headers: {
