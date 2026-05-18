@@ -23,6 +23,8 @@ import { prisma } from '@/lib/db'
 import { findPdf } from '@/lib/pdf-finder'
 import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
 import { deductCredits } from '@/lib/credits'
+import { extractPdfPages } from '@/lib/pdf-extract'
+import { chunkByPage } from '@/lib/chunker'
 import { EntryType, Prisma } from '@prisma/client'
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
@@ -40,6 +42,65 @@ const VALID_ENTRY_TYPES = new Set(Object.values(EntryType))
 // because batches are fast even on slow networks.
 const PROCESS_FETCH_TIMEOUT_MS = 10 * 60 * 1000
 const EMBED_FETCH_TIMEOUT_MS = 2 * 60 * 1000
+// Number of front pages to stitch into extractedText for the
+// bibliography-enrichment Haiku call. Matches python-service/routers/
+// process.py's _BIB_PAGES so prompts behave identically across paths.
+const BIB_PAGES = 10
+
+/**
+ * Run native-text PDF extraction in-process via pdfjs and emit a
+ * ProcessResponse-shaped object so the existing pipeline code (chunk
+ * persistence, embedding, metadata enrichment) doesn't need to know
+ * whether the work happened locally or in the Python service.
+ *
+ * Returns null when the PDF is image-only (scanned) — caller falls
+ * back to /process-bytes which runs PyMuPDF + Tesseract OCR. Local
+ * pdfjs has no OCR path, so this is the only divergence from the
+ * Python pipeline.
+ *
+ * Why: PyMuPDF mis-decodes Turkish/Arabic font encodings on some
+ * academic PDFs, producing chunk text that drifts from what the
+ * viewer renders. pdfjs reads the same /ToUnicode CMaps the browser
+ * uses, so chunks match the visible text 1:1 and the AI-quote
+ * highlighter actually finds its target.
+ */
+async function extractPdfLocalAsProcessResponse(
+  bytes: Buffer,
+  sourceId: string,
+): Promise<ProcessResponse | null> {
+  const result = await extractPdfPages(bytes)
+  if (result.needsOcr) {
+    console.info(
+      `[library-pipeline] ${sourceId}: pdfjs flagged needsOcr, deferring to Python OCR fallback`,
+    )
+    return null
+  }
+  if (result.pages.length === 0) return null
+
+  const chunkRows = chunkByPage(result.pages)
+  const chunks = chunkRows.map((c) => ({
+    pageNumber: c.pageNumber,
+    pageLabel: c.pageLabel,
+    chunkIndex: c.chunkIndex,
+    content: c.content,
+  }))
+
+  // Front-matter text for the Haiku metadata enricher — same shape
+  // process.py builds via `f"[Page N]\n{content}"`.
+  const extractedText = result.pages
+    .slice(0, BIB_PAGES)
+    .map((p) => `[Page ${p.pageNumber}]\n${p.content}`)
+    .join('\n\n---\n\n')
+
+  return {
+    sourceId,
+    totalPages: result.totalPages,
+    extractedText,
+    chunks,
+    ocrPending: false,
+    metadata: null,
+  }
+}
 
 export interface PdfMetadataExtraction {
   entryType: string | null
@@ -727,29 +788,46 @@ export async function processLibraryPdfFromBytes(
   try {
     await setStatus(entryId, 'extracting', { pdfError: null })
 
-    const form = new FormData()
-    form.append('sourceId', entryId)
-    form.append(
-      'file',
-      new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }),
-      filename
-    )
-
-    const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
-      method: 'POST',
-      body: form,
-      signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
-    })
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      const msg = `Python /process-bytes HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`
-      console.error('[library-pipeline]', msg)
-      await setStatus(entryId, 'failed', { pdfError: msg })
-      return
+    // Try local pdfjs extraction first — keeps chunk text aligned
+    // with what the viewer renders so AI-quote highlighting works
+    // for Turkish/Arabic PDFs that PyMuPDF mis-decodes.
+    let data: ProcessResponse | null = null
+    try {
+      data = await extractPdfLocalAsProcessResponse(bytes, entryId)
+    } catch (err) {
+      console.warn(
+        `[library-pipeline] ${entryId}: pdfjs extract threw, deferring to Python:`,
+        err,
+      )
     }
 
-    const data = (await res.json()) as ProcessResponse
+    if (!data) {
+      // Fallback to Python service (scanned/image-only PDFs need its
+      // Tesseract OCR pipeline; pdfjs has no OCR mode).
+      const form = new FormData()
+      form.append('sourceId', entryId)
+      form.append(
+        'file',
+        new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }),
+        filename
+      )
+
+      const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
+        method: 'POST',
+        body: form,
+        signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
+      })
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        const msg = `Python /process-bytes HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`
+        console.error('[library-pipeline]', msg)
+        await setStatus(entryId, 'failed', { pdfError: msg })
+        return
+      }
+
+      data = (await res.json()) as ProcessResponse
+    }
 
     if (!data.chunks || data.chunks.length === 0) {
       await setStatus(entryId, 'failed', { pdfError: 'No text extracted' })
@@ -797,29 +875,44 @@ export async function processLibraryVolumePdfFromBytes(
   try {
     await setVolumeStatus(volumeId, 'extracting', { pdfError: null })
 
-    const form = new FormData()
-    form.append('sourceId', volumeId)
-    form.append(
-      'file',
-      new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }),
-      filename
-    )
-
-    const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
-      method: 'POST',
-      body: form,
-      signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
-    })
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      const msg = `Python /process-bytes HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`
-      console.error('[library-pipeline]', msg)
-      await setVolumeStatus(volumeId, 'failed', { pdfError: msg })
-      return
+    // Same local-first strategy as the entry-level path: pdfjs node
+    // extraction for native-text PDFs, Python /process-bytes only
+    // when the document is image-only and needs OCR.
+    let data: ProcessResponse | null = null
+    try {
+      data = await extractPdfLocalAsProcessResponse(bytes, volumeId)
+    } catch (err) {
+      console.warn(
+        `[library-pipeline] volume ${volumeId}: pdfjs extract threw, deferring to Python:`,
+        err,
+      )
     }
 
-    const data = (await res.json()) as ProcessResponse
+    if (!data) {
+      const form = new FormData()
+      form.append('sourceId', volumeId)
+      form.append(
+        'file',
+        new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }),
+        filename
+      )
+
+      const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
+        method: 'POST',
+        body: form,
+        signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
+      })
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        const msg = `Python /process-bytes HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`
+        console.error('[library-pipeline]', msg)
+        await setVolumeStatus(volumeId, 'failed', { pdfError: msg })
+        return
+      }
+
+      data = (await res.json()) as ProcessResponse
+    }
 
     if (!data.chunks || data.chunks.length === 0) {
       await setVolumeStatus(volumeId, 'failed', { pdfError: 'No text extracted' })
