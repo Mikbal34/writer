@@ -119,6 +119,16 @@ export default function PdfViewerWithHighlights({
   const [chatQuoteRects, setChatQuoteRects] = useState<RangeRect[] | null>(
     null,
   );
+  // Gates the visibility of the page wrapper. pdfjs writes the canvas
+  // asynchronously and the React-level remount can complete before
+  // pdfjs has finished painting, leaving the previous page's pixels
+  // briefly visible underneath the new one. We hide the wrapper on
+  // every page/width change and reveal it only when onRenderSuccess
+  // fires for the new page.
+  const [pageReady, setPageReady] = useState(false);
+  useEffect(() => {
+    setPageReady(false);
+  }, [page, width]);
 
   // When the PDF document fails to load (404, network, parse error), ask
   // the status sidecar why so we can show the user a meaningful message
@@ -442,6 +452,16 @@ export default function PdfViewerWithHighlights({
 
       {/* PDF page */}
       <div className="relative w-full bg-page/40 border border-sandy/50 rounded-sm flex justify-center overflow-hidden">
+        {/* Spinner shown while the new page is mid-render — wrapper
+            below is held at opacity 0 until pdfjs finishes painting,
+            so without this the user would briefly see an empty box
+            during page navigation. */}
+        {!error && !pageReady && (
+          <div className="absolute inset-0 flex items-center justify-center gap-2 text-ink-light font-ui text-sm pointer-events-none">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Sayfa yükleniyor…
+          </div>
+        )}
         {error ? (
           <PdfErrorState entryId={entryId} context={errorContext} loadError={error} />
         ) : (
@@ -489,6 +509,14 @@ export default function PdfViewerWithHighlights({
               // new render begins.
               key={`${page}-${width}`}
               className="relative inline-block overflow-hidden"
+              // Held at opacity 0 until pdfjs reports the new canvas
+              // is painted (onRenderSuccess). Eliminates the half-
+              // second window where the old page's pixels show under
+              // the new wrapper after page navigation.
+              style={{
+                opacity: pageReady ? 1 : 0,
+                transition: "opacity 80ms ease-out",
+              }}
               onMouseUp={handleMouseUp}
             >
               <Page
@@ -496,6 +524,7 @@ export default function PdfViewerWithHighlights({
                 width={width}
                 renderAnnotationLayer={false}
                 renderTextLayer
+                onRenderSuccess={() => setPageReady(true)}
                 onRenderTextLayerSuccess={handleTextLayerReady}
               />
               {/* AI-citation overlay — translucent gold rectangles
