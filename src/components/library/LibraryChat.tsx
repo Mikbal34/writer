@@ -119,9 +119,17 @@ interface LibraryChatProps {
    *  header + fallback suggestions before the client mount swapped
    *  to single-book mode. */
   initialEntryId?: string;
+  /** Server-supplied title for that entry. The header would otherwise
+   *  briefly fall back to "Kütüphanenle konuş" while waiting for the
+   *  client-side allEntries fetch to land — knowing the title server-
+   *  side lets the very first paint render the correct book name. */
+  initialEntryTitle?: string | null;
 }
 
-export default function LibraryChat({ initialEntryId: serverEntryId }: LibraryChatProps = {}) {
+export default function LibraryChat({
+  initialEntryId: serverEntryId,
+  initialEntryTitle = null,
+}: LibraryChatProps = {}) {
   const router = useRouter();
   const params = useSearchParams();
   // Server prop is authoritative on first paint; fall back to the
@@ -307,6 +315,7 @@ export default function LibraryChat({ initialEntryId: serverEntryId }: LibraryCh
           messages={messages}
           currentSessionPreview={currentSessionPreview}
           initialEntryId={initialEntryId}
+          initialEntryTitle={initialEntryTitle}
           allEntries={allEntries}
         />
 
@@ -587,12 +596,14 @@ function ChatHeader({
   messages,
   currentSessionPreview,
   initialEntryId,
+  initialEntryTitle,
   allEntries,
 }: {
   pdfOpen: boolean;
   messages: ChatMessage[];
   currentSessionPreview: string | null;
   initialEntryId?: string;
+  initialEntryTitle?: string | null;
   allEntries: Array<{ id: string; title: string }>;
 }) {
   const titleEntry =
@@ -613,10 +624,15 @@ function ChatHeader({
         // When the chat is scoped to a single book, surface that
         // up front so the user knows the suggestions / retrieval
         // are book-scoped rather than library-wide.
-        const singleBookEntry = initialEntryId
-          ? allEntries.find((e) => e.id === initialEntryId)
+        // Title priority: server-prefetched title wins (server-rendered
+        // first paint), fall back to the client allEntries lookup
+        // once it lands. The fallback covers programmatic mounts
+        // where the page didn't pre-resolve.
+        const singleBookTitle = initialEntryId
+          ? (initialEntryTitle ??
+              allEntries.find((e) => e.id === initialEntryId)?.title ??
+              null)
           : null;
-        const singleBookTitle = singleBookEntry?.title ?? null;
         return (
           <>
             <div className="font-ui inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-gold-soft/65 mb-1">
