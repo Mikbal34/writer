@@ -39,6 +39,11 @@ export async function POST(req: NextRequest) {
   // dropping this to an empty string when read at module scope.
   const adminSecret = process.env.ADMIN_SESSION_SECRET;
   const secret = req.headers.get("x-admin-secret");
+  console.info("[reprocess-batch] auth check", {
+    envLen: adminSecret?.length ?? 0,
+    headerLen: secret?.length ?? 0,
+    match: !!adminSecret && !!secret && secret === adminSecret,
+  });
   if (!adminSecret || !secret || secret !== adminSecret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
