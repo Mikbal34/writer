@@ -1,4 +1,21 @@
 /**
+ * DEPRECATED — use POST /api/library/backfill-contextual instead.
+ *
+ * This script drove the work over `railway ssh`; the WebSocket
+ * dropped mid-run on the first 4500-chunk Arabic book and
+ * stranded ~200 entries. The container-internal route runs the
+ * exact same orchestration inside the long-lived Next.js process,
+ * so SSH stability no longer matters. Kept here as a fallback if
+ * the in-process runner ever needs to be bypassed.
+ *
+ * To trigger:
+ *   curl -X POST https://quilpen.com/api/library/backfill-contextual \
+ *     -H "x-admin-secret: $ADMIN_SESSION_SECRET"
+ *   curl https://quilpen.com/api/library/backfill-contextual \
+ *     -H "x-admin-secret: $ADMIN_SESSION_SECRET"   # poll status
+ *
+ * ---
+ *
  * Backfill missing LibraryChunk.contextualPrefix + re-embed those
  * chunks using prefix+content, and fill LibraryEntry.summary for
  * any entry that didn't get one during the main rechunk pass.
