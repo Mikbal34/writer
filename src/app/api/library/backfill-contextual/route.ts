@@ -51,13 +51,24 @@ export async function POST(req: NextRequest) {
   const unauth = checkAuth(req);
   if (unauth) return unauth;
 
-  const started = startBackfill();
+  // Optional { mode: "default" | "rebuild-all" } in the request
+  // body. Default mode is idempotent and safe; rebuild-all hits
+  // every entry unconditionally — only trigger it on purpose,
+  // after a pipeline change that warrants a full migration.
+  const body = (await req.json().catch(() => ({}))) as {
+    mode?: "default" | "rebuild-all";
+  };
+  const mode: "default" | "rebuild-all" =
+    body.mode === "rebuild-all" ? "rebuild-all" : "default";
+
+  const started = startBackfill(mode);
   const state = getBackfillState();
   return NextResponse.json(
     {
       started,
+      mode,
       message: started
-        ? "backfill loop started"
+        ? `backfill loop started (mode=${mode})`
         : "backfill already running — POST is a no-op",
       state,
     },

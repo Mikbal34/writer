@@ -95,10 +95,36 @@ interface QueueRow {
   has_summary: boolean;
 }
 
-async function fetchQueue(): Promise<QueueRow[]> {
-  // Mirrors the SQL in the standalone backfill script: any entry
-  // with at least one chunk lacking a contextualPrefix, OR no
-  // summary, OR no chunks at all (initial ingestion never landed).
+type BackfillMode = "default" | "rebuild-all";
+
+async function fetchQueue(mode: BackfillMode): Promise<QueueRow[]> {
+  if (mode === "rebuild-all") {
+    // One-shot full rebuild: every entry with a usable source
+    // (filePath or openAccessUrl), no other filter. Used after a
+    // pipeline-level change that affects all chunks — e.g., the
+    // Buffer→Uint8Array fix that lets pdfjs replace the Python OCR
+    // fallback, restoring sectionTitle + pdfPageLabel on every
+    // book. NOT safe to leave on auto-resume: every restart would
+    // re-process the whole library again. Trigger explicitly via
+    // POST, let it finish, never auto-resume in this mode.
+    return prisma.$queryRaw<QueueRow[]>`
+      SELECT le.id,
+             le.title,
+             le."filePath",
+             le."openAccessUrl",
+             COUNT(lc.id)::int AS total_chunks,
+             COUNT(*) FILTER (WHERE lc."contextualPrefix" IS NULL)::int AS missing_ctx,
+             (le.summary IS NOT NULL) AS has_summary
+      FROM "LibraryEntry" le
+      LEFT JOIN "LibraryChunk" lc ON lc."libraryEntryId" = le.id
+      WHERE le."filePath" IS NOT NULL OR le."openAccessUrl" IS NOT NULL
+      GROUP BY le.id, le.title, le."filePath", le."openAccessUrl", le.summary
+      ORDER BY total_chunks ASC NULLS FIRST
+    `;
+  }
+  // Default mode — only entries that *still need work* by the
+  // contextual/summary/chunk-count signals. Idempotent: re-running
+  // skips anything already finished, so safe with auto-resume.
   return prisma.$queryRaw<QueueRow[]>`
     SELECT le.id,
            le.title,
@@ -132,9 +158,10 @@ async function processEntry(entry: QueueRow): Promise<void> {
   throw new Error("entry has neither filePath nor openAccessUrl");
 }
 
-async function runLoop(): Promise<void> {
+async function runLoop(mode: BackfillMode = "default"): Promise<void> {
   try {
-    const queue = await fetchQueue();
+    log(`mode: ${mode}`);
+    const queue = await fetchQueue(mode);
     state.total = queue.length;
     state.done = 0;
     state.failed = 0;
@@ -196,8 +223,20 @@ async function runLoop(): Promise<void> {
 /**
  * Start the backfill loop. Returns immediately. Subsequent calls
  * while a run is in flight are a no-op (returns false).
+ *
+ * `mode`:
+ *   - "default" — only entries with missing contextual / summary /
+ *     no chunks. Idempotent, safe to auto-resume.
+ *   - "rebuild-all" — every entry with a file or OA URL,
+ *     unconditionally. One-shot use: drive a full pipeline
+ *     migration after a code change (e.g., Buffer fix that
+ *     re-enables pdfjs → restores sectionTitle + pdfPageLabel).
+ *     Don't combine with BACKFILL_AUTO_RESUME=1 or every restart
+ *     will rerun the whole library.
  */
-export function startBackfill(): boolean {
+export function startBackfill(
+  mode: "default" | "rebuild-all" = "default",
+): boolean {
   if (state.status === "running") return false;
   state = {
     status: "running",
@@ -211,12 +250,12 @@ export function startBackfill(): boolean {
     lastError: null,
     recentLog: [],
   };
-  log("backfill loop starting");
+  log(`backfill loop starting (mode=${mode})`);
   // Fire-and-forget: the Node event loop keeps the closure alive
   // even after the HTTP response ships. Errors inside runLoop are
   // caught there and reflected in `state.status`.
   setImmediate(() => {
-    void runLoop();
+    void runLoop(mode);
   });
   return true;
 }
