@@ -713,31 +713,43 @@ async function persistChunks(
 
   // Contextual retrieval (Anthropic 2024): generate a 1-2 sentence
   // context per chunk via Haiku, prepend it to the chunk text, and
-  // embed the combined string. Vector then incorporates the
-  // chunk's identity (book + section + topic) instead of judging
-  // bare prose in isolation — ~35% precision lift @ top-K.
+  // embed the combined string. Paper claims ~35% precision lift,
+  // but that's vs. a *naked* vector baseline — we already run
+  // hybrid retrieval (vector + Postgres FTS) and a Haiku reranker
+  // downstream, which together close most of that gap without any
+  // per-chunk LLM cost. Contextual prefix on top adds ~$0.50–$2
+  // per ingested book in Haiku spend (worse with rate-limit
+  // retries), so it's gated behind an env flag. Default OFF —
+  // enable by setting CONTEXTUAL_PREFIX_ENABLED=1 if a specific
+  // corpus actually justifies the bill.
   let contextMap = new Map<string, string | null>()
-  try {
-    const entryForCtx = await prisma.libraryEntry.findUnique({
-      where: { id: entryId },
-      select: {
-        title: true,
-        authorSurname: true,
-        authorName: true,
-        year: true,
-      },
-    })
-    if (entryForCtx) {
-      // Batched + serial: 10 chunks per Haiku call, one batch in
-      // flight at a time. Bursting (parallelBatches>1) is what
-      // crushed the first backfill's success rate — sustained
-      // throughput beats peak throughput here.
-      contextMap = await contextualizeChunksBatched(entryForCtx, created)
+  if (process.env.CONTEXTUAL_PREFIX_ENABLED === '1') {
+    try {
+      const entryForCtx = await prisma.libraryEntry.findUnique({
+        where: { id: entryId },
+        select: {
+          title: true,
+          authorSurname: true,
+          authorName: true,
+          year: true,
+        },
+      })
+      if (entryForCtx) {
+        // Batched + serial: 10 chunks per Haiku call, one batch in
+        // flight at a time. Bursting (parallelBatches>1) is what
+        // crushed the first backfill's success rate — sustained
+        // throughput beats peak throughput here.
+        contextMap = await contextualizeChunksBatched(entryForCtx, created)
+      }
+    } catch (err) {
+      console.warn(
+        '[library-pipeline] contextualize failed (continuing without prefix):',
+        err,
+      )
     }
-  } catch (err) {
-    console.warn(
-      '[library-pipeline] contextualize failed (continuing without prefix):',
-      err,
+  } else {
+    console.log(
+      '[library-pipeline] contextual prefix disabled (CONTEXTUAL_PREFIX_ENABLED!=1) — embedding bare content',
     )
   }
 
