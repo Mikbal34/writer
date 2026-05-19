@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Plus,
   Quote,
+  Sprout,
   X as XIcon,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -37,6 +38,16 @@ interface SearchResult {
   alreadyInLibrary?: boolean
   relevanceScore?: number
   _finalScore?: number
+  /** True when this row arrived via a snowball/citation-chase
+   *  expansion rather than the initial search. UI shows a small
+   *  badge so the user can tell expanded results apart at a glance. */
+  viaSnowball?: boolean
+  /** Direction of the chase, when viaSnowball — backward = paper
+   *  the seed cites, forward = paper that cites the seed. */
+  snowballDirection?: 'backward' | 'forward'
+  /** Title of the seed paper that produced this expansion, so the
+   *  UI can group / label the source of the snowball. */
+  snowballSeedTitle?: string
 }
 
 interface StatusEntry {
@@ -176,6 +187,9 @@ export default function LiteratureSearchPage() {
   /** Sidebar refinement filters — purely client-side narrowing. */
   const [refineProviders, setRefineProviders] = useState<Set<string>>(new Set())
   const [refineTypes, setRefineTypes] = useState<Set<string>>(new Set())
+  // externalId set of rows whose snowball expansion is in flight;
+  // used to disable the button + show a spinner on the seed chip.
+  const [snowballLoading, setSnowballLoading] = useState<Set<string>>(new Set())
 
   // PDF status tracking for recently added entries
   const [pollIds, setPollIds] = useState<string[]>([])
@@ -344,6 +358,100 @@ export default function LiteratureSearchPage() {
   function clearSelection() {
     setSelectedIds(new Set())
   }
+
+  // ── Snowball / citation chasing ─────────────────────────────────
+  // Takes one search result (the "seed"), hits citation-chase to
+  // expand its forward + backward graph, reranks against the
+  // user's original query, and prepends the new entries above the
+  // current result list so the user sees the expansion in context.
+  const handleSnowball = useCallback(
+    async (seed: SearchResult) => {
+      if (snowballLoading.has(seed.externalId)) return
+      setSnowballLoading((prev) => new Set(prev).add(seed.externalId))
+      try {
+        const res = await fetch("/api/library/citation-chase", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            seed: {
+              doi: seed.doi ?? undefined,
+              openalexId:
+                seed.provider === "openalex" ? seed.externalId : undefined,
+              title: seed.title,
+            },
+            query: query.trim() || seed.title,
+            limit: 30,
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          toast.error(`Snowball başarısız: ${err.error ?? res.statusText}`)
+          return
+        }
+        const data = (await res.json()) as {
+          seed: { title: string | null; authors: string[] | null }
+          backward: SearchResult[]
+          forward: SearchResult[]
+          counts: {
+            backwardRaw: number
+            forwardRaw: number
+            alreadyInLibrary: number
+          }
+        }
+        const tag = (
+          list: SearchResult[],
+          dir: "backward" | "forward",
+        ): SearchResult[] =>
+          list.map((r) => ({
+            ...r,
+            viaSnowball: true,
+            snowballDirection: dir,
+            snowballSeedTitle: data.seed.title ?? seed.title,
+          }))
+        const expanded = [
+          ...tag(data.backward, "backward"),
+          ...tag(data.forward, "forward"),
+        ]
+        if (expanded.length === 0) {
+          toast.info("Citation graph boş — bu kaynak için referans bulunamadı.")
+          return
+        }
+        // Prepend, but skip rows already present (dedupe by
+        // externalId / doi so re-snowballing doesn't pile up).
+        setResults((prev) => {
+          const seen = new Set(prev.map((r) => r.externalId))
+          const doiSeen = new Set(
+            prev
+              .map((r) => r.doi?.toLowerCase())
+              .filter((d): d is string => !!d),
+          )
+          const additions = expanded.filter((r) => {
+            if (seen.has(r.externalId)) return false
+            if (r.doi && doiSeen.has(r.doi.toLowerCase())) return false
+            return true
+          })
+          return [...additions, ...prev]
+        })
+        toast.success(
+          `Snowball: ${data.counts.backwardRaw} geri-atıf + ${data.counts.forwardRaw} ileri-atıf` +
+            (data.counts.alreadyInLibrary > 0
+              ? ` (${data.counts.alreadyInLibrary}'i kütüphanende)`
+              : ""),
+        )
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Snowball isteği başarısız",
+        )
+      } finally {
+        setSnowballLoading((prev) => {
+          const next = new Set(prev)
+          next.delete(seed.externalId)
+          return next
+        })
+      }
+    },
+    [query, snowballLoading],
+  )
 
   const addOne = useCallback(
     async (r: SearchResult) => {
@@ -805,6 +913,8 @@ export default function LiteratureSearchPage() {
                       onActivate={() => setDetailId(r.externalId)}
                       onToggleSelect={() => toggleSelect(r.externalId)}
                       onAdd={() => addOne(r)}
+                      onSnowball={() => handleSnowball(r)}
+                      isSnowballing={snowballLoading.has(r.externalId)}
                     />
                   ))}
                   <div className="text-center mt-5 font-display italic text-[11px] text-ink-muted">
@@ -1060,6 +1170,8 @@ function ResultCard({
   onActivate,
   onToggleSelect,
   onAdd,
+  onSnowball,
+  isSnowballing,
 }: {
   r: SearchResult
   rank: number
@@ -1069,6 +1181,8 @@ function ResultCard({
   onActivate: () => void
   onToggleSelect: () => void
   onAdd: () => void
+  onSnowball: () => void
+  isSnowballing: boolean
 }) {
   const dbColor = PROVIDER_COLORS[r.provider] ?? "#5a4a2a"
   const score = r.relevanceScore ?? 0
@@ -1158,6 +1272,31 @@ function ResultCard({
           )}
         </div>
 
+        {r.viaSnowball && (
+          <div
+            className="mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm font-ui text-[10px] font-medium"
+            style={{
+              background: "rgba(58,82,56,0.12)",
+              color: "var(--color-forest)",
+            }}
+            title={
+              r.snowballSeedTitle
+                ? `Snowball: "${r.snowballSeedTitle}" → ${r.snowballDirection === "backward" ? "kaynakça" : "atıf yapılan çalışmalar"}`
+                : undefined
+            }
+          >
+            <Sprout className="h-3 w-3" />
+            {r.snowballDirection === "backward"
+              ? "kaynakçadan"
+              : "atıf zincirinden"}
+            {r.snowballSeedTitle && (
+              <span className="font-display italic text-ink-light truncate max-w-[180px]">
+                · {r.snowballSeedTitle}
+              </span>
+            )}
+          </div>
+        )}
+
         <h3 className="mt-1.5 font-display text-[16px] font-semibold leading-snug text-ink line-clamp-2">
           {r.title}
         </h3>
@@ -1242,6 +1381,25 @@ function ResultCard({
               <ExternalLink className="h-3 w-3" />
             </a>
           )}
+          <button
+            type="button"
+            onClick={onSnowball}
+            disabled={isSnowballing}
+            className={cn(
+              "inline-flex items-center gap-1 px-2 py-1 rounded-md font-ui text-[11px] transition-colors",
+              isSnowballing
+                ? "bg-panel text-ink-muted cursor-wait"
+                : "text-ink-light hover:bg-elevated hover:text-ink",
+            )}
+            title="Bu kaynağın atıf zincirini genişlet (geri + ileri atıflar)"
+          >
+            {isSnowballing ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sprout className="h-3 w-3 text-forest" />
+            )}
+            {isSnowballing ? "Genişletiliyor…" : "İlgili literatür"}
+          </button>
         </div>
       </div>
     </article>
