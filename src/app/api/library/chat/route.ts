@@ -18,6 +18,7 @@ import { rerankChunks } from '@/lib/rerank'
 import { isGenericBookQuery } from '@/lib/book-summary'
 import { ftsChunks, ftsNotes, rrfMerge } from '@/lib/hybrid-retrieval'
 import { rewriteQuery } from '@/lib/query-rewrite'
+import { SYNTHESIS_PROMPT_BLOCK, shouldActivateSynthesis } from '@/lib/synthesis-mode'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 
@@ -429,6 +430,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Synthesis mode: when the user is asking a comparative
+    // question AND retrieval pulled chunks from ≥ 2 distinct
+    // entries, append a prompt block that reshapes the answer as
+    // "position map + synthesis". One-source comparison falls back
+    // to normal mode — nothing to compare against.
+    const distinctEntryIds = new Set(
+      [...retrievedChunks, ...retrievedNotes].map((c) => c.entryId),
+    )
+    const synthesisActive = shouldActivateSynthesis(message, distinctEntryIds)
+    const synthesisBlock = synthesisActive ? `\n\n${SYNTHESIS_PROMPT_BLOCK}\n` : ''
+
     const systemPrompt =
       'Sen kullanıcının PDF kütüphanesi üzerinde çalışan bir araştırma asistanısın. Türkçe yanıtla.\n\n' +
       'KURALLAR:\n' +
@@ -445,7 +457,8 @@ export async function POST(req: NextRequest) {
       '4) Yeni atıf uydurma; sadece sana verilen [n] numaralarını kullan.\n' +
       '5) Türkçe akademik üslup. Diakritikleri koru (İ, ı, ğ, ş, ç, ü, ö).\n\n' +
       `KAYNAK EXCERPTS:\n${excerptBlock}` +
-      bookSummaryBlock
+      bookSummaryBlock +
+      synthesisBlock
 
     const messagesForLlm = [
       ...compressed.messages.map((m) => ({ role: m.role, content: m.content })),
