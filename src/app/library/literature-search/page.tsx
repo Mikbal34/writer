@@ -602,15 +602,22 @@ export default function LiteratureSearchPage() {
     })
   }, [results, refineProviders, refineTypes])
 
+  // Detail panel close logic. Panel stays *closed by default* —
+  // a user has to click a result to open it, and the X button
+  // closes it again. The only auto-action we take is invalidating
+  // a previously-open detail when its target row disappears from
+  // the filtered list (filter toggle, new search). Previous logic
+  // auto-set detailId to the first result on every render where
+  // it was null, which made the close button visually flicker
+  // shut and then immediately reopen.
   useEffect(() => {
+    if (detailId === null) return
     if (visibleResults.length === 0) {
-      if (detailId !== null) setDetailId(null)
+      setDetailId(null)
       return
     }
     const stillVisible = visibleResults.some((r) => r.externalId === detailId)
-    if (!stillVisible) {
-      setDetailId(visibleResults[0].externalId)
-    }
+    if (!stillVisible) setDetailId(null)
   }, [visibleResults, detailId])
 
   const detailResult = useMemo(
@@ -819,21 +826,13 @@ export default function LiteratureSearchPage() {
                   onAdd={handleBulkAdd}
                 />
               )}
-              {/* Provider refine moved to the top chips — they
-                  now act as both progress indicator + filter toggle.
-                  Type refine stays here for the dense list view. */}
-              <RefineSection
-                title="Tür"
-                items={Object.entries(typeCounts)
-                  .filter(([, n]) => n > 0)
-                  .map(([id, count]) => ({
-                    id,
-                    label: TYPE_LABELS[id] ?? id,
-                    count,
-                    checked: refineTypes.has(id),
-                  }))}
-                onToggle={toggleTypeFacet}
-              />
+              {/* Provider refine moved to the top chips; type
+                  refine moved to the top bar's "Tip ▾" pill. Both
+                  used to live in this sidebar but duplicated the
+                  top-bar controls and confused users about which
+                  authoritative — so the sidebar is now reserved
+                  for actions specific to *the already-shown
+                  results* (bulk add, in-flight PDF downloads). */}
 
               {/* PDF status counters — when bulk-add downloads are in flight */}
               {(activeDownloads > 0 || readyDownloads > 0 || failedDownloads > 0) && (
@@ -1508,20 +1507,20 @@ function DetailContent({
       </div>
 
       {r.abstract && (
-        <div className="mt-4">
-          <div className="font-ui text-[10px] uppercase tracking-[0.16em] text-forest mb-1.5">
+        <div className="mt-5 pt-4 border-t border-sandy/40">
+          <h4 className="font-display text-[13px] font-semibold text-ink mb-2">
             Özet
-          </div>
-          <div className="font-display text-[12.5px] leading-relaxed text-ink max-h-[200px] overflow-y-auto">
+          </h4>
+          <div className="font-display text-[12.5px] leading-relaxed text-ink-light max-h-[200px] overflow-y-auto">
             {r.abstract}
           </div>
         </div>
       )}
 
-      <div className="mt-4">
-        <div className="font-ui text-[10px] uppercase tracking-[0.16em] text-forest mb-2">
+      <div className="mt-5 pt-4 border-t border-sandy/40">
+        <h4 className="font-display text-[13px] font-semibold text-ink mb-2">
           Neden bu sonuç?
-        </div>
+        </h4>
         <div className="flex flex-col gap-1.5">
           <ScoreBar label="Anahtar kelime" v={components.keyword} />
           <ScoreBar label="Atıf yoğunluğu" v={components.citations} />
