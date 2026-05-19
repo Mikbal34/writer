@@ -48,6 +48,7 @@ import {
 import { toast } from "sonner";
 import LibraryEntryForm from "@/components/library/LibraryEntryForm";
 import BibtexImportDialog from "@/components/library/BibtexImportDialog";
+import PdfDropZone from "@/components/library/PdfDropZone";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
 import VolumeHintBanner from "@/components/library/VolumeHintBanner";
 import FolderChips, {
@@ -399,6 +400,16 @@ export default function LibraryPage() {
                 </button>
               </div>
             </div>
+          </section>
+
+          {/* PDF drop zone — primary upload path. Drag a file in,
+              or click the inline "Yeni kaynak ekle" button for the
+              multi-file bulk dialog. Was removed during the V3
+              layout refactor (commit ec91aa9) but the user relies
+              on it as the main way to add books, so it's back as
+              a thin banner under the header before the toolbar.  */}
+          <section className="px-9 pt-4 pb-1">
+            <PdfDropZone onUploaded={fetchEntries} />
           </section>
 
           {/* === Toolbar: search with embedded ask CTA + folder chips + sort === */}
