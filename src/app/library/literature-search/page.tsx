@@ -590,9 +590,13 @@ export default function LiteratureSearchPage() {
     return m
   }, [results])
 
+  // refineProviders semantically inverted: now "hidden providers"
+  // — empty by default (all DBs lit, all results shown), each
+  // entry hides that DB's rows. Chip click toggles. Matches the
+  // visual "lit = visible, dimmed = hidden" mental model.
   const visibleResults = useMemo(() => {
     return results.filter((r) => {
-      if (refineProviders.size > 0 && !refineProviders.has(r.provider)) return false
+      if (refineProviders.has(r.provider)) return false
       if (refineTypes.size > 0 && !refineTypes.has(r.entryType)) return false
       return true
     })
@@ -736,6 +740,11 @@ export default function LiteratureSearchPage() {
                   p?.count ?? providerCounts[provider] ?? 0
                 const inFlight = p?.status === "searching"
                 const done = p?.status === "done"
+                // Disabled when no results & search complete — there's
+                // nothing for the toggle to hide/show, so we keep the
+                // chip visible as "we did query this DB, it returned
+                // nothing" but stop it being interactive.
+                const hasResults = (providerCounts[provider] ?? 0) > 0
                 return (
                   <DbChip
                     key={provider}
@@ -743,6 +752,9 @@ export default function LiteratureSearchPage() {
                     color={PROVIDER_COLORS[provider]}
                     count={count}
                     state={inFlight ? "searching" : done ? "done" : "idle"}
+                    isHidden={refineProviders.has(provider)}
+                    onClick={() => toggleProviderFacet(provider)}
+                    disabled={!inFlight && done && !hasResults}
                   />
                 )
               })}
@@ -807,16 +819,9 @@ export default function LiteratureSearchPage() {
                   onAdd={handleBulkAdd}
                 />
               )}
-              <RefineSection
-                title="Veritabanı"
-                items={PROVIDER_ORDER.filter((p) => (providerCounts[p] ?? 0) > 0).map((p) => ({
-                  id: p,
-                  label: PROVIDER_LABELS[p],
-                  count: providerCounts[p] ?? 0,
-                  checked: refineProviders.has(p),
-                }))}
-                onToggle={toggleProviderFacet}
-              />
+              {/* Provider refine moved to the top chips — they
+                  now act as both progress indicator + filter toggle.
+                  Type refine stays here for the dense list view. */}
               <RefineSection
                 title="Tür"
                 items={Object.entries(typeCounts)
@@ -955,22 +960,57 @@ function DbChip({
   color,
   count,
   state,
+  isHidden,
+  onClick,
+  disabled,
 }: {
   label: string
   color: string
   count: number
   state: "idle" | "searching" | "done"
+  /** True when the user has clicked this chip off — fades it and
+   *  excludes its results from the visible list. */
+  isHidden: boolean
+  onClick: () => void
+  /** Greyed out + non-clickable when this DB returned zero results
+   *  (and so there's nothing to hide/show). Keeps the chip visible
+   *  for "we did query this DB" reassurance but stops accidental
+   *  toggles that hide a provider with no results anyway. */
+  disabled: boolean
 }) {
   return (
-    <span
-      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border font-ui text-[11px] text-white/85"
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex items-center gap-1.5 px-2 py-1 rounded-full border font-ui text-[11px] transition-all cursor-pointer",
+        isHidden
+          ? "text-white/35 line-through"
+          : "text-white/85 hover:text-white",
+        disabled && "cursor-default opacity-50",
+      )}
       style={{
-        background: "rgba(255,255,255,0.08)",
-        borderColor: "rgba(232,212,154,0.18)",
+        background: isHidden
+          ? "rgba(255,255,255,0.02)"
+          : "rgba(255,255,255,0.08)",
+        borderColor: isHidden
+          ? "rgba(232,212,154,0.08)"
+          : "rgba(232,212,154,0.18)",
       }}
+      title={
+        disabled
+          ? `${label}: sonuç yok`
+          : isHidden
+            ? `${label}: sonuçları göster`
+            : `${label}: bu DB'yi listeden gizle`
+      }
     >
       <span
-        className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] text-white font-display text-[9px] font-semibold"
+        className={cn(
+          "inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] text-white font-display text-[9px] font-semibold transition-opacity",
+          isHidden && "opacity-40",
+        )}
         style={{ background: color }}
       >
         {label[0]}
@@ -983,7 +1023,7 @@ function DbChip({
           {count.toLocaleString("tr-TR")}
         </span>
       ) : null}
-    </span>
+    </button>
   )
 }
 
