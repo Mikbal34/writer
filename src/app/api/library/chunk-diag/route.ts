@@ -101,9 +101,102 @@ export async function GET(req: NextRequest) {
     ORDER BY count DESC
   `);
 
+  // ── Actionable buckets — names of every entry that needs rework ─
+  const stuckOrBroken = await prisma.$queryRawUnsafe<
+    Array<{
+      id: string;
+      title: string;
+      pdfStatus: string;
+      total_chunks: number;
+      with_embed: number;
+      has_file: boolean;
+      has_oa_url: boolean;
+      updated_at: Date;
+    }>
+  >(`
+    SELECT le.id,
+           le.title,
+           le."pdfStatus",
+           COUNT(lc.id)::int AS total_chunks,
+           COUNT(*) FILTER (WHERE lc.embedding IS NOT NULL)::int AS with_embed,
+           (le."filePath" IS NOT NULL) AS has_file,
+           (le."openAccessUrl" IS NOT NULL) AS has_oa_url,
+           le."updatedAt" AS updated_at
+    FROM "LibraryEntry" le
+    LEFT JOIN "LibraryChunk" lc ON lc."libraryEntryId" = le.id
+    WHERE le."pdfStatus" IN ('embedding', 'none', 'failed')
+    GROUP BY le.id, le.title, le."pdfStatus", le."filePath", le."openAccessUrl", le."updatedAt"
+    ORDER BY le."updatedAt" DESC
+  `);
+
+  // ── Pipeline freshness proxy on "ready" entries ─────────────
+  // Heading capture rate on chunks indicates whether they went
+  // through the new chunker (step 3 of chunk-quality overhaul):
+  //   >50%  →  new pipeline, fine
+  //   1–50% →  partial / mixed
+  //   ~0%   →  old chunker, would benefit from re-process
+  const readyFreshness = await prisma.$queryRawUnsafe<
+    Array<{
+      id: string;
+      title: string;
+      total_chunks: number;
+      with_section: number;
+      with_page_label: number;
+      summary_present: boolean;
+    }>
+  >(`
+    SELECT le.id,
+           le.title,
+           (le.summary IS NOT NULL) AS summary_present,
+           COUNT(lc.id)::int AS total_chunks,
+           COUNT(*) FILTER (WHERE lc."sectionTitle" IS NOT NULL)::int AS with_section,
+           COUNT(*) FILTER (WHERE lc."pdfPageLabel" IS NOT NULL)::int AS with_page_label
+    FROM "LibraryEntry" le
+    LEFT JOIN "LibraryChunk" lc ON lc."libraryEntryId" = le.id
+    WHERE le."pdfStatus" = 'ready'
+    GROUP BY le.id, le.title, le.summary
+    HAVING COUNT(lc.id) > 0
+    ORDER BY le."updatedAt" DESC
+  `);
+
+  // Bucket the ready ones by how "new-pipeline-shaped" they look.
+  const buckets = { newPipeline: 0, mixed: 0, oldChunker: 0 };
+  const oldChunkerEntries: Array<{ title: string; total: number; sectionPct: number; pagePct: number }> = [];
+  for (const e of readyFreshness) {
+    const sectionPct = e.total_chunks > 0 ? (e.with_section / e.total_chunks) * 100 : 0;
+    const pagePct = e.total_chunks > 0 ? (e.with_page_label / e.total_chunks) * 100 : 0;
+    if (sectionPct >= 50 || pagePct >= 50) buckets.newPipeline += 1;
+    else if (sectionPct > 0 || pagePct > 0) buckets.mixed += 1;
+    else {
+      buckets.oldChunker += 1;
+      if (oldChunkerEntries.length < 30) {
+        oldChunkerEntries.push({
+          title: e.title.slice(0, 80),
+          total: e.total_chunks,
+          sectionPct: Math.round(sectionPct),
+          pagePct: Math.round(pagePct),
+        });
+      }
+    }
+  }
+
   return NextResponse.json({
     aggregate: agg,
     pdfStatusBreakdown: statusBreakdown,
+    readyPipelineBuckets: buckets,
+    actionable: {
+      stuckOrBroken: stuckOrBroken.map((e) => ({
+        id: e.id,
+        title: e.title.slice(0, 80),
+        pdfStatus: e.pdfStatus,
+        chunks: e.total_chunks,
+        withEmbed: e.with_embed,
+        hasFile: e.has_file,
+        hasOaUrl: e.has_oa_url,
+        updatedAt: e.updated_at,
+      })),
+      oldChunkerSample: oldChunkerEntries,
+    },
     entriesWithCtxProgress: recentChunks,
     recentEntries: perEntry.map((e) => ({
       title: e.title.slice(0, 80),
