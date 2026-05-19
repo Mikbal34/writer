@@ -16,6 +16,7 @@ import { prisma } from '@/lib/db'
 import { streamChatWithUsage } from '@/lib/claude'
 import { rerankChunks } from '@/lib/rerank'
 import { isGenericBookQuery } from '@/lib/book-summary'
+import { ftsChunks, ftsNotes, rrfMerge } from '@/lib/hybrid-retrieval'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 
@@ -187,9 +188,16 @@ export async function POST(req: NextRequest) {
     // them with the slim top-K subsets.
     if (queryVec) {
       const vecLiteral = JSON.stringify(queryVec)
-      retrievedChunks =
+      // Hybrid retrieval — pgvector (semantic neighbours) and
+      // tsvector (lexical token match) fired in parallel, then
+      // RRF-merged. The downstream Haiku reranker still trims to
+      // TOP_K, so RRF only has to assemble a strong *recall* pool:
+      // its job is to keep exact-token hits (proper names,
+      // citations, kısaltmalar) from being drowned out by purely
+      // semantic neighbours, not to produce the final ranking.
+      const [vecChunks, lexChunks, vecNotes, lexNotes] = await Promise.all([
         scope === 'all'
-          ? await prisma.$queryRaw<RetrievedChunk[]>`
+          ? prisma.$queryRaw<RetrievedChunk[]>`
               SELECT lc.id AS id,
                      'chunk' AS kind,
                      le.id AS "entryId",
@@ -208,7 +216,7 @@ export async function POST(req: NextRequest) {
               ORDER BY lc.embedding <-> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_CHUNKS}
             `
-          : await prisma.$queryRaw<RetrievedChunk[]>`
+          : prisma.$queryRaw<RetrievedChunk[]>`
               SELECT lc.id AS id,
                      'chunk' AS kind,
                      le.id AS "entryId",
@@ -227,10 +235,21 @@ export async function POST(req: NextRequest) {
                 AND lc.embedding IS NOT NULL
               ORDER BY lc.embedding <-> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_CHUNKS}
-            `
-      retrievedNotes =
+            `,
+        ftsChunks(
+          session.user.id,
+          message,
+          scope === 'all' ? null : entryIds,
+          RETRIEVAL_POOL_CHUNKS,
+        ).catch((err) => {
+          // FTS may be absent on a freshly-deployed cluster — the
+          // setup-fts DDL bootstrap runs once. Until then, degrade
+          // gracefully to vector-only rather than failing the chat.
+          console.warn('[chat] FTS chunks fallback:', err)
+          return [] as RetrievedChunk[]
+        }),
         scope === 'all'
-          ? await prisma.$queryRaw<RetrievedChunk[]>`
+          ? prisma.$queryRaw<RetrievedChunk[]>`
               SELECT ln.id AS id,
                      'note' AS kind,
                      le.id AS "entryId",
@@ -249,7 +268,7 @@ export async function POST(req: NextRequest) {
               ORDER BY ln.embedding <-> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_NOTES}
             `
-          : await prisma.$queryRaw<RetrievedChunk[]>`
+          : prisma.$queryRaw<RetrievedChunk[]>`
               SELECT ln.id AS id,
                      'note' AS kind,
                      le.id AS "entryId",
@@ -268,7 +287,25 @@ export async function POST(req: NextRequest) {
                 AND ln.embedding IS NOT NULL
               ORDER BY ln.embedding <-> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_NOTES}
-            `
+            `,
+        ftsNotes(
+          session.user.id,
+          message,
+          scope === 'all' ? null : entryIds,
+          RETRIEVAL_POOL_NOTES,
+        ).catch((err) => {
+          console.warn('[chat] FTS notes fallback:', err)
+          return [] as RetrievedChunk[]
+        }),
+      ])
+      retrievedChunks = rrfMerge(vecChunks, lexChunks).slice(
+        0,
+        RETRIEVAL_POOL_CHUNKS,
+      )
+      retrievedNotes = rrfMerge(vecNotes, lexNotes).slice(
+        0,
+        RETRIEVAL_POOL_NOTES,
+      )
     }
 
     // Two-stage retrieval — rerank the wide pool down to the final
