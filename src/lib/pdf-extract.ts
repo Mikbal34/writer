@@ -312,8 +312,20 @@ export async function extractPdfPages(
   buffer: Buffer | Uint8Array,
   options: { maxPages?: number } = {},
 ): Promise<ExtractResult> {
-  const data =
-    buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  // Force a *plain* Uint8Array view, even when the caller passed a
+  // Node Buffer. Buffer IS-A Uint8Array semantically (subclass) so
+  // the naive `buffer instanceof Uint8Array ? buffer : …` check
+  // takes the first branch and forwards the Buffer untouched —
+  // but pdfjs-dist 5.x has an internal Uint8Array constructor-
+  // identity check that rejects Buffer instances under Next 16's
+  // bundling. Always rebuilding a view over the same ArrayBuffer
+  // slice gives us zero-copy bytes with the canonical prototype
+  // pdfjs is looking for. Symptom this fixes: "Please provide
+  // binary data as `Uint8Array`, rather than `Buffer`" thrown for
+  // every PDF upload, forcing the slow Python OCR fallback.
+  const data = ArrayBuffer.isView(buffer)
+    ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+    : new Uint8Array(buffer);
 
   const loadingTask = pdfjs.getDocument({
     data,
