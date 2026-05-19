@@ -10,6 +10,7 @@ import {
   type SearchParams as AcademicSearchParams,
 } from '@/lib/academic-search'
 import { buildResearchPrompt } from '@/lib/prompts/research'
+import { routeProviders, type ProviderName } from '@/lib/provider-routing'
 
 interface LiteratureSearchFilters {
   type?: 'kitap' | 'makale' | 'tez'
@@ -173,11 +174,26 @@ export async function POST(req: NextRequest) {
           // but emit one completion event per provider so the UI can light
           // them up one by one. Each provider sees all queries merged so the
           // progress bar advances 8 times (not 8 × queries.length).
+          //
+          // Smart routing trims the fan-out: a Turkish humanities query
+          // skips arXiv/bioRxiv/PMC (zero hits expected, only adds latency),
+          // a DOI lookup only hits CrossRef + OpenAlex, etc. Skipped
+          // providers still emit "provider_done" with count=0 so the UI
+          // doesn't show a half-finished progress bar.
+          const routing = routeProviders({ query, type: filters.type })
+          const activeProviders = routing.providers
           const providerResults = new Map<string, AcademicSearchResult[]>()
           for (const p of ALL_PROVIDERS) providerResults.set(p, [])
 
+          // Tell the UI which providers were skipped (and why) before
+          // we fire any requests, so users see the routing rationale.
+          for (const skipped of routing.skipped) {
+            emit({ type: 'provider_start', provider: skipped })
+            emit({ type: 'provider_done', provider: skipped, count: 0 })
+          }
+
           const providerPromises: Promise<void>[] = []
-          for (const providerName of ALL_PROVIDERS) {
+          for (const providerName of activeProviders as ProviderName[]) {
             emit({ type: 'provider_start', provider: providerName })
             providerPromises.push(
               (async () => {
