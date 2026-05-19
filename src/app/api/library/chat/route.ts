@@ -17,6 +17,7 @@ import { streamChatWithUsage } from '@/lib/claude'
 import { rerankChunks } from '@/lib/rerank'
 import { isGenericBookQuery } from '@/lib/book-summary'
 import { ftsChunks, ftsNotes, rrfMerge } from '@/lib/hybrid-retrieval'
+import { rewriteQuery } from '@/lib/query-rewrite'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 
@@ -176,12 +177,28 @@ export async function POST(req: NextRequest) {
       { chatType: 'general', keepRecent: MAX_HISTORY_MESSAGES },
     )
 
-    // Embed the user's question once and run two ordered retrievals:
-    // top-K PDF chunks and top-K user notes. We keep them as separate
-    // queries (instead of one big UNION) so each side can use its own
-    // ORDER BY ... <-> $1 index pass cleanly; the JS layer merges and
-    // tags rows with kind="chunk" | "note" for the prompt.
-    const queryVec = await embedQueryText(message)
+    // Conversation-aware rewrite: turns "peki ya bu fikrin
+    // eleştirileri?" into "Modernlik dini önermesinin eleştirileri
+    // nedir?" by inlining what "bu" referred to, so retrieval
+    // doesn't search cold against a pronoun. Falls back to the raw
+    // message when there's no prior history or the Haiku call
+    // fails. The original `message` still flows to the answering
+    // LLM downstream so the user reads their own words echoed back.
+    const retrievalQuery = await rewriteQuery(
+      message,
+      priorMessages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+    )
+
+    // Embed the (possibly rewritten) query once and run two ordered
+    // retrievals: top-K PDF chunks and top-K user notes. We keep
+    // them as separate queries (instead of one big UNION) so each
+    // side can use its own ORDER BY ... <-> $1 index pass cleanly;
+    // the JS layer merges and tags rows with kind="chunk"|"note"
+    // for the prompt.
+    const queryVec = await embedQueryText(retrievalQuery)
     let retrievedChunks: RetrievedChunk[] = []
     let retrievedNotes: RetrievedChunk[] = []
     // Note: both let-bound because the rerank pass below replaces
@@ -238,7 +255,7 @@ export async function POST(req: NextRequest) {
             `,
         ftsChunks(
           session.user.id,
-          message,
+          retrievalQuery,
           scope === 'all' ? null : entryIds,
           RETRIEVAL_POOL_CHUNKS,
         ).catch((err) => {
@@ -290,7 +307,7 @@ export async function POST(req: NextRequest) {
             `,
         ftsNotes(
           session.user.id,
-          message,
+          retrievalQuery,
           scope === 'all' ? null : entryIds,
           RETRIEVAL_POOL_NOTES,
         ).catch((err) => {
@@ -315,7 +332,7 @@ export async function POST(req: NextRequest) {
     // order on Haiku failure.
     if (retrievedChunks.length > TOP_K_CHUNKS) {
       const ranked = await rerankChunks(
-        message,
+        retrievalQuery,
         retrievedChunks.map((c) => ({
           id: c.id,
           content: c.content,
@@ -336,7 +353,7 @@ export async function POST(req: NextRequest) {
     }
     if (retrievedNotes.length > TOP_K_NOTES) {
       const ranked = await rerankChunks(
-        message,
+        retrievalQuery,
         retrievedNotes.map((c) => ({
           id: c.id,
           content: c.content,
