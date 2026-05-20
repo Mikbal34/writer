@@ -22,12 +22,10 @@ interface NewProfileDialogProps {
 export default function NewProfileDialog({ onCreated }: NewProfileDialogProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [method, setMethod] = useState<"chat" | "analyze">("chat");
   const [isCreating, setIsCreating] = useState(false);
 
   function resetForm() {
     setName("");
-    setMethod("chat");
   }
 
   async function handleCreate() {
@@ -38,10 +36,14 @@ export default function NewProfileDialog({ onCreated }: NewProfileDialogProps) {
 
     setIsCreating(true);
     try {
+      // Profiles are always built from real writing samples now —
+      // the chat-interview method was removed (self-reported style is
+      // unreliable; analyzing actual writing is the only path, and it
+      // persists the samples as the reference voice).
       const res = await fetch("/api/style-profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), method }),
+        body: JSON.stringify({ name: name.trim(), method: "analyze" }),
       });
 
       if (!res.ok) {
@@ -85,8 +87,7 @@ export default function NewProfileDialog({ onCreated }: NewProfileDialogProps) {
               New Style Profile
             </DialogTitle>
             <DialogDescription className="font-body text-ink-light">
-              Create a Writing Twin profile through conversation or writing
-              sample analysis.
+              Create a Writing Twin by analyzing samples of your own writing.
             </DialogDescription>
           </DialogHeader>
 
@@ -105,44 +106,10 @@ export default function NewProfileDialog({ onCreated }: NewProfileDialogProps) {
                 }}
                 autoFocus
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="font-ui text-sm text-ink">Method</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setMethod("chat")}
-                  className={`p-3 rounded-sm border text-left transition-all ${
-                    method === "chat"
-                      ? "border-gold bg-gold/5"
-                      : "border-sandy/60 hover:border-sandy"
-                  }`}
-                >
-                  <p className="font-display text-sm font-semibold text-ink">
-                    Chat Interview
-                  </p>
-                  <p className="font-body text-[11px] text-ink-light mt-1">
-                    Build your profile through a guided conversation.
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMethod("analyze")}
-                  className={`p-3 rounded-sm border text-left transition-all ${
-                    method === "analyze"
-                      ? "border-gold bg-gold/5"
-                      : "border-sandy/60 hover:border-sandy"
-                  }`}
-                >
-                  <p className="font-display text-sm font-semibold text-ink">
-                    Writing Sample
-                  </p>
-                  <p className="font-body text-[11px] text-ink-light mt-1">
-                    Analyze a sample of your writing to extract style.
-                  </p>
-                </button>
-              </div>
+              <p className="font-body text-[11px] text-ink-light">
+                Next, you&apos;ll paste a few samples of your writing — the Twin
+                learns your voice from real text, not a questionnaire.
+              </p>
             </div>
           </div>
 

@@ -21,7 +21,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import WorkspaceShell from "@/components/shared/WorkspaceShell";
-import StyleChat from "@/components/style/StyleChat";
 import StyleAnalyzeView from "@/components/style/StyleAnalyzeView";
 import StyleProfilePreview from "@/components/style/StyleProfilePreview";
 import NewProfileDialog from "@/components/style/NewProfileDialog";
@@ -202,7 +201,7 @@ function profileSample(profile: Record<string, unknown> | null): string {
 export default function StylePage() {
   const [profiles, setProfiles] = useState<ProfileData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [view, setView] = useState<"list" | "chat" | "analyze">("list");
+  const [view, setView] = useState<"list" | "analyze">("list");
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [activeProfile, setActiveProfile] = useState<Partial<StyleProfile> | null>(null);
   // List-view selection — drives the right-side detail panel.
@@ -242,7 +241,10 @@ export default function StylePage() {
     if (!p) return;
     setActiveProfileId(id);
     setActiveProfile(p.profile as Partial<StyleProfile> | null);
-    setView(p.method === "analyze" ? "analyze" : "chat");
+    // Chat-interview creation was removed — every profile is now
+    // sample-analysis based. Legacy method="chat" profiles open in the
+    // analyze view too, so the user can ground them in real writing.
+    setView("analyze");
   }
 
   async function handleDeleteProfile(id: string) {
@@ -263,7 +265,7 @@ export default function StylePage() {
     fetchProfiles();
     setActiveProfileId(created.id);
     setActiveProfile(null);
-    setView(created.method === "analyze" ? "analyze" : "chat");
+    setView("analyze");
   }
 
   function handleProfileUpdate(profile: Partial<StyleProfile>) {
@@ -311,19 +313,13 @@ export default function StylePage() {
     );
   }
 
-  const leftPanel =
-    view === "chat" && activeProfileId ? (
-      <StyleChat
-        profileId={activeProfileId}
-        onProfileUpdate={handleProfileUpdate}
-      />
-    ) : view === "analyze" && activeProfileId ? (
-      <StyleAnalyzeView
-        profileId={activeProfileId}
-        currentProfile={activeProfile}
-        onProfileUpdate={handleProfileUpdate}
-      />
-    ) : null;
+  const leftPanel = activeProfileId ? (
+    <StyleAnalyzeView
+      profileId={activeProfileId}
+      currentProfile={activeProfile}
+      onProfileUpdate={handleProfileUpdate}
+    />
+  ) : null;
 
   const rightPanel = <StyleProfilePreview profile={activeProfile} />;
 
@@ -345,13 +341,13 @@ export default function StylePage() {
         {/* Card container */}
         <div className="flex-1 max-w-6xl mx-auto w-full px-6 pb-6">
           <div className="bg-white rounded-lg shadow-sm border border-sandy-soft overflow-hidden flex flex-col" style={{ minHeight: "70vh" }}>
-            <Tabs defaultValue={view === "analyze" ? "analyze" : "chat"} className="flex flex-col flex-1 min-h-0">
+            <Tabs defaultValue="analyze" className="flex flex-col flex-1 min-h-0">
               <TabsList className="w-full shrink-0 rounded-none border-b border-sandy-soft bg-[#faf8f5]">
                 <TabsTrigger
-                  value={view === "analyze" ? "analyze" : "chat"}
+                  value="analyze"
                   className="flex-1 font-ui text-sm data-[state=active]:text-ink data-[state=active]:border-b-2 data-[state=active]:border-gold"
                 >
-                  {view === "analyze" ? "Analyze" : "Chat"}
+                  Analyze
                 </TabsTrigger>
                 <TabsTrigger
                   value="profile"
@@ -360,7 +356,7 @@ export default function StylePage() {
                   Profile
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value={view === "analyze" ? "analyze" : "chat"} className="flex-1 min-h-0 mt-0">
+              <TabsContent value="analyze" className="flex-1 min-h-0 mt-0">
                 {leftPanel}
               </TabsContent>
               <TabsContent value="profile" className="flex-1 min-h-0 overflow-y-auto mt-0">
