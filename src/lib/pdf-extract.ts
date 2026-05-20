@@ -339,20 +339,23 @@ export async function extractPdfPages(
   buffer: Buffer | Uint8Array,
   options: { maxPages?: number } = {},
 ): Promise<ExtractResult> {
-  // Force a *plain* Uint8Array view, even when the caller passed a
-  // Node Buffer. Buffer IS-A Uint8Array semantically (subclass) so
-  // the naive `buffer instanceof Uint8Array ? buffer : …` check
-  // takes the first branch and forwards the Buffer untouched —
-  // but pdfjs-dist 5.x has an internal Uint8Array constructor-
-  // identity check that rejects Buffer instances under Next 16's
-  // bundling. Always rebuilding a view over the same ArrayBuffer
-  // slice gives us zero-copy bytes with the canonical prototype
-  // pdfjs is looking for. Symptom this fixes: "Please provide
-  // binary data as `Uint8Array`, rather than `Buffer`" thrown for
-  // every PDF upload, forcing the slow Python OCR fallback.
-  const data = ArrayBuffer.isView(buffer)
-    ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
-    : new Uint8Array(buffer);
+  // Give pdfjs a *plain, independently-owned* Uint8Array. Two
+  // requirements stacked here:
+  //   1. Plain Uint8Array, not a Node Buffer. Buffer IS-A Uint8Array
+  //      (subclass), but pdfjs-dist 5.x has an internal constructor-
+  //      identity check that rejects Buffer instances under Next 16's
+  //      bundling ("Please provide binary data as `Uint8Array`,
+  //      rather than `Buffer`"), forcing the slow Python OCR path.
+  //   2. A fresh ArrayBuffer it can OWN. Now that the worker resolves
+  //      (serverExternalPackages), pdfjs transfers the bytes to the
+  //      worker thread, which DETACHES the backing ArrayBuffer. A
+  //      view over the caller's buffer would detach the caller's
+  //      memory too — and any later read throws "Cannot perform
+  //      Construct on a detached ArrayBuffer" (seen on ~4 books in
+  //      the rebuild). Copying into a new buffer isolates pdfjs's
+  //      detach from our caller's bytes.
+  const data = new Uint8Array(buffer.byteLength);
+  data.set(buffer);
 
   const loadingTask = pdfjs.getDocument({
     data,
