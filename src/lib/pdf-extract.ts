@@ -23,6 +23,33 @@
  */
 
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+
+// pdfjs spawns a "worker" by dynamically importing pdf.worker.mjs.
+// Under Next 16's bundled server output that import resolves to a
+// `.next/server/chunks/pdf.worker.mjs` path that is never emitted,
+// so EVERY getDocument() throws "Setting up fake worker failed:
+// Cannot find module …" and the caller silently falls back to the
+// slow Python OCR path — which drops heading + page-label
+// extraction (sectionTitle / pdfPageLabel come back NULL on every
+// chunk). Railway runs `next start` with node_modules present on
+// disk, so the real worker file IS there; we just have to point
+// pdfjs at it. Resolve the absolute path via node's own resolver
+// and hand pdfjs a file:// URL it can import. Guarded so it only
+// runs server-side and only sets the src once.
+if (typeof window === "undefined" && !pdfjs.GlobalWorkerOptions.workerSrc) {
+  try {
+    const req = createRequire(import.meta.url);
+    const workerPath = req.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
+    pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
+  } catch (err) {
+    console.warn(
+      "[pdf-extract] could not resolve pdf.worker.mjs — extraction will fall back to OCR:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
 
 export interface ExtractedPage {
   /** 1-indexed PDF page number (matches pdfjs's getPage(N) and what
