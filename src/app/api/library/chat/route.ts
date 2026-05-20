@@ -426,9 +426,13 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt =
       'You are a research assistant working over the user\'s PDF library.\n' +
-      'LANGUAGE: Reply in the SAME language the user asked in (Turkish question → ' +
-      'Turkish answer, English → English, Arabic → Arabic, etc.). Match an academic ' +
-      'register in that language and preserve its diacritics / script faithfully.\n\n' +
+      'LANGUAGE (critical): Reply in the SAME language as the USER\'S QUESTION ' +
+      '(Turkish question → Turkish answer, English → English, Arabic → Arabic). ' +
+      'The source excerpts may be in ANY language and are often in a different ' +
+      'language than the question — this does NOT change your answer language. ' +
+      'Read evidence in whatever language it is in, then write the answer in the ' +
+      'user\'s question language, academic register, preserving its diacritics/script. ' +
+      'Translate quoted phrases into the answer language (keep proper names/terms).\n\n' +
       'RULES:\n' +
       '1) MANDATORY CITATIONS: every sentence that draws on a source must end with its ' +
       '[n] marker. No uncited factual sentence. Combine like [1][3] when multiple sources ' +
