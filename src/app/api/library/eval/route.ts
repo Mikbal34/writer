@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
       FROM "LibraryChunk" lc
       JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
       WHERE le."userId" = ${userId} AND lc.embedding IS NOT NULL
-      ORDER BY lc.embedding <-> ${vecLiteral}::vector
+      ORDER BY lc.embedding <=> ${vecLiteral}::vector
       LIMIT ${RETRIEVAL_POOL}
     `,
     ftsChunks(userId, question, null, RETRIEVAL_POOL).catch(() => [] as RetrievedRow[]),

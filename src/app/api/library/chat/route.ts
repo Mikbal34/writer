@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
               JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
               WHERE le."userId" = ${session.user.id}
                 AND lc.embedding IS NOT NULL
-              ORDER BY lc.embedding <-> ${vecLiteral}::vector
+              ORDER BY lc.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_CHUNKS}
             `
           : prisma.$queryRaw<RetrievedChunk[]>`
@@ -251,7 +251,7 @@ export async function POST(req: NextRequest) {
               WHERE le."userId" = ${session.user.id}
                 AND le.id = ANY(${entryIds}::text[])
                 AND lc.embedding IS NOT NULL
-              ORDER BY lc.embedding <-> ${vecLiteral}::vector
+              ORDER BY lc.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_CHUNKS}
             `,
         ftsChunks(
@@ -283,7 +283,7 @@ export async function POST(req: NextRequest) {
               JOIN "LibraryEntry" le ON ln."libraryEntryId" = le.id
               WHERE ln."userId" = ${session.user.id}
                 AND ln.embedding IS NOT NULL
-              ORDER BY ln.embedding <-> ${vecLiteral}::vector
+              ORDER BY ln.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_NOTES}
             `
           : prisma.$queryRaw<RetrievedChunk[]>`
@@ -303,7 +303,7 @@ export async function POST(req: NextRequest) {
               WHERE ln."userId" = ${session.user.id}
                 AND le.id = ANY(${entryIds}::text[])
                 AND ln.embedding IS NOT NULL
-              ORDER BY ln.embedding <-> ${vecLiteral}::vector
+              ORDER BY ln.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_NOTES}
             `,
         ftsNotes(
