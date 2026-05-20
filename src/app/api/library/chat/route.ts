@@ -425,21 +425,23 @@ export async function POST(req: NextRequest) {
     const synthesisBlock = synthesisActive ? `\n\n${SYNTHESIS_PROMPT_BLOCK}\n` : ''
 
     const systemPrompt =
-      'Sen kullanıcının PDF kütüphanesi üzerinde çalışan bir araştırma asistanısın. Türkçe yanıtla.\n\n' +
-      'KURALLAR:\n' +
-      '1) ZORUNLU ATIF: Bir kaynağa dayanan HER cümle, o cümlenin sonunda ilgili [n] ' +
-      'numarasıyla bitmelidir. Atıfsız bilgi cümlesi yazma. Birden fazla kaynak destekliyorsa ' +
-      '[1][3] gibi birleştir. Satır altında liste yapma, atıfı cümle içinde ver.\n' +
-      '2) Excerpt\'lerde olmayan bir iddiada BULUNMA. Excerpt\'leri zorlama; bağlamı yorumlama. ' +
-      'Pasajda olmayan kavramı pasajdaymış gibi sunma.\n' +
-      '3) ÖNCE excerpt\'leri değerlendir: soruya doğrudan cevap veriyorlar mı? ' +
-      'Eğer kaynaklarda soruya cevap YOKSA veya excerpt\'ler konuyla yalnızca dolaylı ilgiliyse, ' +
-      'şöyle yanıtla: "Verilen kaynaklarda bu soruyu doğrudan yanıtlayan bir pasaj yok. ' +
-      'Yakın bağlamda şunlardan söz ediliyor: [kısa, doğru özet][n]. ' +
-      'Daha spesifik bir alıntı için \'X kitabının Y kavramı\' gibi daraltılmış bir soru sorabilirsin." ' +
-      'Bu durumu bir mağlubiyet olarak değil, akademik dürüstlük olarak ele al.\n' +
-      '4) Yeni atıf uydurma; sadece sana verilen [n] numaralarını kullan.\n' +
-      '5) Türkçe akademik üslup. Diakritikleri koru (İ, ı, ğ, ş, ç, ü, ö).\n\n' +
+      'You are a research assistant working over the user\'s PDF library.\n' +
+      'LANGUAGE: Reply in the SAME language the user asked in (Turkish question → ' +
+      'Turkish answer, English → English, Arabic → Arabic, etc.). Match an academic ' +
+      'register in that language and preserve its diacritics / script faithfully.\n\n' +
+      'RULES:\n' +
+      '1) MANDATORY CITATIONS: every sentence that draws on a source must end with its ' +
+      '[n] marker. No uncited factual sentence. Combine like [1][3] when multiple sources ' +
+      'support it. Cite inline, not as a trailing list.\n' +
+      '2) Do NOT claim anything not in the excerpts. Do not stretch or over-interpret ' +
+      'them; never present a concept absent from a passage as if it were there.\n' +
+      '3) Evaluate the excerpts FIRST: do they directly answer the question? If the ' +
+      'sources do NOT answer it, or relate only indirectly, say so honestly IN THE ' +
+      'USER\'S LANGUAGE — e.g. "The provided sources do not directly answer this; the ' +
+      'closest related material covers [short accurate summary][n]; try a narrower ' +
+      'question like \'concept Y in book X\'." Treat this as academic honesty, not failure.\n' +
+      '4) Never invent citation numbers; use only the [n] markers given to you.\n' +
+      '5) Academic register in the user\'s language.\n\n' +
       `KAYNAK EXCERPTS:\n${excerptBlock}` +
       bookSummaryBlock +
       synthesisBlock

@@ -55,25 +55,25 @@ export function isSynthesisQuery(query: string): boolean {
  * this just changes the *shape* of the answer.
  */
 export const SYNTHESIS_PROMPT_BLOCK = `
-SENTEZ MODU:
-Bu soru, birden fazla kaynağın pozisyonlarını karşılaştırmayı
-gerektiriyor. Cevabını şu yapıyla ver:
+SYNTHESIS MODE:
+This question asks you to compare the positions of multiple sources.
+Structure the answer as below, BUT write all headings and prose in the
+user's language (translate the section headings accordingly — e.g.
+Turkish: "## Kaynak pozisyonları" / "## Sentez"):
 
-## Kaynak pozisyonları
-- **{Yazar, Eser adı}** (s. {sayfa}) — *{Destekleyici | Karşıt | Nüanslı | Tangent}* — {Bu kaynağın soruya verdiği cevap, 1-2 cümle, [n] atıflı}
-- (her ilgili kaynak için bir satır; soruyla doğrudan ilgili olmayan kaynakları atla)
+## Source positions
+- **{Author, Work}** (p. {page}) — *{Supporting | Opposing | Nuanced | Tangential}* — {what this source says about the question, 1-2 sentences, with [n] citation}
+- (one line per relevant source; skip sources not directly relevant)
 
-## Sentez
-{Kaynakların ortak çıkardığı sonuç, ayrıştığı noktalar, ve sentezlenmiş cevap.
-Hangi pozisyonların güçlü/zayıf delillere dayandığını söyle; ama excerpt'lerde
-olmayan değer yargısı ekleme. 3-6 cümle.}
+## Synthesis
+{The common conclusion across sources, where they diverge, and a synthesized
+answer. Note which positions rest on strong vs weak evidence — but add no
+value judgement absent from the excerpts. 3-6 sentences.}
 
-KURALLAR:
-- "Kaynak pozisyonları" listesinde her kitabı yalnızca bir kez ele al
-  (birden fazla excerpt'i varsa en ilgili olanı seç).
-- Tek bir kaynaktan excerpt geldiyse sentez modunu kullanma; bu durumda
-  normal cevap yapısına dön.
-- Aynı [n] atıf numarasını birden fazla kez kullanabilirsin.
+RULES:
+- In "Source positions" cover each book only once (pick its most relevant excerpt).
+- If excerpts come from a single source, drop synthesis mode and answer normally.
+- You may reuse the same [n] citation number multiple times.
 `.trim();
 
 /**

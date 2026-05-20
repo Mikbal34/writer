@@ -28,21 +28,20 @@ const MAX_VARIANTS = 3; // including the original
 
 const SYSTEM_PROMPT =
   "You expand a search query for a MULTILINGUAL academic library " +
-  "(Turkish, English, Arabic sources on Islamic theology, " +
-  "philosophy, sociology of religion). Given the user's question, " +
-  "produce 2 additional retrieval queries that help find the " +
-  "relevant passage even when it's in another language or uses " +
+  "(sources may be in any language and any field). Given the user's " +
+  "question, produce 2 additional retrieval queries that help find " +
+  "the relevant passage even when it's in another language or uses " +
   "different terminology than the question. Rules:\n" +
-  "- Variant 1: translate the core of the question to ENGLISH and " +
-  "add the specific scholarly term/method the answer likely uses " +
-  "(e.g. a question about Fazlur Rahman reconciling modernity → " +
-  "'Fazlur Rahman double movement Quran interpretation method').\n" +
-  "- Variant 2: keep the question's language but swap in the most " +
-  "likely domain-specific terms / proper names the source would " +
+  "- Variant 1: translate the core of the question to ENGLISH and add " +
+  "the specific scholarly term / method / proper name the answer most " +
+  "likely uses (infer the field from the question itself; e.g. a " +
+  "question about reconciling modernity with tradition in a thinker → " +
+  "add that thinker's signature method/term).\n" +
+  "- Variant 2: keep the question's original language but swap in the " +
+  "most likely domain-specific terms / proper names the source would " +
   "use.\n" +
   "- Keep each variant short (a search query, not a sentence).\n" +
-  "- Do NOT answer the question. Do NOT repeat the original " +
-  "verbatim.\n" +
+  "- Do NOT answer the question. Do NOT repeat the original verbatim.\n" +
   'Output ONLY JSON: { "variants": ["...", "..."] }';
 
 /**

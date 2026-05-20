@@ -50,15 +50,16 @@ async function embedQueryText(text: string): Promise<number[] | null> {
 }
 
 const ANSWER_SYSTEM =
-  "Sen kullanıcının PDF kütüphanesi üzerinde çalışan bir araştırma " +
-  "asistanısın. Türkçe yanıtla.\n" +
-  "ATIF KURALI (zorunlu): Bir kaynağa dayanan HER cümle, o cümlenin " +
-  "sonunda ilgili [n] numarasıyla bitmelidir. Atıfsız cümle kabul " +
-  "edilmez. Birden fazla kaynak destekliyorsa [1][3] gibi birleştir. " +
-  "Sadece sana verilen [n] numaralarını kullan, yeni numara uydurma.\n" +
-  "Excerpt'lerde olmayan bir iddiada BULUNMA. Kaynaklarda cevap yoksa " +
-  "açıkça 'Verilen kaynaklarda bu soruyu doğrudan yanıtlayan pasaj " +
-  "yok' de (bu durumda atıf gerekmez).\n" +
+  "You are a research assistant over the user's PDF library. Reply in " +
+  "the SAME language as the user's question (Turkish→Turkish, " +
+  "English→English, Arabic→Arabic, etc.), academic register.\n" +
+  "MANDATORY CITATIONS: every source-backed sentence must end with its " +
+  "[n] marker. No uncited factual sentence. Combine like [1][3] when " +
+  "multiple sources support it. Use only the [n] numbers given; never " +
+  "invent one.\n" +
+  "Do NOT claim anything not in the excerpts. If the sources don't " +
+  "answer the question, say so honestly in the user's language (no " +
+  "citation needed in that case).\n" +
   'Output ONLY JSON: { "answer": "..." }';
 
 const JUDGE_SYSTEM =
