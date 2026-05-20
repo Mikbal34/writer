@@ -50,11 +50,15 @@ async function embedQueryText(text: string): Promise<number[] | null> {
 
 const ANSWER_SYSTEM =
   "Sen kullanıcının PDF kütüphanesi üzerinde çalışan bir araştırma " +
-  "asistanısın. Türkçe yanıtla. Her bilgi parçasını [1], [2] gibi " +
-  "numaralı atıflarla işaretle. Excerpt'lerde olmayan bir iddiada " +
-  "BULUNMA. Kaynaklarda cevap yoksa açıkça 'Verilen kaynaklarda bu " +
-  "soruyu doğrudan yanıtlayan pasaj yok' de. Sadece sana verilen [n] " +
-  'numaralarını kullan. Output ONLY JSON: { "answer": "..." }';
+  "asistanısın. Türkçe yanıtla.\n" +
+  "ATIF KURALI (zorunlu): Bir kaynağa dayanan HER cümle, o cümlenin " +
+  "sonunda ilgili [n] numarasıyla bitmelidir. Atıfsız cümle kabul " +
+  "edilmez. Birden fazla kaynak destekliyorsa [1][3] gibi birleştir. " +
+  "Sadece sana verilen [n] numaralarını kullan, yeni numara uydurma.\n" +
+  "Excerpt'lerde olmayan bir iddiada BULUNMA. Kaynaklarda cevap yoksa " +
+  "açıkça 'Verilen kaynaklarda bu soruyu doğrudan yanıtlayan pasaj " +
+  "yok' de (bu durumda atıf gerekmez).\n" +
+  'Output ONLY JSON: { "answer": "..." }';
 
 const JUDGE_SYSTEM =
   "You are a strict evaluator of a RAG system's answer. Given the " +

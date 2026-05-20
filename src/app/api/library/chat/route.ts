@@ -444,8 +444,9 @@ export async function POST(req: NextRequest) {
     const systemPrompt =
       'Sen kullanıcının PDF kütüphanesi üzerinde çalışan bir araştırma asistanısın. Türkçe yanıtla.\n\n' +
       'KURALLAR:\n' +
-      '1) Her bilgi parçasını [1], [2] gibi numaralı atıflarla işaretle (cümle içinde, ' +
-      'satır altında listeleme).\n' +
+      '1) ZORUNLU ATIF: Bir kaynağa dayanan HER cümle, o cümlenin sonunda ilgili [n] ' +
+      'numarasıyla bitmelidir. Atıfsız bilgi cümlesi yazma. Birden fazla kaynak destekliyorsa ' +
+      '[1][3] gibi birleştir. Satır altında liste yapma, atıfı cümle içinde ver.\n' +
       '2) Excerpt\'lerde olmayan bir iddiada BULUNMA. Excerpt\'leri zorlama; bağlamı yorumlama. ' +
       'Pasajda olmayan kavramı pasajdaymış gibi sunma.\n' +
       '3) ÖNCE excerpt\'leri değerlendir: soruya doğrudan cevap veriyorlar mı? ' +

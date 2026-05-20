@@ -64,6 +64,24 @@ async def generate_embeddings(
     return all_embeddings
 
 
+def _l2_normalize(vec: list[float]) -> list[float]:
+    """L2-normalize a vector to unit length.
+
+    gemini-embedding-001 only returns normalized vectors at its
+    native 3072 dims; truncating via outputDimensionality (we use
+    768) yields UN-normalized vectors (magnitude ≈ 0.59). Storing
+    those breaks any L2-distance retrieval and makes the
+    largest-magnitude cluster dominate. Normalizing here means every
+    stored vector is unit-length, so cosine and L2 agree and an
+    HNSW index behaves correctly. Google's own guidance: normalize
+    yourself when using a reduced dimensionality.
+    """
+    mag = sum(x * x for x in vec) ** 0.5
+    if mag == 0:
+        return vec
+    return [x / mag for x in vec]
+
+
 async def _embed_batch(
     texts: list[str],
     model: str,
@@ -104,7 +122,10 @@ async def _embed_batch(
 
         if response.status_code == 200:
             data = response.json()
-            return [emb["values"] for emb in data.get("embeddings", [])]
+            return [
+                _l2_normalize(emb["values"])
+                for emb in data.get("embeddings", [])
+            ]
 
         last_error = (
             f"Gemini embedding API returned {response.status_code}: {response.text}"
