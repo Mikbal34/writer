@@ -1,12 +1,20 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@prisma/client", "pdfkit"],
-  // pdfjs-dist ships an .mjs entry that webpack mishandles (manifests
-  // at runtime as "Properties can only be defined on Objects" inside
-  // pdf.mjs). Routing it through Next's transpiler fixes the export
-  // shape so react-pdf can consume it.
-  transpilePackages: ["pdfjs-dist", "react-pdf"],
+  // pdfjs-dist must NOT be bundled on the server. When webpack
+  // transpiles it (via transpilePackages), the internal worker
+  // import `new URL("pdf.worker.mjs", import.meta.url)` is rewritten
+  // to a static `.next/server/chunks/pdf.worker.mjs` path that is
+  // never emitted — so every server-side getDocument() throws
+  // "Setting up fake worker failed: Cannot find module …" and
+  // pdf-extract.ts silently falls back to slow Python OCR (which
+  // drops sectionTitle + pdfPageLabel). Marking it external keeps
+  // it as a normal node_modules require at runtime, so its worker
+  // resolves relative to the real on-disk file. react-pdf (client
+  // only, "use client") stays in transpilePackages to fix the .mjs
+  // export shape webpack otherwise mishandles in the browser bundle.
+  serverExternalPackages: ["@prisma/client", "pdfkit", "pdfjs-dist"],
+  transpilePackages: ["react-pdf"],
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",
