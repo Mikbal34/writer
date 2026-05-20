@@ -26,6 +26,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const body = (await req.json().catch(() => ({}))) as {
+    skipNormalize?: boolean;
+  };
+
   const log: string[] = [];
   const step = async (label: string, sql: string) => {
     const t0 = Date.now();
@@ -33,25 +37,45 @@ export async function POST(req: NextRequest) {
     log.push(`${label} — ${Date.now() - t0}ms (rows: ${affected})`);
   };
 
-  try {
-    // 1. Normalize existing vectors in place.
-    await step(
-      "normalize LibraryChunk embeddings",
-      `UPDATE "LibraryChunk" SET embedding = l2_normalize(embedding) WHERE embedding IS NOT NULL`,
-    );
-    await step(
-      "normalize LibraryNote embeddings",
-      `UPDATE "LibraryNote" SET embedding = l2_normalize(embedding) WHERE embedding IS NOT NULL`,
-    );
+  // HNSW's parallel build allocates dynamic shared memory, which
+  // overflows Railway Postgres's small /dev/shm ("could not resize
+  // shared memory segment … No space left on device"). Build
+  // single-threaded with a bounded maintenance_work_mem instead —
+  // slower but fits. Runs each index in its own transaction so the
+  // SET LOCAL sticks to the same connection as the CREATE INDEX.
+  const buildIndex = async (label: string, indexSql: string) => {
+    const t0 = Date.now();
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL max_parallel_maintenance_workers = 0`);
+      await tx.$executeRawUnsafe(`SET LOCAL maintenance_work_mem = '128MB'`);
+      await tx.$executeRawUnsafe(indexSql);
+    }, { timeout: 280_000 });
+    log.push(`${label} — ${Date.now() - t0}ms`);
+  };
 
-    // 2. HNSW cosine indexes (vector_cosine_ops matches the `<=>`
-    //    operator the retrieval queries now use).
-    await step(
+  try {
+    // 1. Normalize existing vectors in place (skippable on re-run —
+    //    it's a 58s full-table pass and idempotent).
+    if (!body.skipNormalize) {
+      await step(
+        "normalize LibraryChunk embeddings",
+        `UPDATE "LibraryChunk" SET embedding = l2_normalize(embedding) WHERE embedding IS NOT NULL`,
+      );
+      await step(
+        "normalize LibraryNote embeddings",
+        `UPDATE "LibraryNote" SET embedding = l2_normalize(embedding) WHERE embedding IS NOT NULL`,
+      );
+    } else {
+      log.push("normalize — skipped (skipNormalize)");
+    }
+
+    // 2. HNSW cosine indexes, single-threaded build.
+    await buildIndex(
       "HNSW cosine index LibraryChunk",
       `CREATE INDEX IF NOT EXISTS "LibraryChunk_embedding_hnsw_cos"
          ON "LibraryChunk" USING hnsw (embedding vector_cosine_ops)`,
     );
-    await step(
+    await buildIndex(
       "HNSW cosine index LibraryNote",
       `CREATE INDEX IF NOT EXISTS "LibraryNote_embedding_hnsw_cos"
          ON "LibraryNote" USING hnsw (embedding vector_cosine_ops)`,
