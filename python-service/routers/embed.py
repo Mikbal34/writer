@@ -15,7 +15,16 @@ router = APIRouter()
 
 class EmbedRequest(BaseModel):
     texts: list[str]
-    model: str = "models/gemini-embedding-2"
+    # GA model (gemini-embedding-001), not the preview gemini-embedding-2.
+    # Preview models carry stricter rate limits (the source of the 429
+    # RESOURCE_EXHAUSTED floods during bulk rebuilds) and can be changed
+    # or deprecated without notice — which would orphan every stored
+    # vector and force an emergency re-embed. 001 is production-stable
+    # and quality-equivalent for our multilingual academic corpus. All
+    # callers (chunk, query, note embedding) omit `model`, so this
+    # default is the single source of truth — keeping the whole corpus
+    # in one vector space.
+    model: str = "models/gemini-embedding-001"
 
 
 class EmbedResponse(BaseModel):
