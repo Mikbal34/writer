@@ -184,3 +184,28 @@ export function rrfMerge<T extends { id: string }>(
     .map(([id]) => row.get(id))
     .filter((r): r is T => r !== undefined);
 }
+
+/**
+ * RRF across an arbitrary number of ranked lists. Used by
+ * multilingual query expansion: each query variant produces its
+ * own hybrid-retrieved list, and we fuse them all so a passage
+ * any single variant ranked highly reaches the reranker. An item
+ * appearing high in multiple variants accumulates score and rises.
+ */
+export function rrfMergeMany<T extends { id: string }>(
+  lists: T[][],
+  k = RRF_K,
+): T[] {
+  const score = new Map<string, number>();
+  const row = new Map<string, T>();
+  for (const list of lists) {
+    list.forEach((r, i) => {
+      score.set(r.id, (score.get(r.id) ?? 0) + 1 / (k + i + 1));
+      if (!row.has(r.id)) row.set(r.id, r);
+    });
+  }
+  return Array.from(score.entries())
+    .sort(([, a], [, b]) => b - a)
+    .map(([id]) => row.get(id))
+    .filter((r): r is T => r !== undefined);
+}

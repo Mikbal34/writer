@@ -16,8 +16,9 @@ import { prisma } from '@/lib/db'
 import { streamChatWithUsage } from '@/lib/claude'
 import { rerankChunks } from '@/lib/rerank'
 import { isGenericBookQuery } from '@/lib/book-summary'
-import { ftsChunks, ftsNotes, rrfMerge } from '@/lib/hybrid-retrieval'
+import { ftsChunks, ftsNotes, rrfMerge, rrfMergeMany } from '@/lib/hybrid-retrieval'
 import { rewriteQuery } from '@/lib/query-rewrite'
+import { expandQuery } from '@/lib/query-expansion'
 import { SYNTHESIS_PROMPT_BLOCK, shouldActivateSynthesis } from '@/lib/synthesis-mode'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
@@ -193,116 +194,105 @@ export async function POST(req: NextRequest) {
       })),
     )
 
-    // Embed the (possibly rewritten) query once and run two ordered
-    // retrievals: top-K PDF chunks and top-K user notes. We keep
-    // them as separate queries (instead of one big UNION) so each
-    // side can use its own ORDER BY ... <-> $1 index pass cleanly;
-    // the JS layer merges and tags rows with kind="chunk"|"note"
-    // for the prompt.
-    const queryVec = await embedQueryText(retrievalQuery)
+    // Multilingual query expansion: a Turkish question about an
+    // English/Arabic source often fails to surface the key passage
+    // because the wording + language differ from the source. Expand
+    // into a few cross-lingual / domain-term variants, retrieve for
+    // EACH (hybrid: vector + FTS), and RRF-fuse the union so a hit
+    // from any variant reaches the reranker. variants[0] is always
+    // the original, so this only adds recall.
+    const variants = await expandQuery(retrievalQuery)
+    const variantVecs = await Promise.all(variants.map(embedQueryText))
+
     let retrievedChunks: RetrievedChunk[] = []
     let retrievedNotes: RetrievedChunk[] = []
     // Note: both let-bound because the rerank pass below replaces
     // them with the slim top-K subsets.
-    if (queryVec) {
-      const vecLiteral = JSON.stringify(queryVec)
-      // Hybrid retrieval — pgvector (semantic neighbours) and
-      // tsvector (lexical token match) fired in parallel, then
-      // RRF-merged. The downstream Haiku reranker still trims to
-      // TOP_K, so RRF only has to assemble a strong *recall* pool:
-      // its job is to keep exact-token hits (proper names,
-      // citations, kısaltmalar) from being drowned out by purely
-      // semantic neighbours, not to produce the final ranking.
-      const [vecChunks, lexChunks, vecNotes, lexNotes] = await Promise.all([
+
+    // Per-query hybrid chunk retrieval (vector + FTS, RRF-merged).
+    const hybridChunksFor = async (
+      qText: string,
+      vecLiteral: string,
+    ): Promise<RetrievedChunk[]> => {
+      const [vec, lex] = await Promise.all([
         scope === 'all'
           ? prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT lc.id AS id,
-                     'chunk' AS kind,
-                     le.id AS "entryId",
-                     lc."volumeId" AS "volumeId",
-                     le.title AS title,
-                     le."authorSurname" AS "authorSurname",
-                     lc."pageNumber" AS "pageNumber",
-                     lc."pdfPageLabel" AS "pdfPageLabel",
-                     lc."sectionTitle" AS "sectionTitle",
-                     lc.content AS content,
-                     NULL AS "noteTitle"
+              SELECT lc.id AS id, 'chunk' AS kind, le.id AS "entryId",
+                     lc."volumeId" AS "volumeId", le.title AS title,
+                     le."authorSurname" AS "authorSurname", lc."pageNumber" AS "pageNumber",
+                     lc."pdfPageLabel" AS "pdfPageLabel", lc."sectionTitle" AS "sectionTitle",
+                     lc.content AS content, NULL AS "noteTitle"
               FROM "LibraryChunk" lc
               JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
-              WHERE le."userId" = ${session.user.id}
-                AND lc.embedding IS NOT NULL
+              WHERE le."userId" = ${session.user.id} AND lc.embedding IS NOT NULL
               ORDER BY lc.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_CHUNKS}
             `
           : prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT lc.id AS id,
-                     'chunk' AS kind,
-                     le.id AS "entryId",
-                     lc."volumeId" AS "volumeId",
-                     le.title AS title,
-                     le."authorSurname" AS "authorSurname",
-                     lc."pageNumber" AS "pageNumber",
-                     lc."pdfPageLabel" AS "pdfPageLabel",
-                     lc."sectionTitle" AS "sectionTitle",
-                     lc.content AS content,
-                     NULL AS "noteTitle"
+              SELECT lc.id AS id, 'chunk' AS kind, le.id AS "entryId",
+                     lc."volumeId" AS "volumeId", le.title AS title,
+                     le."authorSurname" AS "authorSurname", lc."pageNumber" AS "pageNumber",
+                     lc."pdfPageLabel" AS "pdfPageLabel", lc."sectionTitle" AS "sectionTitle",
+                     lc.content AS content, NULL AS "noteTitle"
               FROM "LibraryChunk" lc
               JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
               WHERE le."userId" = ${session.user.id}
-                AND le.id = ANY(${entryIds}::text[])
-                AND lc.embedding IS NOT NULL
+                AND le.id = ANY(${entryIds}::text[]) AND lc.embedding IS NOT NULL
               ORDER BY lc.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_CHUNKS}
             `,
         ftsChunks(
           session.user.id,
-          retrievalQuery,
+          qText,
           scope === 'all' ? null : entryIds,
           RETRIEVAL_POOL_CHUNKS,
         ).catch((err) => {
-          // FTS may be absent on a freshly-deployed cluster — the
-          // setup-fts DDL bootstrap runs once. Until then, degrade
-          // gracefully to vector-only rather than failing the chat.
           console.warn('[chat] FTS chunks fallback:', err)
           return [] as RetrievedChunk[]
         }),
+      ])
+      return rrfMerge(vec, lex)
+    }
+
+    // Chunks: retrieve per variant, fuse the union.
+    const chunkPools = await Promise.all(
+      variants.map((qText, i) => {
+        const v = variantVecs[i]
+        return v ? hybridChunksFor(qText, JSON.stringify(v)) : Promise.resolve([] as RetrievedChunk[])
+      }),
+    )
+    retrievedChunks = rrfMergeMany(chunkPools).slice(0, RETRIEVAL_POOL_CHUNKS)
+
+    // Notes: user's own annotations, almost always in the user's
+    // language and low-volume — expansion adds little, so retrieve
+    // once with the primary (rewritten) query vector.
+    const primaryVec = variantVecs[0]
+    if (primaryVec) {
+      const vecLiteral = JSON.stringify(primaryVec)
+      const [vecNotes, lexNotes] = await Promise.all([
         scope === 'all'
           ? prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT ln.id AS id,
-                     'note' AS kind,
-                     le.id AS "entryId",
-                     ln."volumeId" AS "volumeId",
-                     le.title AS title,
-                     le."authorSurname" AS "authorSurname",
-                     ln."pageNumber" AS "pageNumber",
-                     ln."pdfPageLabel" AS "pdfPageLabel",
-                     NULL AS "sectionTitle",
-                     ln."contentText" AS content,
-                     ln.title AS "noteTitle"
+              SELECT ln.id AS id, 'note' AS kind, le.id AS "entryId",
+                     ln."volumeId" AS "volumeId", le.title AS title,
+                     le."authorSurname" AS "authorSurname", ln."pageNumber" AS "pageNumber",
+                     ln."pdfPageLabel" AS "pdfPageLabel", NULL AS "sectionTitle",
+                     ln."contentText" AS content, ln.title AS "noteTitle"
               FROM "LibraryNote" ln
               JOIN "LibraryEntry" le ON ln."libraryEntryId" = le.id
-              WHERE ln."userId" = ${session.user.id}
-                AND ln.embedding IS NOT NULL
+              WHERE ln."userId" = ${session.user.id} AND ln.embedding IS NOT NULL
               ORDER BY ln.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_NOTES}
             `
           : prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT ln.id AS id,
-                     'note' AS kind,
-                     le.id AS "entryId",
-                     ln."volumeId" AS "volumeId",
-                     le.title AS title,
-                     le."authorSurname" AS "authorSurname",
-                     ln."pageNumber" AS "pageNumber",
-                     ln."pdfPageLabel" AS "pdfPageLabel",
-                     NULL AS "sectionTitle",
-                     ln."contentText" AS content,
-                     ln.title AS "noteTitle"
+              SELECT ln.id AS id, 'note' AS kind, le.id AS "entryId",
+                     ln."volumeId" AS "volumeId", le.title AS title,
+                     le."authorSurname" AS "authorSurname", ln."pageNumber" AS "pageNumber",
+                     ln."pdfPageLabel" AS "pdfPageLabel", NULL AS "sectionTitle",
+                     ln."contentText" AS content, ln.title AS "noteTitle"
               FROM "LibraryNote" ln
               JOIN "LibraryEntry" le ON ln."libraryEntryId" = le.id
               WHERE ln."userId" = ${session.user.id}
-                AND le.id = ANY(${entryIds}::text[])
-                AND ln.embedding IS NOT NULL
+                AND le.id = ANY(${entryIds}::text[]) AND ln.embedding IS NOT NULL
               ORDER BY ln.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_NOTES}
             `,
@@ -316,14 +306,7 @@ export async function POST(req: NextRequest) {
           return [] as RetrievedChunk[]
         }),
       ])
-      retrievedChunks = rrfMerge(vecChunks, lexChunks).slice(
-        0,
-        RETRIEVAL_POOL_CHUNKS,
-      )
-      retrievedNotes = rrfMerge(vecNotes, lexNotes).slice(
-        0,
-        RETRIEVAL_POOL_NOTES,
-      )
+      retrievedNotes = rrfMerge(vecNotes, lexNotes).slice(0, RETRIEVAL_POOL_NOTES)
     }
 
     // Two-stage retrieval — rerank the wide pool down to the final

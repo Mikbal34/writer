@@ -22,8 +22,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateJSONWithUsage, SONNET, HAIKU } from "@/lib/claude";
-import { ftsChunks, rrfMerge, type RetrievedRow } from "@/lib/hybrid-retrieval";
+import { ftsChunks, rrfMerge, rrfMergeMany, type RetrievedRow } from "@/lib/hybrid-retrieval";
 import { rerankChunks } from "@/lib/rerank";
+import { expandQuery } from "@/lib/query-expansion";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -119,31 +120,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "no library found" }, { status: 404 });
   }
 
-  // ── Retrieval (same path as chat) ───────────────────────────
-  const queryVec = await embedQueryText(question);
-  if (!queryVec) {
+  // ── Retrieval (same path as chat: multilingual expansion +
+  //    per-variant hybrid, RRF-fused) ──────────────────────────
+  const variants = await expandQuery(question);
+  const variantVecs = await Promise.all(variants.map(embedQueryText));
+  if (!variantVecs[0]) {
     return NextResponse.json(
       { error: "embedding failed (python service?)" },
       { status: 502 },
     );
   }
-  const vecLiteral = JSON.stringify(queryVec);
-  const [vecChunks, lexChunks] = await Promise.all([
-    prisma.$queryRaw<RetrievedRow[]>`
-      SELECT lc.id AS id, 'chunk' AS kind, le.id AS "entryId",
-             lc."volumeId" AS "volumeId", le.title AS title,
-             le."authorSurname" AS "authorSurname", lc."pageNumber" AS "pageNumber",
-             lc."pdfPageLabel" AS "pdfPageLabel", lc."sectionTitle" AS "sectionTitle",
-             lc.content AS content, NULL AS "noteTitle"
-      FROM "LibraryChunk" lc
-      JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
-      WHERE le."userId" = ${userId} AND lc.embedding IS NOT NULL
-      ORDER BY lc.embedding <=> ${vecLiteral}::vector
-      LIMIT ${RETRIEVAL_POOL}
-    `,
-    ftsChunks(userId, question, null, RETRIEVAL_POOL).catch(() => [] as RetrievedRow[]),
-  ]);
-  let pool = rrfMerge(vecChunks, lexChunks).slice(0, RETRIEVAL_POOL);
+  const hybridFor = async (
+    qText: string,
+    vecLiteral: string,
+  ): Promise<RetrievedRow[]> => {
+    const [vec, lex] = await Promise.all([
+      prisma.$queryRaw<RetrievedRow[]>`
+        SELECT lc.id AS id, 'chunk' AS kind, le.id AS "entryId",
+               lc."volumeId" AS "volumeId", le.title AS title,
+               le."authorSurname" AS "authorSurname", lc."pageNumber" AS "pageNumber",
+               lc."pdfPageLabel" AS "pdfPageLabel", lc."sectionTitle" AS "sectionTitle",
+               lc.content AS content, NULL AS "noteTitle"
+        FROM "LibraryChunk" lc
+        JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
+        WHERE le."userId" = ${userId} AND lc.embedding IS NOT NULL
+        ORDER BY lc.embedding <=> ${vecLiteral}::vector
+        LIMIT ${RETRIEVAL_POOL}
+      `,
+      ftsChunks(userId, qText, null, RETRIEVAL_POOL).catch(() => [] as RetrievedRow[]),
+    ]);
+    return rrfMerge(vec, lex);
+  };
+  const variantPools = await Promise.all(
+    variants.map((qText, i) =>
+      variantVecs[i]
+        ? hybridFor(qText, JSON.stringify(variantVecs[i]))
+        : Promise.resolve([] as RetrievedRow[]),
+    ),
+  );
+  let pool = rrfMergeMany(variantPools).slice(0, RETRIEVAL_POOL);
 
   // Rerank to top-K.
   if (pool.length > TOP_K) {
