@@ -128,17 +128,20 @@ async function main() {
         continue;
       }
       const j = r.judge ?? {};
+      const cs = r.citationStats ?? {};
       console.log(
-        `overall=${j.overall ?? "?"} (g${j.groundedness ?? "?"}/r${j.relevance ?? "?"}/c${j.citations ?? "?"}) src=${r.retrievedCount}`,
+        `overall=${j.overall ?? "?"} (g${j.groundedness ?? "?"}/r${j.relevance ?? "?"}) ` +
+          `cite:${cs.valid ?? 0}✓${cs.invalid ? `/${cs.invalid}✗` : ""} cov=${cs.coverage ?? 0}` +
+          `${cs.insufficientSrc ? " [no-src]" : ""}`,
       );
       rows.push({
         q: item.q,
         overall: Number(j.overall),
         g: Number(j.groundedness),
         r: Number(j.relevance),
-        c: Number(j.citations),
         reason: j.reason,
         src: r.retrievedCount,
+        cite: cs,
       });
     } catch (err) {
       console.log(`✗ ${err.message}`);
@@ -160,12 +163,37 @@ async function main() {
   if (scored.length > 0) {
     const avg = (k) =>
       (scored.reduce((s, r) => s + (Number(r[k]) || 0), 0) / scored.length).toFixed(1);
-    console.log("\n--- averages ---");
+    console.log("\n--- judge averages (noisy, LLM-scored) ---");
     console.log(`overall:      ${avg("overall")}/10`);
     console.log(`groundedness: ${avg("g")}/10`);
     console.log(`relevance:    ${avg("r")}/10`);
-    console.log(`citations:    ${avg("c")}/10`);
     console.log(`scored ${scored.length}/${rows.length}`);
+  }
+
+  // ── Deterministic citation metrics (the reliable ones) ──────
+  // Exclude honest "not in sources" answers — they correctly carry
+  // no citations, so including them would understate real citation
+  // discipline on answerable questions.
+  const cited = rows.filter(
+    (r) => r.cite && !r.cite.insufficientSrc && Number.isFinite(r.overall),
+  );
+  if (cited.length > 0) {
+    const withCite = cited.filter((r) => r.cite.hasCitations).length;
+    const anyInvalid = cited.filter((r) => (r.cite.invalid || 0) > 0).length;
+    const avgCov = (
+      cited.reduce((s, r) => s + (r.cite.coverage || 0), 0) / cited.length
+    ).toFixed(2);
+    const avgValid = (
+      cited.reduce((s, r) => s + (r.cite.valid || 0), 0) / cited.length
+    ).toFixed(1);
+    console.log("\n--- citations (deterministic, answerable Qs only) ---");
+    console.log(`answerable questions:    ${cited.length}`);
+    console.log(`with ≥1 valid citation:  ${withCite}/${cited.length} (${Math.round((withCite / cited.length) * 100)}%)`);
+    console.log(`avg valid [n] per answer: ${avgValid}`);
+    console.log(`avg coverage ([n]/sent):  ${avgCov}`);
+    console.log(`answers w/ invalid [n]:   ${anyInvalid}/${cited.length}`);
+    const noSrc = rows.filter((r) => r.cite && r.cite.insufficientSrc).length;
+    if (noSrc) console.log(`("not in sources" excluded: ${noSrc})`);
   }
   console.log("");
 }

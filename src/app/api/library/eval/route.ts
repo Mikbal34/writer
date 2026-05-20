@@ -184,6 +184,42 @@ export async function POST(req: NextRequest) {
   );
   const answer = answerRes.data?.answer ?? "";
 
+  // ── Deterministic citation analysis ─────────────────────────
+  // LLM-judged citation scores are noisy; counting [n] markers is
+  // exact. We measure: how many markers, how many are valid (point
+  // at a real source 1..K), coverage (markers per sentence), and
+  // whether the answer is an honest "not in sources" reply (which
+  // legitimately carries no citations and must be excluded from
+  // citation averages so it doesn't drag the metric down).
+  const markerNums = (answer.match(/\[(\d+)\]/g) ?? []).map((m) =>
+    parseInt(m.slice(1, -1), 10),
+  );
+  const validNums = markerNums.filter((n) => n >= 1 && n <= pool.length);
+  const invalidNums = markerNums.filter((n) => n < 1 || n > pool.length);
+  // Rough sentence count: strip markers, split on Turkish/Latin
+  // sentence enders, keep non-trivial fragments.
+  const sentenceCount = answer
+    .replace(/\[\d+\]/g, "")
+    .split(/[.!?]+(?:\s|$)/)
+    .filter((s) => s.trim().length > 15).length;
+  const insufficientSrc =
+    /\b(kaynaklar(?:da|ın)?|excerpt|pasaj)\b[^.]*\b(yok|bulunma|içermem|değin)/i.test(
+      answer,
+    ) || /doğrudan yanıtlayan[^.]*yok/i.test(answer);
+  const citationStats = {
+    markers: markerNums.length,
+    valid: validNums.length,
+    invalid: invalidNums.length,
+    uniqueValid: new Set(validNums).size,
+    sentences: sentenceCount,
+    coverage:
+      sentenceCount > 0
+        ? Number((markerNums.length / sentenceCount).toFixed(2))
+        : 0,
+    hasCitations: validNums.length > 0,
+    insufficientSrc,
+  };
+
   // ── Judge (optional) ────────────────────────────────────────
   let judge: Record<string, unknown> | null = null;
   if (body.expected) {
@@ -199,6 +235,7 @@ export async function POST(req: NextRequest) {
     question,
     answer,
     judge,
+    citationStats,
     sources: pool.map((c, i) => ({
       n: i + 1,
       title: c.title,
