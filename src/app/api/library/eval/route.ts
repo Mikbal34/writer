@@ -91,11 +91,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "question required" }, { status: 400 });
   }
 
-  // Resolve library owner (most entries) unless caller pins userId.
+  // Resolve the *academic-library* owner unless caller pins userId.
+  // Naive "most entries" picks the wrong account here: a separate
+  // dev account holds a single thesis exploded into ~95 format
+  // variants (PDF/DOCX/TEX/KOD/…), out-counting the real 93-book
+  // research library on another userId — so the eval scoped to the
+  // thesis dump and every query returned telecom chunks. Rank users
+  // by entries that look like actual books (exclude the thesis/code
+  // filename patterns) so we evaluate the corpus we care about.
   let userId = body.userId;
   if (!userId) {
     const [owner] = await prisma.$queryRawUnsafe<Array<{ userId: string }>>(
-      `SELECT "userId" FROM "LibraryEntry" GROUP BY "userId" ORDER BY COUNT(*) DESC LIMIT 1`,
+      `SELECT "userId"
+         FROM "LibraryEntry"
+        WHERE title !~* '(telekom|_KOD_|_TEZ_|_TEX_|_DOCX_|EREN_2026|theil_)'
+        GROUP BY "userId"
+        ORDER BY COUNT(*) DESC
+        LIMIT 1`,
     );
     userId = owner?.userId;
   }
