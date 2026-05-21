@@ -108,29 +108,45 @@ def _ocr_images(images: list[Image.Image]) -> list[str]:
     return ["\n".join(line.text for line in p.text_lines) for p in preds]
 
 
+# How many PDF pages to render+OCR at a time. Bounds peak memory: rendering
+# a whole 1000+ page book at once OOMs the container, so we work in slices
+# and let each slice's bitmaps be freed before the next.
+PAGE_BATCH = 24
+
+
 def ocr_pdf(pdf_bytes: bytes, dpi: int = DEFAULT_DPI) -> list[PageText]:
-    """Full pipeline: render → spread-split → batched OCR → regroup.
+    """Full pipeline: render → spread-split → batched OCR → regroup, in
+    page slices so memory stays bounded regardless of book size.
 
     One PageText per PDF page; spreads have right+left concatenated (right
     first) so page_number stays aligned with the rendered PDF page.
     """
-    page_images = render_pdf(pdf_bytes, dpi=dpi)
+    scale = dpi / 72.0
+    doc = pdfium.PdfDocument(pdf_bytes)
+    try:
+        total = len(doc)
+        pages: list[PageText] = []
+        for start in range(0, total, PAGE_BATCH):
+            end = min(start + PAGE_BATCH, total)
+            # Render this slice, split spreads, remember halves-per-page.
+            flat: list[Image.Image] = []
+            counts: list[int] = []
+            for i in range(start, end):
+                bitmap = doc[i].render(scale=scale)
+                halves = split_spread(bitmap.to_pil().convert("RGB"))
+                counts.append(len(halves))
+                flat.extend(halves)
 
-    # Flatten all half-pages into one batch (efficient on GPU), remembering
-    # how many halves each PDF page contributed so we can regroup.
-    flat: list[Image.Image] = []
-    counts: list[int] = []
-    for img in page_images:
-        halves = split_spread(img)
-        counts.append(len(halves))
-        flat.extend(halves)
+            texts = _ocr_images(flat)
 
-    texts = _ocr_images(flat)
-
-    pages: list[PageText] = []
-    idx = 0
-    for page_no, n in enumerate(counts, start=1):
-        parts = texts[idx : idx + n]
-        idx += n
-        pages.append(PageText(page_number=page_no, text="\n".join(parts).strip()))
-    return pages
+            idx = 0
+            for offset, n in enumerate(counts):
+                parts = texts[idx : idx + n]
+                idx += n
+                pages.append(
+                    PageText(page_number=start + offset + 1, text="\n".join(parts).strip())
+                )
+            # flat / bitmaps drop out of scope here → freed before next slice.
+        return pages
+    finally:
+        doc.close()

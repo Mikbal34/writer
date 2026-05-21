@@ -31,6 +31,7 @@ const USER_ID = process.env.TARGET_USER_ID ?? "";
 const DRY = process.argv.includes("--dry");
 const CLEANUP = process.argv.includes("--cleanup-first");
 const ONLY = (process.argv.find((a) => a.startsWith("--only=")) ?? "").split("=")[1] ?? "";
+const CONCURRENCY = Number(process.env.OCR_CONCURRENCY ?? 4);
 
 if (!DRY && (!OCR_URL || !ADMIN_SECRET || !USER_ID)) {
   console.error("Set OCR_SERVICE_URL, ADMIN_SESSION_SECRET, TARGET_USER_ID");
@@ -139,35 +140,46 @@ async function main() {
   }
   if (CLEANUP) await cleanupNoFile();
 
-  let ok = 0, fail = 0;
-  for (let i = 0; i < keys.length; i++) {
-    const w = works.get(keys[i]);
-    const tag = `[${i + 1}/${keys.length}]`;
-    try {
-      if (w.files.length === 1) {
-        const f = w.files[0];
+  // One work at a time within itself (multi-volume must create the parent
+  // before attaching ciltler), but CONCURRENCY works run in parallel — each
+  // hits its own Modal GPU container. ~Nx faster, ~same total cost.
+  async function processWork(w, tag) {
+    if (w.files.length === 1) {
+      const f = w.files[0];
+      const pages = await ocrFile(f.path, f.name);
+      const r = await ingest({ ...f, filePath: f.path, title: w.title, mode: "single", pages });
+      console.log(`${tag} single (${pages.length}pp) → ${w.title}  ${r.entryId.slice(0, 8)}`);
+    } else {
+      let entryId = null;
+      for (const f of w.files) {
         const pages = await ocrFile(f.path, f.name);
-        const r = await ingest({ ...f, filePath: f.path, title: w.title, mode: "single", pages });
-        console.log(`${tag} single (${pages.length}pp) → ${w.title}  ${r.entryId.slice(0, 8)}`);
-      } else {
-        let entryId = null;
-        for (const f of w.files) {
-          const pages = await ocrFile(f.path, f.name);
-          const r = await ingest({
-            filePath: f.path, name: f.name, title: w.title,
-            mode: "volume", entryId, volumeNumber: f.vol, pages,
-          });
-          entryId = r.entryId;
-          console.log(`${tag}   c${f.vol} (${pages.length}pp) → ${entryId.slice(0, 8)}`);
-        }
-        console.log(`${tag} ${w.files.length}-vol → ${w.title}`);
+        const r = await ingest({
+          filePath: f.path, name: f.name, title: w.title,
+          mode: "volume", entryId, volumeNumber: f.vol, pages,
+        });
+        entryId = r.entryId;
+        console.log(`${tag}   c${f.vol} (${pages.length}pp) → ${entryId.slice(0, 8)}`);
       }
-      ok++;
-    } catch (err) {
-      console.log(`${tag} ✗ ${w.title} — ${err.message}`);
-      fail++;
+      console.log(`${tag} ${w.files.length}-vol → ${w.title}`);
     }
   }
+
+  let cursor = 0, ok = 0, fail = 0;
+  async function worker() {
+    while (cursor < keys.length) {
+      const i = cursor++;
+      const w = works.get(keys[i]);
+      const tag = `[${i + 1}/${keys.length}]`;
+      try {
+        await processWork(w, tag);
+        ok++;
+      } catch (err) {
+        console.log(`${tag} ✗ ${w.title} — ${err.message}`);
+        fail++;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
   console.log(`\nDONE: ${ok} ok, ${fail} failed`);
 }
 
