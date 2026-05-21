@@ -44,6 +44,7 @@ import {
   Highlighter,
   Pencil,
   Trash2,
+  BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -134,6 +135,7 @@ export default function PdfViewerWithHighlights({
     status: string;
     hasFile: boolean;
     error: string | null;
+    fileType: string | null;
   } | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
@@ -437,6 +439,7 @@ export default function PdfViewerWithHighlights({
           status: typeof data.status === "string" ? data.status : "unknown",
           hasFile: Boolean(data.hasFile),
           error: typeof data.error === "string" ? data.error : null,
+          fileType: typeof data.fileType === "string" ? data.fileType : null,
         });
       })
       .catch(() => {
@@ -1035,6 +1038,7 @@ function PdfErrorState({
     status: string;
     hasFile: boolean;
     error: string | null;
+    fileType: string | null;
   } | null;
   loadError: string | null;
 }) {
@@ -1047,7 +1051,28 @@ function PdfErrorState({
     );
   }
 
-  const { status, hasFile, error } = context;
+  const { status, hasFile, error, fileType } = context;
+
+  // EPUB/DOCX sources have full-text extraction (so chat + citations
+  // work) but no page image to render — don't show the alarming "PDF
+  // okunamadı / re-upload" state for them; explain calmly. The cited
+  // passage is already shown in the chat answer's sources.
+  if (hasFile && (fileType === "epub" || fileType === "docx")) {
+    const label = fileType.toUpperCase();
+    return (
+      <div className="flex flex-col items-center gap-2 py-10 px-6 text-center font-ui text-sm max-w-[440px]">
+        <BookOpen className="h-5 w-5 text-ink-muted" />
+        <div className="font-display italic text-[15px] text-ink">
+          {label} kaynak — sayfa görüntüsü yok
+        </div>
+        <div className="text-[12.5px] text-ink-light">
+          Bu kaynak bir {label} dosyası: metni çıkarıldı ve aramada/atıfta
+          kullanılıyor, ancak PDF gibi sayfa görüntüsü gösterilemiyor. Alıntı
+          metni cevabın kaynaklar bölümünde görünür.
+        </div>
+      </div>
+    );
+  }
   const inProgress =
     status === "pending" ||
     status === "downloading" ||

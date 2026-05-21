@@ -17,6 +17,19 @@ import { pdfExists } from "@/lib/library-storage";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+/** Coarse file type from the stored path so the viewer can tell a
+ *  real PDF (page render) from an EPUB/DOCX (text was extracted but
+ *  there's no page image to show) and give a clean message instead
+ *  of a "PDF okunamadı" error. */
+function fileTypeOf(filePath: string | null): string | null {
+  if (!filePath) return null;
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".pdf")) return "pdf";
+  if (lower.endsWith(".epub")) return "epub";
+  if (lower.endsWith(".docx")) return "docx";
+  return "other";
+}
+
 export async function GET(req: NextRequest, ctx: RouteContext) {
   try {
     const session = await requireAuth();
@@ -39,6 +52,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({
         status: volume.pdfStatus,
         hasFile: pdfExists(volume.filePath),
+        fileType: fileTypeOf(volume.filePath),
         error: volume.pdfError ?? null,
       });
     }
@@ -63,6 +77,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
         return NextResponse.json({
           status: firstVolume.pdfStatus,
           hasFile: pdfExists(firstVolume.filePath),
+          fileType: fileTypeOf(firstVolume.filePath),
           error: firstVolume.pdfError ?? null,
         });
       }
@@ -70,6 +85,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({
       status: entry.pdfStatus,
       hasFile: pdfExists(entry.filePath),
+      fileType: fileTypeOf(entry.filePath),
       error: entry.pdfError ?? null,
     });
   } catch (err) {
