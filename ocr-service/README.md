@@ -50,13 +50,28 @@ Note: `transformers==4.56.1` is pinned — surya 0.17.1 breaks on 5.x.
    ```
 4. Stop the pod when done. Est. ~$5, a few hours for ~45k pages.
 
-## Deploy B — Serverless GPU (product, scale-to-zero)
+## Deploy B — Modal serverless (PRODUCTION + batch, scale-to-zero)
 
-For ongoing user uploads: deploy the same image to Modal / RunPod
-Serverless / Replicate. Scales to zero (no idle cost), ~$0.09/book,
-cold-start ~10–30 s (fine — ingest is async). Wire the ingest worker's
-`needsOcr` + hard-script branch to call this `/ocr` (replacing Tesseract;
-keep Tesseract for Latin). See Faz 4 in `docs/ocr-mimari.md`.
+The recommended path: deploy once to Modal, use it for BOTH the one-time
+corpus batch and ongoing production uploads (no throwaway pod). See
+`modal_app.py`.
+
+```bash
+pip install modal
+modal token new                                     # one-time auth
+modal secret create quilpen-ocr OCR_SERVICE_SECRET=<pick-a-secret>
+modal deploy ocr-service/modal_app.py               # → prints https URL
+```
+
+Use the printed `…/ocr` URL for:
+- **batch:** `OCR_SERVICE_URL=<url>/ocr OCR_SERVICE_SECRET=<secret> … node scripts/ocr-batch.mjs`
+- **production:** set `SURYA_OCR_URL=<url>/ocr` (+ `OCR_SERVICE_SECRET`) on
+  the Railway **python-service**; the tiered router (`pdf_extractor.py`)
+  then sends hard-script / low-confidence scans here and keeps Tesseract
+  for Latin.
+
+Scales to zero when idle ($0), ~$0.09/book in use, cold-start ~10–30 s
+(fine — ingest is async).
 
 ## Notes
 
