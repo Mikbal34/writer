@@ -27,10 +27,10 @@ import modal
 
 app = modal.App("quilpen-ocr")
 
-# Model weights are cached on a persistent Volume so cold starts don't
-# re-download ~1.3 GB every time.
-model_cache = modal.Volume.from_name("quilpen-ocr-cache", create_if_missing=True)
-
+# Surya weights are BAKED INTO THE IMAGE at build time (not a Volume): cold
+# starts then load from local image disk — no 1.3 GB download, and no Volume
+# mount (which failed with "cannot mount on non-empty path"). The image is
+# bigger but Modal caches it per worker.
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("libgl1", "libglib2.0-0")
@@ -42,9 +42,18 @@ image = (
         "fastapi>=0.115.0",
         "python-multipart>=0.0.9",
     )
-    # Route Surya/HF model caches onto the mounted Volume.
-    .env({"XDG_CACHE_HOME": "/cache", "HF_HOME": "/cache/huggingface"})
-    # Ship the service code into the image.
+    # Pre-download Surya models into the image (CPU load is fine for caching).
+    # Inlined (not via ocr_core) so it doesn't depend on local source being
+    # on the build path. Runs BEFORE add_local so ordering stays clean.
+    .run_commands(
+        "python -c \""
+        "from surya.foundation import FoundationPredictor; "
+        "from surya.recognition import RecognitionPredictor; "
+        "from surya.detection import DetectionPredictor; "
+        "fp=FoundationPredictor(); RecognitionPredictor(fp); DetectionPredictor(); "
+        "print('surya models cached')\""
+    )
+    # Ship the service code (importable by the runtime function).
     .add_local_python_source("ocr_core", "main")
 )
 
@@ -52,7 +61,6 @@ image = (
 @app.function(
     image=image,
     gpu="L4",  # plenty for Surya; bump to "A10G"/"A100" for more throughput
-    volumes={"/cache": model_cache},
     scaledown_window=300,        # stay warm 5 min after last request
     timeout=60 * 60,             # a big multi-volume book can take minutes
     secrets=[modal.Secret.from_name("quilpen-ocr")],

@@ -14,6 +14,7 @@ the whole book under the 10-min HTTP budget for any reasonable size.
 import io
 import os
 import re
+import urllib.request
 from concurrent.futures import BrokenExecutor, ProcessPoolExecutor
 
 import fitz  # PyMuPDF
@@ -104,25 +105,30 @@ def _detect_script(file_path: str, page_count: int, sample: int = 3) -> str | No
     return max(counts, key=counts.get)
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Don't auto-follow redirects — Modal long-requests answer 303 while
+    pending, and we must poll with a delay rather than chase the chain."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _ocr_via_surya(file_path: str) -> dict[int, str] | None:
-    """POST the whole PDF to the Surya OCR service. Returns {page_index0:
-    text} or None when unconfigured / on any failure (caller falls back)."""
+    """POST the whole PDF to the Surya OCR service and return {page_index0:
+    text}, or None when unconfigured / on any failure (caller falls back).
+
+    Handles Modal's long-request protocol: a request over ~150 s returns a
+    303 to a __modal_function_call_id URL that stays 303 while pending and
+    becomes 200 with the result when done. We poll it manually.
+    """
     if not _SURYA_OCR_URL:
         return None
     import json
+    import time
+    import urllib.error
     import urllib.request
 
-    try:
-        with open(file_path, "rb") as fh:
-            data = fh.read()
-        headers = {"Content-Type": "application/pdf"}
-        if _SURYA_OCR_SECRET:
-            headers["x-ocr-secret"] = _SURYA_OCR_SECRET
-        req = urllib.request.Request(
-            _SURYA_OCR_URL, data=data, method="POST", headers=headers
-        )
-        with urllib.request.urlopen(req, timeout=30 * 60) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
+    def _to_pages(payload: dict) -> dict[int, str]:
         out: dict[int, str] = {}
         for p in payload.get("pages", []):
             try:
@@ -132,6 +138,41 @@ def _ocr_via_surya(file_path: str) -> dict[int, str] | None:
             if pn >= 1:
                 out[pn - 1] = p.get("text", "") or ""
         return out
+
+    try:
+        with open(file_path, "rb") as fh:
+            data = fh.read()
+        post_headers = {"Content-Type": "application/pdf"}
+        poll_headers = {}
+        if _SURYA_OCR_SECRET:
+            post_headers["x-ocr-secret"] = _SURYA_OCR_SECRET
+            poll_headers["x-ocr-secret"] = _SURYA_OCR_SECRET
+
+        opener = urllib.request.build_opener(_NoRedirect)
+        next_url: str | None = None  # None → do the POST; else poll this URL
+        for _ in range(2000):  # ~4.5 h ceiling at 8 s/poll
+            try:
+                if next_url is None:
+                    req = urllib.request.Request(
+                        _SURYA_OCR_URL, data=data, method="POST", headers=post_headers
+                    )
+                else:
+                    req = urllib.request.Request(
+                        next_url, method="GET", headers=poll_headers
+                    )
+                with opener.open(req, timeout=10 * 60) as resp:
+                    payload = json.loads(resp.read().decode("utf-8"))
+                return _to_pages(payload)
+            except urllib.error.HTTPError as exc:
+                if exc.code in (301, 302, 303, 307):
+                    loc = exc.headers.get("Location")
+                    if not loc:
+                        return None
+                    next_url = loc
+                    time.sleep(8)
+                    continue
+                raise
+        return None
     except Exception as exc:
         print(f"[pdf_extractor] Surya OCR failed, falling back to tesseract: {exc}")
         return None

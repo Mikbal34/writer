@@ -63,16 +63,35 @@ function buildPlan() {
   return works;
 }
 
+// Modal serves long requests via a 303 → poll-the-Location protocol: a
+// request over ~150 s returns 303 with a __modal_function_call_id URL that
+// answers 303 while pending and 200 when done. We must poll it manually
+// (with a delay) — auto-following redirects would burn the redirect limit
+// before the result is ready. Big tafsir volumes routinely exceed 150 s.
 async function ocrFile(filePath, name) {
   const buf = fs.readFileSync(filePath);
   const fd = new FormData();
   fd.append("file", new Blob([buf]), name);
-  const res = await fetch(OCR_URL, {
+  const hdr = OCR_SECRET ? { "x-ocr-secret": OCR_SECRET } : {};
+  let res = await fetch(OCR_URL, {
     method: "POST",
-    headers: OCR_SECRET ? { "x-ocr-secret": OCR_SECRET } : {},
+    headers: hdr,
     body: fd,
+    redirect: "manual",
     signal: AbortSignal.timeout(30 * 60 * 1000),
   });
+  for (let polls = 0; res.status === 303 || res.status === 302; polls++) {
+    const loc = res.headers.get("location");
+    if (!loc) break;
+    if (polls > 1200) throw new Error("OCR poll timeout (>2.5h)");
+    await new Promise((r) => setTimeout(r, 8000));
+    res = await fetch(loc, {
+      method: "GET",
+      headers: hdr,
+      redirect: "manual",
+      signal: AbortSignal.timeout(30 * 60 * 1000),
+    });
+  }
   if (!res.ok) throw new Error(`OCR HTTP ${res.status} ${(await res.text()).slice(0, 150)}`);
   const { pages } = await res.json();
   return pages ?? [];
