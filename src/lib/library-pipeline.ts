@@ -1137,6 +1137,86 @@ export async function processLibraryVolumePdfFromBytes(
 }
 
 /**
+ * Ingest text extracted OUTSIDE this process — i.e. the Surya OCR
+ * service's output for scanned hard-script PDFs (Arabic, Persian, …).
+ * The original PDF is still saved by the caller for the viewer; only the
+ * chunk *text* comes from OCR, so the viewer renders the scan while
+ * retrieval runs on clean text.
+ *
+ * `pages` are 1-based PDF-page → text. A spread's right+left halves are
+ * already merged by the OCR service, so pageNumber matches the page the
+ * viewer renders (citation alignment stays correct).
+ */
+function ocrPagesToChunks(pages: { pageNumber: number; text: string }[]) {
+  return chunkByPage(
+    pages.map((p) => ({ pageNumber: p.pageNumber, content: p.text })),
+  ).map((c) => ({
+    pageNumber: c.pageNumber,
+    pageLabel: c.pageLabel,
+    sectionTitle: c.sectionTitle,
+    chunkIndex: c.chunkIndex,
+    content: c.content,
+  }))
+}
+
+export async function ingestExtractedTextForEntry(
+  entryId: string,
+  pages: { pageNumber: number; text: string }[],
+  opts: { enrich?: boolean } = {},
+): Promise<void> {
+  try {
+    await setStatus(entryId, 'extracting', { pdfError: null })
+    const chunks = ocrPagesToChunks(pages)
+    if (chunks.length === 0) {
+      await setStatus(entryId, 'failed', { pdfError: 'No text extracted (OCR)' })
+      return
+    }
+    if (opts.enrich) {
+      const frontMatter = pages
+        .slice(0, BIB_PAGES)
+        .map((p) => `[Page ${p.pageNumber}]\n${p.text}`)
+        .join('\n\n---\n\n')
+      try {
+        await enrichLibraryEntryFromPdfText(entryId, frontMatter)
+      } catch (err) {
+        console.warn(`[library-pipeline] OCR enrich failed for ${entryId}:`, err)
+      }
+    }
+    await persistChunks(entryId, chunks)
+    await setStatus(entryId, 'ready')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[library-pipeline] ingestExtractedTextForEntry failed for ${entryId}:`, err)
+    await setStatus(entryId, 'failed', { pdfError: message })
+  }
+}
+
+export async function ingestExtractedTextForVolume(
+  entryId: string,
+  volumeId: string,
+  pages: { pageNumber: number; text: string }[],
+): Promise<void> {
+  try {
+    await setVolumeStatus(volumeId, 'extracting', { pdfError: null })
+    const chunks = ocrPagesToChunks(pages)
+    if (chunks.length === 0) {
+      await setVolumeStatus(volumeId, 'failed', { pdfError: 'No text extracted (OCR)' })
+      return
+    }
+    await prisma.libraryEntryVolume.update({
+      where: { id: volumeId },
+      data: { totalPages: pages.length },
+    })
+    await persistChunks(entryId, chunks, volumeId)
+    await setVolumeStatus(volumeId, 'ready')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[library-pipeline] ingestExtractedTextForVolume failed for ${volumeId}:`, err)
+    await setVolumeStatus(volumeId, 'failed', { pdfError: message })
+  }
+}
+
+/**
  * Re-runs the volume pipeline against the file already persisted at
  * `volume.filePath`. Used by /api/library/[id]/volumes/[volumeId]/reprocess
  * to recover ciltler that failed once (Python downtime, embed errors)

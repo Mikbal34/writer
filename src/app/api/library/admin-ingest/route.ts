@@ -26,6 +26,8 @@ import { savePdfBytes, saveVolumePdfBytes } from "@/lib/library-storage";
 import {
   processLibraryPdfFromBytes,
   processLibraryVolumePdfFromBytes,
+  ingestExtractedTextForEntry,
+  ingestExtractedTextForVolume,
 } from "@/lib/library-pipeline";
 
 export const runtime = "nodejs";
@@ -57,6 +59,30 @@ export async function POST(req: NextRequest) {
   const volumeLabel = form.get("volumeLabel")
     ? String(form.get("volumeLabel")).trim()
     : null;
+
+  // Optional pre-extracted OCR text (Surya service output) — when present
+  // we skip pdfjs/Tesseract and chunk this text directly, while still
+  // saving the original PDF for the viewer. Accepts page_number|pageNumber.
+  const ocrTextRaw = form.get("ocrText");
+  let ocrPages: { pageNumber: number; text: string }[] | null = null;
+  if (typeof ocrTextRaw === "string" && ocrTextRaw.trim()) {
+    try {
+      const parsed = JSON.parse(ocrTextRaw) as Array<{
+        page_number?: number;
+        pageNumber?: number;
+        text?: string;
+      }>;
+      ocrPages = parsed
+        .map((p) => ({
+          pageNumber: Number(p.pageNumber ?? p.page_number ?? 0),
+          text: String(p.text ?? ""),
+        }))
+        .filter((p) => p.pageNumber > 0 && p.text.trim().length > 0);
+      if (ocrPages.length === 0) ocrPages = null;
+    } catch {
+      return NextResponse.json({ error: "bad ocrText json" }, { status: 400 });
+    }
+  }
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file required" }, { status: 400 });
@@ -100,11 +126,12 @@ export async function POST(req: NextRequest) {
       console.error("[admin-ingest] save failed", entry.id, err);
     }
     setImmediate(() => {
-      processLibraryPdfFromBytes(entry.id, file.name, bytes).catch((e) =>
-        console.error("[admin-ingest] pipeline failed", entry.id, e),
-      );
+      const job = ocrPages
+        ? ingestExtractedTextForEntry(entry.id, ocrPages, { enrich: true })
+        : processLibraryPdfFromBytes(entry.id, file.name, bytes);
+      job.catch((e) => console.error("[admin-ingest] pipeline failed", entry.id, e));
     });
-    return NextResponse.json({ entryId: entry.id });
+    return NextResponse.json({ entryId: entry.id, ocr: Boolean(ocrPages) });
   }
 
   // ── multi-volume work ───────────────────────────────────────
@@ -159,9 +186,10 @@ export async function POST(req: NextRequest) {
     console.error("[admin-ingest] volume save failed", volume.id, err);
   }
   setImmediate(() => {
-    processLibraryVolumePdfFromBytes(entryId!, volume.id, file.name, bytes).catch((e) =>
-      console.error("[admin-ingest] volume pipeline failed", volume.id, e),
-    );
+    const job = ocrPages
+      ? ingestExtractedTextForVolume(entryId!, volume.id, ocrPages)
+      : processLibraryVolumePdfFromBytes(entryId!, volume.id, file.name, bytes);
+    job.catch((e) => console.error("[admin-ingest] volume pipeline failed", volume.id, e));
   });
-  return NextResponse.json({ entryId, volumeId: volume.id, volumeNumber });
+  return NextResponse.json({ entryId, volumeId: volume.id, volumeNumber, ocr: Boolean(ocrPages) });
 }
