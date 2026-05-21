@@ -565,12 +565,34 @@ export default function PdfViewerWithHighlights({
       };
       const normQuote = norm(quote);
       if (normQuote.length < 12) return null;
-      const sentenceCut = normQuote.search(/[.!?؟]\s/);
-      const anchorLen =
-        sentenceCut > 12 && sentenceCut < 120
-          ? sentenceCut
-          : Math.min(80, normQuote.length);
-      const anchor = normQuote.slice(0, anchorLen);
+      // Build several anchor CANDIDATES, each tagged with where it
+      // starts inside normQuote. Anchoring only on the quote's head
+      // fails when the head is garbage (decorative "eeeee" runs, OCR
+      // noise) or drifts; trying clean interior phrases too makes the
+      // highlight land even when the start doesn't match the page.
+      const candidates: Array<{ text: string; offset: number }> = [];
+      const pushCandidate = (text: string, offset: number) => {
+        const trimmed = text.trim();
+        // Skip junky candidates: too short, or dominated by a single
+        // repeated char / non-letters (won't exist on a clean page).
+        const letters = (trimmed.match(/[\p{L}]/gu) ?? []).length;
+        if (trimmed.length < 15 || letters < trimmed.length * 0.6) return;
+        if (/(.)\1{3,}/.test(trimmed)) return;
+        candidates.push({ text: trimmed, offset });
+      };
+      // Sentence-sized slices across the quote.
+      const sentenceRe = /[^.!?؟]+[.!?؟]?/g;
+      let m: RegExpExecArray | null;
+      while ((m = sentenceRe.exec(normQuote)) !== null) {
+        pushCandidate(m[0].slice(0, 120), m.index);
+      }
+      // Head + middle fallbacks (capped at 80 chars).
+      pushCandidate(normQuote.slice(0, 80), 0);
+      const mid = Math.floor(normQuote.length / 2);
+      pushCandidate(normQuote.slice(mid, mid + 80), mid);
+      // Longest candidates first — most distinctive, least likely to
+      // collide with unrelated text on the page.
+      candidates.sort((a, b) => b.text.length - a.text.length);
 
       const rawSpans = Array.from(
         textLayer.querySelectorAll("span"),
@@ -600,14 +622,26 @@ export default function PdfViewerWithHighlights({
         combined += txt;
         spanOffsets.push({ span: s, start, end: combined.length });
       }
-      const idx = combined.indexOf(anchor);
-      if (idx === -1) return null;
-      // Paint forward as far as the *whole* normalized quote would
-      // extend, not just the anchor. Even if the tail of the quote
-      // drifts (ligatures, hyphen line-breaks, OCR noise), painting
-      // up to `idx + normQuote.length` keeps the entire cited passage
-      // visually highlighted instead of just the first sentence.
-      const matchEnd = Math.min(idx + normQuote.length, combined.length);
+      // Try each candidate (longest first); use the first that's found
+      // in the page text. `anchorOffset` is where that candidate sits
+      // inside the quote, so we can back up to where the WHOLE quote
+      // starts and paint the full passage, not just the matched phrase.
+      let anchorIdx = -1;
+      let anchorOffset = 0;
+      for (const cand of candidates) {
+        const found = combined.indexOf(cand.text);
+        if (found !== -1) {
+          anchorIdx = found;
+          anchorOffset = cand.offset;
+          break;
+        }
+      }
+      if (anchorIdx === -1) return null;
+      // Align the paint window to the whole quote: the quote starts
+      // `anchorOffset` chars before the matched candidate.
+      const matchStart = Math.max(0, anchorIdx - anchorOffset);
+      const idx = matchStart;
+      const matchEnd = Math.min(matchStart + normQuote.length, combined.length);
 
       const pageRect = pageWrap.getBoundingClientRect();
       if (pageRect.width === 0 || pageRect.height === 0) return null;

@@ -312,9 +312,21 @@ function cleanPageText(text: string): string {
     ) continue;
     if (/^[Pp]age\s+\d+\s+(?:of|\/)\s+\d+$/.test(stripped)) continue;
     if (/^[-_=]{3,}$/.test(stripped)) continue;
+    // Drop lines that are mostly a single repeated character — these
+    // come from PDFs whose decorative rules / drop-caps / broken-CMap
+    // glyphs decode to runs like "eeeeeeeeee" or "xxxxxxxxx". They
+    // pollute chunks and break the AI-quote highlighter's text match.
+    if (/^(.)\1{5,}$/.test(stripped.replace(/\s/g, ""))) continue;
     cleaned.push(line);
   }
   t = cleaned.join("\n");
+  // Remove standalone runs of a repeated character — decorative
+  // glyphs / broken-CMap output land as their own whitespace-bounded
+  // token ("eeeeeeee sedemikian", "word xxxxxxxx"). Only touch tokens
+  // that are 4+ of the SAME char so real words are never altered.
+  t = t.replace(/(^|\s)(\S)\2{3,}(?=\s|$)/g, "$1");
+  // Tidy the double spaces left behind.
+  t = t.replace(/[ \t]{2,}/g, " ");
   // Collapse 3+ blank lines into a paragraph break.
   t = t.replace(/\n{3,}/g, "\n\n");
   // Repair end-of-line hyphenation: PDFs wrap long words across
