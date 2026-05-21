@@ -20,7 +20,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateJSONWithUsage, SONNET, HAIKU } from "@/lib/claude";
-import { computeStyleFeatures, compareStyle } from "@/lib/style-features";
+import {
+  computeStyleFeatures,
+  compareStyle,
+  describeFeatureTargets,
+} from "@/lib/style-features";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,6 +68,11 @@ export async function POST(req: NextRequest) {
     profileId?: string;
     topic?: string;
     fewShot?: boolean;
+    /** Inject measured numeric style targets (sentence length,
+     *  semicolon rate, first-person rate, …) computed from the
+     *  author's samples — the data-driven alternative to abstract
+     *  twin labels. */
+    targets?: boolean;
   };
   const topic = body.topic ?? NEUTRAL_TOPIC;
 
@@ -107,9 +116,13 @@ export async function POST(req: NextRequest) {
   const referenceText = samples.map((s) => s.content).join("\n\n");
   const referenceFeatures = computeStyleFeatures(referenceText);
 
-  // Voice instruction = the abstract profile (current pipeline). In
-  // few-shot mode we additionally show the real samples as exemplars.
+  // Voice instruction = the abstract profile (current pipeline).
+  // Optionally enrich with: (a) measured numeric targets computed
+  // from the samples, (b) the raw samples as few-shot exemplars.
   const voiceBlock = buildVoiceInstruction(profile.profile);
+  const targetsBlock = body.targets
+    ? `\n\nMEASURED STYLE TARGETS (hit these — they are computed from the author's real writing):\n${describeFeatureTargets(referenceFeatures)}`
+    : "";
   const exemplarBlock = body.fewShot
     ? `\n\nHere are real passages by this author — MATCH this voice (rhythm, sentence shape, register, punctuation habits):\n\n"""\n${samples
         .map((s) => s.content.slice(0, 900))
@@ -121,7 +134,7 @@ export async function POST(req: NextRequest) {
     "Write in the SAME language as the author's samples. Produce ONE " +
     "cohesive academic passage of ~250 words on the given topic, in the " +
     "author's voice. No headings, no lists, no citations — just prose.\n\n" +
-    `AUTHOR VOICE PROFILE:\n${voiceBlock}${exemplarBlock}\n\n` +
+    `AUTHOR VOICE PROFILE:\n${voiceBlock}${targetsBlock}${exemplarBlock}\n\n` +
     'Output ONLY JSON: { "passage": "..." }';
 
   const gen = await generateJSONWithUsage<{ passage?: string }>(
@@ -156,7 +169,13 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     profile: { id: profile.id, name: profile.name },
-    mode: body.fewShot ? "few-shot" : "baseline (abstract profile)",
+    mode: [
+      "baseline",
+      body.targets ? "+targets" : null,
+      body.fewShot ? "+fewshot" : null,
+    ]
+      .filter(Boolean)
+      .join(" "),
     topic,
     sampleCount: samples.length,
     referenceWords: referenceFeatures.totalWords,

@@ -108,16 +108,42 @@ function round(n: number, places = 1): number {
 // Features that define "voice match" + a sensible scale to
 // normalize each difference (so a 5-word sentence-length gap and a
 // 0.1 TTR gap are weighted comparably).
+// avgParagraphLen deliberately EXCLUDED from scoring: pasted samples
+// are usually one block (no blank-line breaks) so "sentences per
+// paragraph" is an artifact of how the text was stored, not the
+// author's voice — it maxed out the diff and dragged the score
+// down unfairly. Still computed for display.
 const MATCH_FEATURES: Array<{ key: keyof StyleFeatures; scale: number }> = [
   { key: "avgSentenceLen", scale: 8 },
   { key: "sentenceLenStd", scale: 6 },
-  { key: "avgParagraphLen", scale: 3 },
   { key: "typeTokenRatio", scale: 0.15 },
   { key: "commaDensity", scale: 1.2 },
   { key: "semicolonPer1k", scale: 6 },
   { key: "longWordRatio", scale: 0.12 },
   { key: "firstPersonRate", scale: 0.5 },
 ];
+
+/**
+ * Turn measured features into explicit, numeric writing targets the
+ * model can actually hit — the data-driven alternative to abstract
+ * twin labels ("formal, short sentences") or vague few-shot
+ * imitation. Closes exactly the gaps the eval surfaces (e.g. an
+ * author's heavy semicolon habit, low first-person rate).
+ */
+export function describeFeatureTargets(f: StyleFeatures): string {
+  const lines: string[] = [];
+  lines.push(`- Average sentence length: ~${Math.round(f.avgSentenceLen)} words (vary around this; stdev ~${Math.round(f.sentenceLenStd)}).`);
+  const semi =
+    f.semicolonPer1k >= 12 ? "heavily" : f.semicolonPer1k >= 4 ? "moderately" : "rarely";
+  lines.push(`- Use semicolons ${semi} (~${f.semicolonPer1k.toFixed(0)} per 1000 words) — match this punctuation rhythm.`);
+  const fp =
+    f.firstPersonRate >= 0.4 ? "frequently" : f.firstPersonRate >= 0.15 ? "occasionally" : "rarely (largely impersonal/objective)";
+  lines.push(`- First person ('ben/biz/I/we'): use it ${fp} (~${f.firstPersonRate.toFixed(2)} per sentence).`);
+  lines.push(`- Comma density: ~${f.commaDensity.toFixed(1)} commas per sentence.`);
+  const term = f.longWordRatio >= 0.22 ? "dense, technical" : f.longWordRatio >= 0.15 ? "moderate" : "plain";
+  lines.push(`- Vocabulary: ${term} (long-word ratio ~${f.longWordRatio.toFixed(2)}).`);
+  return lines.join("\n");
+}
 
 export interface StyleComparison {
   reference: StyleFeatures;
