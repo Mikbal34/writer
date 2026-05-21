@@ -24,9 +24,44 @@ export async function POST(req: NextRequest) {
   if (!adminSecret || secret !== adminSecret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const body = (await req.json().catch(() => ({}))) as { entryId?: string };
+  const body = (await req.json().catch(() => ({}))) as {
+    entryId?: string;
+    entryIds?: string[];
+    // Bulk: delete every no-file entry (filePath + openAccessUrl null)
+    // for a given user — the partial-text backlog we're re-uploading.
+    scope?: "nofile";
+    userId?: string;
+    dryRun?: boolean;
+  };
+
+  // ── Bulk: scope=nofile ──────────────────────────────────────
+  if (body.scope === "nofile") {
+    if (!body.userId) {
+      return NextResponse.json({ error: "userId required for scope" }, { status: 400 });
+    }
+    const targets = await prisma.libraryEntry.findMany({
+      where: { userId: body.userId, filePath: null, openAccessUrl: null },
+      select: { id: true, title: true },
+    });
+    if (body.dryRun) {
+      return NextResponse.json({ dryRun: true, count: targets.length, titles: targets.map((t) => t.title) });
+    }
+    const ids = targets.map((t) => t.id);
+    const del = await prisma.libraryEntry.deleteMany({ where: { id: { in: ids } } });
+    return NextResponse.json({ ok: true, deletedCount: del.count, titles: targets.map((t) => t.title) });
+  }
+
+  // ── Bulk: explicit entryIds ─────────────────────────────────
+  if (Array.isArray(body.entryIds) && body.entryIds.length > 0) {
+    const del = await prisma.libraryEntry.deleteMany({
+      where: { id: { in: body.entryIds } },
+    });
+    return NextResponse.json({ ok: true, deletedCount: del.count });
+  }
+
+  // ── Single entry ────────────────────────────────────────────
   if (!body.entryId) {
-    return NextResponse.json({ error: "entryId required" }, { status: 400 });
+    return NextResponse.json({ error: "entryId | entryIds | scope required" }, { status: 400 });
   }
   const entry = await prisma.libraryEntry.findUnique({
     where: { id: body.entryId },
