@@ -32,6 +32,10 @@ const DRY = process.argv.includes("--dry");
 const CLEANUP = process.argv.includes("--cleanup-first");
 const ONLY = (process.argv.find((a) => a.startsWith("--only=")) ?? "").split("=")[1] ?? "";
 const CONCURRENCY = Number(process.env.OCR_CONCURRENCY ?? 4);
+// Resume support: pipe-separated work titles to skip (already ingested).
+const SKIP_TITLES = new Set(
+  (process.env.OCR_SKIP_TITLES ?? "").split("|").map((s) => s.trim()).filter(Boolean),
+);
 
 if (!DRY && (!OCR_URL || !ADMIN_SECRET || !USER_ID)) {
   console.error("Set OCR_SERVICE_URL, ADMIN_SESSION_SECRET, TARGET_USER_ID");
@@ -170,6 +174,10 @@ async function main() {
       const i = cursor++;
       const w = works.get(keys[i]);
       const tag = `[${i + 1}/${keys.length}]`;
+      if (SKIP_TITLES.has(w.title)) {
+        console.log(`${tag} skip (zaten var) → ${w.title}`);
+        continue;
+      }
       try {
         await processWork(w, tag);
         ok++;
