@@ -64,7 +64,7 @@ image = (
     scaledown_window=300,        # stay warm 5 min after last request
     timeout=60 * 60,             # a big multi-volume book can take minutes
     secrets=[modal.Secret.from_name("quilpen-ocr")],
-    max_containers=6,            # cap parallel GPUs (cost guardrail); batch runs 4 concurrent
+    max_containers=10,           # headroom so a burst can scale up (batch runs ≤3 concurrent)
 )
 @modal.asgi_app()
 def fastapi_app():

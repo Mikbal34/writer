@@ -150,7 +150,8 @@ def _ocr_via_surya(file_path: str) -> dict[int, str] | None:
 
         opener = urllib.request.build_opener(_NoRedirect)
         next_url: str | None = None  # None → do the POST; else poll this URL
-        for _ in range(2000):  # ~4.5 h ceiling at 8 s/poll
+        transient = 0  # retry budget for blips (Modal saturation / 5xx)
+        for _ in range(4000):  # generous ceiling at 8 s/poll
             try:
                 if next_url is None:
                     req = urllib.request.Request(
@@ -170,6 +171,19 @@ def _ocr_via_surya(file_path: str) -> dict[int, str] | None:
                         return None
                     next_url = loc
                     time.sleep(8)
+                    continue
+                # 5xx / 429 → Modal briefly saturated; retry the SAME step
+                # with backoff instead of failing the whole document.
+                if exc.code in (429, 500, 502, 503) and transient < 8:
+                    transient += 1
+                    time.sleep(min(60, 5 * 2 ** transient))
+                    continue
+                raise
+            except urllib.error.URLError:
+                # Connection dropped (saturation) — retry with backoff.
+                if transient < 8:
+                    transient += 1
+                    time.sleep(min(60, 5 * 2 ** transient))
                     continue
                 raise
         return None

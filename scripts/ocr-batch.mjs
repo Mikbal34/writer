@@ -68,34 +68,62 @@ function buildPlan() {
   return works;
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const isTransient = (e) =>
+  /fetch failed|ECONN|ETIMEDOUT|EAI_AGAIN|socket|network|terminated|aborted|503|502|500|429/i.test(
+    String(e?.message ?? e),
+  );
+
+// fetch with retry-on-transient + exponential backoff. Modal can briefly
+// saturate (all GPU containers tied up on long OCR), dropping connections
+// or returning 5xx; without retry that turns a transient blip into a
+// permanently-failed book. We retry so the work self-heals.
+async function fetchRetry(makeReq, label, tries = 5) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await makeReq();
+      if (res.status === 429 || res.status >= 500) {
+        lastErr = new Error(`HTTP ${res.status}`);
+      } else {
+        return res;
+      }
+    } catch (e) {
+      if (!isTransient(e)) throw e;
+      lastErr = e;
+    }
+    const wait = Math.min(60000, 5000 * 2 ** i); // 5,10,20,40,60s
+    console.log(`        ⟳ ${label} transient (${lastErr.message}) — retry ${i + 1}/${tries} in ${wait / 1000}s`);
+    await sleep(wait);
+  }
+  throw lastErr;
+}
+
 // Modal serves long requests via a 303 → poll-the-Location protocol: a
 // request over ~150 s returns 303 with a __modal_function_call_id URL that
-// answers 303 while pending and 200 when done. We must poll it manually
-// (with a delay) — auto-following redirects would burn the redirect limit
-// before the result is ready. Big tafsir volumes routinely exceed 150 s.
+// answers 303 while pending and 200 when done. We poll it manually (with a
+// delay); both the POST and each poll are retried on transient failure so
+// a momentary Modal blip never loses an in-flight book.
 async function ocrFile(filePath, name) {
   const buf = fs.readFileSync(filePath);
-  const fd = new FormData();
-  fd.append("file", new Blob([buf]), name);
   const hdr = OCR_SECRET ? { "x-ocr-secret": OCR_SECRET } : {};
-  let res = await fetch(OCR_URL, {
-    method: "POST",
-    headers: hdr,
-    body: fd,
-    redirect: "manual",
-    signal: AbortSignal.timeout(30 * 60 * 1000),
-  });
+  const timeout = () => AbortSignal.timeout(30 * 60 * 1000);
+
+  let res = await fetchRetry(() => {
+    const fd = new FormData();
+    fd.append("file", new Blob([buf]), name);
+    return fetch(OCR_URL, { method: "POST", headers: hdr, body: fd, redirect: "manual", signal: timeout() });
+  }, `OCR POST ${name}`);
+
   for (let polls = 0; res.status === 303 || res.status === 302; polls++) {
     const loc = res.headers.get("location");
     if (!loc) break;
     if (polls > 1200) throw new Error("OCR poll timeout (>2.5h)");
-    await new Promise((r) => setTimeout(r, 8000));
-    res = await fetch(loc, {
-      method: "GET",
-      headers: hdr,
-      redirect: "manual",
-      signal: AbortSignal.timeout(30 * 60 * 1000),
-    });
+    await sleep(8000);
+    res = await fetchRetry(
+      () => fetch(loc, { method: "GET", headers: hdr, redirect: "manual", signal: timeout() }),
+      `OCR poll ${name}`,
+    );
   }
   if (!res.ok) throw new Error(`OCR HTTP ${res.status} ${(await res.text()).slice(0, 150)}`);
   const { pages } = await res.json();
