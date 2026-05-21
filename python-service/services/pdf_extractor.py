@@ -47,6 +47,171 @@ _OCR_LANGS = "eng+tur+ara"
 # 4-worker pool OOM on a 37 MB Arabic book — 2 is the safer floor.
 _OCR_WORKERS = max(1, int(os.environ.get("OCR_WORKERS", "2")))
 
+# ── Tiered OCR routing ───────────────────────────────────────────────
+# Tesseract stays the primary engine for Latin scripts (the majority).
+# Hard scripts — where Tesseract produces garbage — are routed to the
+# Surya OCR service (GPU). All Surya use is GATED behind SURYA_OCR_URL:
+# when unset (or on any failure) we transparently fall back to the
+# existing Tesseract path, so no GPU == no behaviour change.
+_SURYA_OCR_URL = os.environ.get("SURYA_OCR_URL", "").strip()
+_SURYA_OCR_SECRET = os.environ.get("OCR_SERVICE_SECRET", "").strip()
+# Latin bad-scan safety net: if mean Tesseract word confidence over the
+# OCR'd pages drops below this, the doc is re-OCR'd via Surya.
+_OCR_CONF_THRESHOLD = float(os.environ.get("OCR_CONF_THRESHOLD", "60"))
+# Tesseract OSD script names we route to Surya instead of Tesseract.
+_HARD_SCRIPTS = {"Arabic", "Hebrew", "Thaana", "Syriac"}
+
+
+def _sample_indices(page_count: int, sample: int) -> list[int]:
+    """Evenly spaced page indices for script sampling (skip the cover)."""
+    if page_count <= 0:
+        return []
+    sample = min(sample, page_count)
+    if sample == 1:
+        return [page_count // 2]
+    step = max(1, page_count // (sample + 1))
+    return [min(page_count - 1, step * (i + 1)) for i in range(sample)]
+
+
+def _detect_script(file_path: str, page_count: int, sample: int = 3) -> str | None:
+    """Dominant script across a few sampled pages via Tesseract OSD.
+    Returns a script name ('Arabic', 'Latin', …) or None if undetermined
+    (caller then treats the doc as Latin and stays on Tesseract)."""
+    if not HAS_OCR:
+        return None
+    try:
+        doc = fitz.open(file_path)
+    except Exception:
+        return None
+    counts: dict[str, int] = {}
+    try:
+        for i in _sample_indices(page_count, sample):
+            try:
+                pix = doc.load_page(i).get_pixmap(dpi=200)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                osd = pytesseract.image_to_osd(
+                    img, output_type=pytesseract.Output.DICT
+                )
+                script = osd.get("script")
+                if script:
+                    counts[script] = counts.get(script, 0) + 1
+            except Exception:
+                continue
+    finally:
+        doc.close()
+    if not counts:
+        return None
+    return max(counts, key=counts.get)
+
+
+def _ocr_via_surya(file_path: str) -> dict[int, str] | None:
+    """POST the whole PDF to the Surya OCR service. Returns {page_index0:
+    text} or None when unconfigured / on any failure (caller falls back)."""
+    if not _SURYA_OCR_URL:
+        return None
+    import json
+    import urllib.request
+
+    try:
+        with open(file_path, "rb") as fh:
+            data = fh.read()
+        headers = {"Content-Type": "application/pdf"}
+        if _SURYA_OCR_SECRET:
+            headers["x-ocr-secret"] = _SURYA_OCR_SECRET
+        req = urllib.request.Request(
+            _SURYA_OCR_URL, data=data, method="POST", headers=headers
+        )
+        with urllib.request.urlopen(req, timeout=30 * 60) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        out: dict[int, str] = {}
+        for p in payload.get("pages", []):
+            try:
+                pn = int(p.get("page_number", 0))
+            except (TypeError, ValueError):
+                continue
+            if pn >= 1:
+                out[pn - 1] = p.get("text", "") or ""
+        return out
+    except Exception as exc:
+        print(f"[pdf_extractor] Surya OCR failed, falling back to tesseract: {exc}")
+        return None
+
+
+def _reconstruct_from_data(data: dict) -> tuple[str, float]:
+    """Rebuild line-broken text + mean word confidence from Tesseract's
+    image_to_data DICT output (one pass gives us both)."""
+    lines: dict[tuple, list[str]] = {}
+    confs: list[float] = []
+    n = len(data.get("text", []))
+    for i in range(n):
+        word = data["text"][i]
+        if not word or not word.strip():
+            continue
+        key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+        lines.setdefault(key, []).append(word)
+        try:
+            cv = float(data["conf"][i])
+        except (TypeError, ValueError, KeyError):
+            cv = -1.0
+        if cv >= 0:
+            confs.append(cv)
+    text = "\n".join(" ".join(ws) for _, ws in sorted(lines.items()))
+    mean_conf = (sum(confs) / len(confs)) if confs else 0.0
+    return text, mean_conf
+
+
+def _ocr_page_conf_at_path(args: tuple[str, int, str]) -> tuple[int, str, float]:
+    """ProcessPool worker: render one page, OCR with image_to_data so we
+    get text AND a confidence score in a single Tesseract pass."""
+    file_path, page_num, langs = args
+    try:
+        doc = fitz.open(file_path)
+        try:
+            page = doc.load_page(page_num)
+            pix = page.get_pixmap(dpi=300)
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            try:
+                data = pytesseract.image_to_data(
+                    img, lang=langs, output_type=pytesseract.Output.DICT
+                )
+            except pytesseract.TesseractError:
+                data = pytesseract.image_to_data(
+                    img, lang="eng", output_type=pytesseract.Output.DICT
+                )
+            text, conf = _reconstruct_from_data(data)
+            return (page_num, text, conf)
+        finally:
+            doc.close()
+    except Exception:
+        return (page_num, "", 0.0)
+
+
+def _parallel_ocr_conf(
+    file_path: str, page_nums: list[int], langs: str
+) -> tuple[dict[int, str], float]:
+    """Confidence-aware parallel OCR. Returns ({page_num: text}, mean_conf)
+    where mean_conf is averaged over pages that produced any text."""
+    if not page_nums or not HAS_OCR:
+        return {}, 100.0
+    workers = min(len(page_nums), _OCR_WORKERS)
+    texts: dict[int, str] = {}
+    confs: list[float] = []
+    args = [(file_path, p, langs) for p in page_nums]
+    try:
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            for page_num, text, conf in executor.map(_ocr_page_conf_at_path, args):
+                texts[page_num] = text
+                if text.strip():
+                    confs.append(conf)
+    except BrokenExecutor:
+        for page_num in [p for p in page_nums if p not in texts]:
+            _, text, conf = _ocr_page_conf_at_path((file_path, page_num, langs))
+            texts[page_num] = text
+            if text.strip():
+                confs.append(conf)
+    doc_conf = (sum(confs) / len(confs)) if confs else 0.0
+    return texts, doc_conf
+
 
 def _ocr_page_at_path(args: tuple[str, int]) -> tuple[int, str]:
     """Worker for ProcessPoolExecutor — opens the doc, renders one page,
@@ -221,17 +386,54 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
                 mupdf_errors += 1
                 native_texts[page_num] = ""
 
-        # Pass 2: parallel OCR the pages that came back too thin to be real
-        # text. Only kicks in when the sample already flagged the doc as
-        # OCR-needing — pure native-text PDFs skip this entirely.
+        # Pass 2: OCR the pages that came back too thin to be real text.
+        # Only kicks in when the sample already flagged the doc as OCR-
+        # needing — pure native-text PDFs skip this entirely.
+        #
+        # Tiered routing (all Surya use gated behind SURYA_OCR_URL):
+        #   • hard script (Arabic, …)        → Surya (whole doc, one call)
+        #   • Latin                          → Tesseract (eng+tur) + conf
+        #       └─ mean conf < threshold     → escalate whole doc to Surya
+        #   • Surya unconfigured / failed    → Tesseract eng+tur+ara
         ocr_texts: dict[int, str] = {}
         if use_ocr:
             pages_to_ocr = [
                 p for p, text in native_texts.items()
                 if len(text.strip()) < _MIN_TEXT_CHARS
             ]
-            if pages_to_ocr:
+            if pages_to_ocr and not _SURYA_OCR_URL:
+                # Surya not configured → original Tesseract path, unchanged.
                 ocr_texts = _parallel_ocr(file_path, pages_to_ocr)
+            elif pages_to_ocr:
+                script = _detect_script(file_path, page_count)
+                hard = script in _HARD_SCRIPTS
+                surya_text: dict[int, str] | None = None
+                if hard:
+                    surya_text = _ocr_via_surya(file_path)
+
+                if surya_text is not None:
+                    ocr_texts = {p: surya_text.get(p, "") for p in pages_to_ocr}
+                else:
+                    # Tesseract path. Narrow to eng+tur ONLY when we
+                    # positively detected Latin — undetermined script keeps
+                    # the full set so an Arabic doc whose OSD failed isn't
+                    # starved of 'ara' (and Surya carries it via the conf net).
+                    positively_latin = script is not None and not hard
+                    langs = "eng+tur" if positively_latin else _OCR_LANGS
+                    ocr_texts, doc_conf = _parallel_ocr_conf(
+                        file_path, pages_to_ocr, langs
+                    )
+                    # Latin / undetermined bad scan → escalate whole doc.
+                    if not hard and doc_conf < _OCR_CONF_THRESHOLD:
+                        print(
+                            f"[pdf_extractor] Latin OCR conf {doc_conf:.0f} < "
+                            f"{_OCR_CONF_THRESHOLD:.0f}, escalating to Surya"
+                        )
+                        esc = _ocr_via_surya(file_path)
+                        if esc is not None:
+                            for p in pages_to_ocr:
+                                if esc.get(p, "").strip():
+                                    ocr_texts[p] = esc[p]
 
         # Pull printed-page labels (the "49" the book shows even when
         # the PDF index is 64 because of front matter). PyMuPDF exposes
