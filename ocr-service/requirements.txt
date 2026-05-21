@@ -1,0 +1,10 @@
+# Surya OCR service. transformers is PINNED — surya 0.17.1 breaks on
+# transformers 5.x ('SuryaDecoderConfig has no pad_token_id').
+surya-ocr==0.17.1
+transformers==4.56.1
+pypdfium2>=4.30.0
+pillow>=10.0.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+requests>=2.32.0
