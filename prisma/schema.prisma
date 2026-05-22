@@ -460,7 +460,7 @@ model SourceChunk {
   pageNumber     Int?
   chunkIndex     Int
   content        String                      @db.Text
-  embedding      Unsupported("vector(768)")?
+  embedding      Unsupported("vector(1024)")?
   metadata       Json?
 
   source       Source        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
@@ -625,7 +625,7 @@ model LibraryChunk {
   contextualPrefix String?
   chunkIndex     Int
   content        String                      @db.Text
-  embedding      Unsupported("vector(768)")?
+  embedding      Unsupported("vector(1024)")?
   metadata       Json?
 
   libraryEntry LibraryEntry         @relation(fields: [libraryEntryId], references: [id], onDelete: Cascade)
@@ -700,8 +700,8 @@ model LibraryEntryCollection {
 // "📌 Nota Kaydet" on a library chat message — lets the UI link back
 // to the original conversation.
 //
-// Same vector(768) dimension as LibraryChunk so the chat retrieval
-// query can UNION the two embedding tables in one ORDER BY ... <-> $1.
+// Same vector(1024) dimension as LibraryChunk (BGE-M3) so the chat
+// retrieval query can UNION the two embedding tables in one ORDER BY.
 model LibraryNote {
   id                      String   @id @default(cuid())
   libraryEntryId          String
@@ -710,7 +710,7 @@ model LibraryNote {
   title                   String?
   content                 Json
   contentText             String   @db.Text
-  embedding               Unsupported("vector(768)")?
+  embedding               Unsupported("vector(1024)")?
   pageNumber              Int?
   // Printed page label captured from the PDF (the "49" stamped on
   // the page even when pageNumber is 64). The viewer pulls these
