@@ -32,7 +32,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const MAX_BYTES = 60 * 1024 * 1024;
+const MAX_BYTES = 200 * 1024 * 1024; // big scanned single-file works (e.g. 2260-page Taberi ≈ 62 MB)
 
 function fileTypeFromName(name: string): "pdf" | "epub" | "docx" | null {
   const l = name.toLowerCase();
