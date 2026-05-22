@@ -1,21 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'node:fs/promises'
-import path from 'node:path'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import {
-  processLibraryPdfFromBytes,
-  processLibraryPdfFromUrl,
-} from '@/lib/library-pipeline'
+import { enqueueIngest } from '@/lib/queue'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
 /**
  * POST /api/library/entries/:id/reprocess
- * Retries the chunk+embed pipeline. Prefers the on-disk file (so
- * manual-upload entries can reprocess without re-uploading), falls
- * back to openAccessUrl for entries that were originally pulled
- * from an open-access source.
+ * Re-runs the chunk+embed pipeline via the worker queue. Clears the
+ * entry-level chunks first so the worker does a FRESH extraction
+ * (runIngestJob resumes embedding when chunks already exist, so a
+ * reprocess must start from an empty slate). The worker reads the
+ * stored R2 file, or re-downloads openAccessUrl for URL-only entries.
  */
 export async function POST(_req: NextRequest, ctx: RouteContext) {
   try {
@@ -24,49 +20,27 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
 
     const entry = await prisma.libraryEntry.findFirst({
       where: { id, userId: session.user.id },
-      select: {
-        id: true,
-        openAccessUrl: true,
-        filePath: true,
-      },
+      select: { id: true, openAccessUrl: true, filePath: true },
     })
     if (!entry) {
       return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
     }
-
     if (!entry.filePath && !entry.openAccessUrl) {
       return NextResponse.json(
-        {
-          error:
-            'No file on disk and no open-access URL — re-upload the PDF via attach-pdf.',
-        },
+        { error: 'No stored file and no open-access URL — re-upload the PDF via attach-pdf.' },
         { status: 400 },
       )
     }
 
+    // Fresh slate: drop entry-level chunks so the worker re-extracts
+    // instead of resuming the embed of stale chunks.
+    await prisma.libraryChunk.deleteMany({ where: { libraryEntryId: id, volumeId: null } })
     await prisma.libraryEntry.update({
-      where: { id },
-      data: { pdfStatus: 'pending', pdfError: null },
+      where: { id }, data: { pdfStatus: 'queued', pdfError: null },
     })
+    await enqueueIngest({ kind: 'entry', entryId: id })
 
-    setImmediate(async () => {
-      try {
-        // On-disk file always wins so manual uploads can reprocess
-        // through the (faster, label-aware) pdfjs path. Falls back
-        // to URL re-download only when the file is missing.
-        if (entry.filePath) {
-          const bytes = await fs.readFile(entry.filePath)
-          const filename = path.basename(entry.filePath)
-          await processLibraryPdfFromBytes(id, filename, bytes)
-        } else if (entry.openAccessUrl) {
-          await processLibraryPdfFromUrl(id, entry.openAccessUrl)
-        }
-      } catch (err) {
-        console.error('[reprocess] pipeline failed:', id, err)
-      }
-    })
-
-    return NextResponse.json({ status: 'pending' })
+    return NextResponse.json({ status: 'queued' })
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

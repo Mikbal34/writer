@@ -14,8 +14,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { saveVolumePdfBytes } from '@/lib/library-storage'
-import { processLibraryVolumePdfFromBytes } from '@/lib/library-pipeline'
+import { saveVolumePdfBytesR2 } from '@/lib/r2-storage'
+import { enqueueIngest } from '@/lib/queue'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           libraryEntryId: id,
           volumeNumber,
           label,
-          pdfStatus: 'extracting',
+          pdfStatus: 'queued',
           fileType: detectedType,
         },
         select: { id: true, volumeNumber: true, label: true, pdfStatus: true },
@@ -165,11 +165,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       throw err
     }
 
-    // Persist the file + record path. Failures are non-fatal so the
-    // pipeline still gets a chance to extract chunks even if the
-    // durable volume isn't available locally.
+    // Store in R2 FIRST — the worker reads the volume back by filePath,
+    // so this is required (fail the upload if storage fails).
     try {
-      const filePath = await saveVolumePdfBytes(
+      const filePath = await saveVolumePdfBytesR2(
         session.user.id,
         id,
         volume.id,
@@ -181,18 +180,19 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         data: { filePath },
       })
     } catch (err) {
-      console.error('[volumes/POST] PDF persistence failed:', volume.id, err)
+      console.error('[volumes/POST] R2 persistence failed:', volume.id, err)
+      await prisma.libraryEntryVolume.update({
+        where: { id: volume.id },
+        data: { pdfStatus: 'failed', pdfError: 'Dosya depolanamadı (R2)' },
+      })
+      return NextResponse.json({ error: 'storage failed' }, { status: 502 })
     }
 
-    setImmediate(() => {
-      processLibraryVolumePdfFromBytes(
-        id,
-        volume.id,
-        file.name || `cilt-${volumeNumber}.pdf`,
-        bytes,
-      ).catch((err) => {
-        console.error('[volumes/POST] pipeline failed:', volume.id, err)
-      })
+    await enqueueIngest({
+      kind: 'volume',
+      entryId: id,
+      volumeId: volume.id,
+      filename: file.name || `cilt-${volumeNumber}.pdf`,
     })
 
     return NextResponse.json(volume)

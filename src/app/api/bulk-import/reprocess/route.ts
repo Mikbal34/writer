@@ -15,7 +15,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { reprocessLibraryVolume } from '@/lib/library-pipeline'
+import { enqueueIngest } from '@/lib/queue'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -50,16 +50,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Fresh slate so the worker re-extracts the stored R2 file.
+    await prisma.libraryChunk.deleteMany({ where: { volumeId: volume.id } })
     await prisma.libraryEntryVolume.update({
       where: { id: volume.id },
-      data: { pdfStatus: 'pending', pdfError: null },
+      data: { pdfStatus: 'queued', pdfError: null },
     })
-
-    setImmediate(() => {
-      reprocessLibraryVolume(volume.libraryEntryId, volume.id).catch((err) => {
-        console.error('[bulk-import/reprocess] failed:', volume.id, err)
-      })
-    })
+    await enqueueIngest({ kind: 'volume', entryId: volume.libraryEntryId, volumeId: volume.id })
 
     return NextResponse.json({ ok: true }, { status: 202 })
   } catch (err) {
@@ -133,7 +130,7 @@ export async function GET(req: NextRequest) {
       const count = await prisma.libraryEntryVolume.count({
         where: {
           libraryEntry: { userId },
-          pdfStatus: { in: ['pending', 'downloading', 'extracting', 'embedding'] },
+          pdfStatus: { in: ['queued', 'pending', 'downloading', 'extracting', 'embedding'] },
         },
       })
       return NextResponse.json({ inflight: count })

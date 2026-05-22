@@ -22,10 +22,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { savePdfBytes, saveVolumePdfBytes } from "@/lib/library-storage";
+import { savePdfBytesR2, saveVolumePdfBytesR2 } from "@/lib/r2-storage";
+import { enqueueIngest } from "@/lib/queue";
 import {
-  processLibraryPdfFromBytes,
-  processLibraryVolumePdfFromBytes,
   ingestExtractedTextForEntry,
   ingestExtractedTextForVolume,
 } from "@/lib/library-pipeline";
@@ -122,7 +121,7 @@ export async function POST(req: NextRequest) {
         title,
         authorSurname: `(Yükleme ${randomUUID().slice(0, 8)})`,
         importSource: "admin-ingest",
-        pdfStatus: "extracting",
+        pdfStatus: ocrPages ? "extracting" : "queued",
         fileType,
         keywords: [],
       },
@@ -130,18 +129,29 @@ export async function POST(req: NextRequest) {
     });
     if (hasFile && bytes) {
       try {
-        const filePath = await savePdfBytes(userId, entry.id, bytes, fileType);
+        const filePath = await savePdfBytesR2(userId, entry.id, bytes, fileType);
         await prisma.libraryEntry.update({ where: { id: entry.id }, data: { filePath } });
       } catch (err) {
-        console.error("[admin-ingest] save failed", entry.id, err);
+        console.error("[admin-ingest] R2 save failed", entry.id, err);
+        if (!ocrPages) {
+          await prisma.libraryEntry.update({
+            where: { id: entry.id },
+            data: { pdfStatus: "failed", pdfError: "Dosya depolanamadı (R2)" },
+          });
+          return NextResponse.json({ error: "storage failed" }, { status: 502 });
+        }
       }
     }
-    setImmediate(() => {
-      const job = ocrPages
-        ? ingestExtractedTextForEntry(entry.id, ocrPages, { enrich: true })
-        : processLibraryPdfFromBytes(entry.id, (file as File).name, bytes!);
-      job.catch((e) => console.error("[admin-ingest] pipeline failed", entry.id, e));
-    });
+    if (ocrPages) {
+      // Pre-extracted OCR text lives in the request, not R2 — ingest it
+      // synchronously (admin batch tool paces itself via pdfStatus polling).
+      setImmediate(() => {
+        ingestExtractedTextForEntry(entry.id, ocrPages, { enrich: true })
+          .catch((e) => console.error("[admin-ingest] OCR ingest failed", entry.id, e));
+      });
+    } else {
+      await enqueueIngest({ kind: "entry", entryId: entry.id, filename: (file as File).name });
+    }
     return NextResponse.json({ entryId: entry.id, ocr: Boolean(ocrPages) });
   }
 
@@ -185,24 +195,33 @@ export async function POST(req: NextRequest) {
       libraryEntryId: entryId,
       volumeNumber,
       label: volumeLabel,
-      pdfStatus: "extracting",
+      pdfStatus: ocrPages ? "extracting" : "queued",
       fileType,
     },
     select: { id: true },
   });
   if (hasFile && bytes) {
     try {
-      const filePath = await saveVolumePdfBytes(userId, entryId, volume.id, bytes, fileType);
+      const filePath = await saveVolumePdfBytesR2(userId, entryId, volume.id, bytes, fileType);
       await prisma.libraryEntryVolume.update({ where: { id: volume.id }, data: { filePath } });
     } catch (err) {
-      console.error("[admin-ingest] volume save failed", volume.id, err);
+      console.error("[admin-ingest] volume R2 save failed", volume.id, err);
+      if (!ocrPages) {
+        await prisma.libraryEntryVolume.update({
+          where: { id: volume.id },
+          data: { pdfStatus: "failed", pdfError: "Dosya depolanamadı (R2)" },
+        });
+        return NextResponse.json({ error: "storage failed" }, { status: 502 });
+      }
     }
   }
-  setImmediate(() => {
-    const job = ocrPages
-      ? ingestExtractedTextForVolume(entryId!, volume.id, ocrPages)
-      : processLibraryVolumePdfFromBytes(entryId!, volume.id, (file as File).name, bytes!);
-    job.catch((e) => console.error("[admin-ingest] volume pipeline failed", volume.id, e));
-  });
+  if (ocrPages) {
+    setImmediate(() => {
+      ingestExtractedTextForVolume(entryId!, volume.id, ocrPages)
+        .catch((e) => console.error("[admin-ingest] volume OCR ingest failed", volume.id, e));
+    });
+  } else {
+    await enqueueIngest({ kind: "volume", entryId: entryId!, volumeId: volume.id, filename: (file as File).name });
+  }
   return NextResponse.json({ entryId, volumeId: volume.id, volumeNumber, ocr: Boolean(ocrPages) });
 }

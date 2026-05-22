@@ -17,8 +17,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { saveVolumePdfBytes } from '@/lib/library-storage'
-import { processLibraryVolumePdfFromBytes } from '@/lib/library-pipeline'
+import { saveVolumePdfBytesR2 } from '@/lib/r2-storage'
+import { enqueueIngest } from '@/lib/queue'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
           data: {
             label,
             fileType: detectedType,
-            pdfStatus: 'extracting',
+            pdfStatus: 'queued',
             pdfError: null,
           },
           select: { id: true },
@@ -114,14 +114,15 @@ export async function POST(req: NextRequest) {
             libraryEntryId: entryId,
             volumeNumber,
             label,
-            pdfStatus: 'extracting',
+            pdfStatus: 'queued',
             fileType: detectedType,
           },
           select: { id: true },
         })).id
 
+    // Store in R2 (required — worker reads it back by filePath).
     try {
-      const filePath = await saveVolumePdfBytes(
+      const filePath = await saveVolumePdfBytesR2(
         entry.userId,
         entryId,
         volumeId,
@@ -133,18 +134,22 @@ export async function POST(req: NextRequest) {
         data: { filePath },
       })
     } catch (err) {
-      console.error('[admin/bulk-import/cilt] persist failed:', volumeId, err)
+      console.error('[admin/bulk-import/cilt] R2 persist failed:', volumeId, err)
+      await prisma.libraryEntryVolume.update({
+        where: { id: volumeId },
+        data: { pdfStatus: 'failed', pdfError: 'Dosya depolanamadı (R2)' },
+      })
+      return NextResponse.json({ error: 'storage failed' }, { status: 502 })
     }
 
-    setImmediate(() => {
-      processLibraryVolumePdfFromBytes(
-        entryId,
-        volumeId,
-        file.name || `cilt-${volumeNumber}.pdf`,
-        bytes,
-      ).catch((err) => {
-        console.error('[admin/bulk-import/cilt] pipeline failed:', volumeId, err)
-      })
+    // Re-run on an existing cilt: clear its chunks so the worker
+    // re-extracts the replaced bytes instead of resuming a stale embed.
+    await prisma.libraryChunk.deleteMany({ where: { volumeId } })
+    await enqueueIngest({
+      kind: 'volume',
+      entryId,
+      volumeId,
+      filename: file.name || `cilt-${volumeNumber}.pdf`,
     })
 
     return NextResponse.json({ volumeId, volumeNumber })

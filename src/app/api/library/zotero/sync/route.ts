@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { getCollectionItems, getItemAttachments, downloadAttachment } from '@/lib/zotero'
-import { processLibraryPdfFromBytes } from '@/lib/library-pipeline'
-import { startJob, completeJob, failJob, updateJob } from '@/lib/jobs'
+import { savePdfBytesR2 } from '@/lib/r2-storage'
+import { enqueueIngest } from '@/lib/queue'
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,7 +37,6 @@ export async function POST(req: NextRequest) {
     let updated = 0
     let skipped = 0
     let filesQueued = 0
-    const pdfJobs: Array<{ entryId: string; filename: string; bytes: Buffer }> = []
 
     for (const collKey of keys) {
       const items = await getCollectionItems(conn.zoteroUserId, conn.apiKey, collKey)
@@ -163,16 +162,13 @@ export async function POST(req: NextRequest) {
                   const safeFilename =
                     pdfAttachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_') || `${item.zoteroKey}.pdf`
 
+                  // Store in R2 + hand off to the worker queue.
+                  const filePath = await savePdfBytesR2(userId, entryId, fileBuffer, 'pdf')
                   await prisma.libraryEntry.update({
                     where: { id: entryId },
-                    data: { pdfStatus: 'pending', pdfError: null, filePath: null },
+                    data: { pdfStatus: 'queued', pdfError: null, filePath },
                   })
-
-                  pdfJobs.push({
-                    entryId,
-                    filename: safeFilename,
-                    bytes: fileBuffer,
-                  })
+                  await enqueueIngest({ kind: 'entry', entryId, filename: safeFilename })
                   filesQueued++
                 }
               }
@@ -192,46 +188,9 @@ export async function POST(req: NextRequest) {
       data: { lastSyncAt: new Date() },
     })
 
-    // Fire-and-forget: run PDF pipeline for each queued attachment in the
-    // background so the sync response returns quickly. Track as a background
-    // job so the navbar bell can surface completion.
-    if (pdfJobs.length > 0) {
-      const jobId = await startJob({
-        userId,
-        type: 'zotero_sync',
-        title: `${pdfJobs.length} Zotero PDF işleniyor`,
-        resultUrl: '/library',
-        message: `0/${pdfJobs.length} tamamlandı`,
-      })
-
-      setImmediate(() => {
-        void (async () => {
-          let done = 0
-          for (const job of pdfJobs) {
-            try {
-              await processLibraryPdfFromBytes(job.entryId, job.filename, job.bytes)
-            } catch (err) {
-              console.error('[zotero/sync] pipeline failed:', job.entryId, err)
-            }
-            done++
-            try {
-              await updateJob(jobId, {
-                progress: Math.round((done / pdfJobs.length) * 100),
-                message: `${done}/${pdfJobs.length} tamamlandı`,
-              })
-            } catch {
-              // non-fatal
-            }
-          }
-          try {
-            await completeJob(jobId, { message: `${done} PDF işlendi` })
-          } catch (err) {
-            await failJob(jobId, err instanceof Error ? err.message : String(err))
-          }
-        })()
-      })
-    }
-
+    // PDF attachments are now stored in R2 and handed to the worker queue
+    // as they're found (above) — the worker drains them with bounded
+    // concurrency. /library shows per-entry pdfStatus as each completes.
     return NextResponse.json({ created, updated, skipped, filesQueued })
   } catch (err) {
     if (err instanceof AuthError) {

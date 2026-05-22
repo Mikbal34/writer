@@ -15,21 +15,15 @@
  *   { "entryIds": ["id1", "id2", ...] }
  *
  * Behavior: for every entry that exists and has either filePath or
- * openAccessUrl, kick off the same setImmediate background pipeline
- * the UI reprocess button uses. filePath wins so manual uploads go
- * through the (faster, pdfjs-first) byte path. Returns the count of
- * triggered jobs immediately — clients poll pdfStatus to watch
- * completion.
+ * openAccessUrl, clear its chunks and enqueue a fresh ingest on the
+ * worker queue (the worker reads the R2 file, or re-downloads the URL).
+ * Returns the count of triggered jobs immediately — clients poll
+ * pdfStatus to watch completion.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import fs from "node:fs/promises";
-import path from "node:path";
 import { prisma } from "@/lib/db";
-import {
-  processLibraryPdfFromBytes,
-  processLibraryPdfFromUrl,
-} from "@/lib/library-pipeline";
+import { enqueueIngest } from "@/lib/queue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,28 +82,15 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // Fresh slate so the worker re-extracts instead of resuming embed.
+    await prisma.libraryChunk.deleteMany({
+      where: { libraryEntryId: entry.id, volumeId: null },
+    });
     await prisma.libraryEntry.update({
       where: { id: entry.id },
-      data: { pdfStatus: "pending", pdfError: null },
+      data: { pdfStatus: "queued", pdfError: null },
     });
-
-    setImmediate(async () => {
-      try {
-        if (entry.filePath) {
-          const bytes = await fs.readFile(entry.filePath);
-          const filename = path.basename(entry.filePath);
-          await processLibraryPdfFromBytes(entry.id, filename, bytes);
-        } else if (entry.openAccessUrl) {
-          await processLibraryPdfFromUrl(entry.id, entry.openAccessUrl);
-        }
-      } catch (err) {
-        console.error(
-          "[reprocess-batch] pipeline failed:",
-          entry.id,
-          err,
-        );
-      }
-    });
+    await enqueueIngest({ kind: "entry", entryId: entry.id });
     triggered++;
   }
 

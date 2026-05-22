@@ -12,8 +12,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { processLibraryPdfFromBytes } from '@/lib/library-pipeline'
-import { savePdfBytes } from '@/lib/library-storage'
+import { savePdfBytesR2 } from '@/lib/r2-storage'
+import { enqueueIngest } from '@/lib/queue'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -81,33 +81,32 @@ export async function POST(req: NextRequest) {
         title: titleFromFilename(file.name),
         authorSurname: placeholderSurname,
         importSource: 'pdf-upload',
-        pdfStatus: 'extracting',
+        pdfStatus: 'queued',
         fileType,
         keywords: [],
       },
       select: { id: true, title: true, pdfStatus: true },
     })
 
-    // Persist the PDF to durable storage so the citation verification
-    // flow can render the original page later. Failures are non-fatal:
-    // the chat / chunk pipeline still works without the original file.
+    // Persist the PDF to R2 FIRST — the worker reads it back by filePath,
+    // so unlike the old in-process pipeline this is REQUIRED, not
+    // best-effort. If storage fails there's nothing for the worker to
+    // ingest, so fail the upload instead of enqueuing a doomed job.
     try {
-      const filePath = await savePdfBytes(session.user.id, entry.id, bytes, fileType)
+      const filePath = await savePdfBytesR2(session.user.id, entry.id, bytes, fileType)
+      await prisma.libraryEntry.update({ where: { id: entry.id }, data: { filePath } })
+    } catch (err) {
+      console.error('[upload-pdf] R2 persistence failed:', entry.id, err)
       await prisma.libraryEntry.update({
         where: { id: entry.id },
-        data: { filePath },
+        data: { pdfStatus: 'failed', pdfError: 'Dosya depolanamadı (R2)' },
       })
-    } catch (err) {
-      console.error('[upload-pdf] PDF persistence failed:', entry.id, err)
+      return NextResponse.json({ error: 'storage failed' }, { status: 502 })
     }
 
-    setImmediate(() => {
-      processLibraryPdfFromBytes(entry.id, file.name || 'upload.pdf', bytes).catch(
-        (err) => {
-          console.error('[upload-pdf] pipeline failed:', entry.id, err)
-        },
-      )
-    })
+    // Hand off to the worker pool via the queue — returns in ms, no heavy
+    // work in the web process. Worker drains with bounded concurrency.
+    await enqueueIngest({ kind: 'entry', entryId: entry.id, filename: file.name || 'upload.pdf' })
 
     return NextResponse.json(entry)
   } catch (err) {

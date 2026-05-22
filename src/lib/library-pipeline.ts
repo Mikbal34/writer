@@ -764,34 +764,11 @@ async function persistChunks(
     })
   }
 
-  let embeddedChunks = 0
-  for (let i = 0; i < created.length; i += EMBED_BATCH_SIZE) {
-    const batch = created.slice(i, i + EMBED_BATCH_SIZE)
-    // Embed prefix + content so the vector reflects the chunk's
-    // contextual identity. Falls back to bare content for any
-    // chunk whose contextualize call failed.
-    const texts = batch.map((c) =>
-      buildEmbeddingText(c.content, contextMap.get(c.id) ?? null),
-    )
-    const vectors = await embedBatch(texts)
-    if (!vectors || vectors.length !== batch.length) continue
-    for (let j = 0; j < batch.length; j++) {
-      await prisma.$executeRawUnsafe(
-        `UPDATE "LibraryChunk" SET embedding = $1::vector WHERE id = $2`,
-        JSON.stringify(vectors[j]),
-        batch[j].id
-      )
-    }
-    embeddedChunks += batch.length
-  }
-
-  // If /embed silently failed for every batch we'd otherwise mark the
-  // volume "ready" with zero embeddings — the row looks fine in the UI
-  // but contributes nothing to RAG. Bubble up so the caller flips the
-  // status to "failed" with a real error message.
-  if (created.length > 0 && embeddedChunks === 0) {
-    throw new Error('Embedding başarısız: /embed her batch için hata döndü')
-  }
+  // Embedding is intentionally NOT done here anymore. persistChunks
+  // inserts the chunks (embedding = NULL) + their contextual prefixes
+  // and leaves status at "embedding". The caller then runs the separate,
+  // resumable embedPendingChunks() — so a crash mid-embed resumes from
+  // the remaining NULL chunks instead of re-extracting the whole PDF.
 
   // Volume reprocesses don't refresh the entry summary — let the
   // primary entry-level pipeline own that field so multi-volume
@@ -834,6 +811,56 @@ async function persistChunks(
       err,
     )
   }
+}
+
+/**
+ * Resumable embedding step. Embeds every chunk of an entry/volume whose
+ * embedding is still NULL, in batches, reusing the contextualPrefix that
+ * persistChunks already stored. Safe to re-run: a crash mid-embed leaves
+ * the embedded chunks intact and re-running picks up only the remaining
+ * NULL ones — no re-extraction. Throws only if there were pending chunks
+ * and EVERY batch failed (so the caller can flip status to "failed").
+ *
+ * Returns { pending, embedded } so the orchestrator can decide status.
+ */
+export async function embedPendingChunks(
+  entryId: string,
+  volumeId: string | null = null,
+): Promise<{ pending: number; embedded: number }> {
+  // embedding is an Unsupported() column, so it isn't a filterable field
+  // on the typed client — query the NULL set with raw SQL instead.
+  const rows = volumeId
+    ? await prisma.$queryRaw<{ id: string; content: string; contextualPrefix: string | null }[]>`
+        SELECT id, content, "contextualPrefix" FROM "LibraryChunk"
+        WHERE "volumeId" = ${volumeId} AND embedding IS NULL
+        ORDER BY "chunkIndex" ASC`
+    : await prisma.$queryRaw<{ id: string; content: string; contextualPrefix: string | null }[]>`
+        SELECT id, content, "contextualPrefix" FROM "LibraryChunk"
+        WHERE "libraryEntryId" = ${entryId} AND "volumeId" IS NULL AND embedding IS NULL
+        ORDER BY "chunkIndex" ASC`
+  const pending = rows.length
+  if (pending === 0) return { pending: 0, embedded: 0 }
+
+  let embedded = 0
+  for (let i = 0; i < rows.length; i += EMBED_BATCH_SIZE) {
+    const batch = rows.slice(i, i + EMBED_BATCH_SIZE)
+    const texts = batch.map((c) => buildEmbeddingText(c.content, c.contextualPrefix))
+    const vectors = await embedBatch(texts)
+    if (!vectors || vectors.length !== batch.length) continue
+    for (let j = 0; j < batch.length; j++) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "LibraryChunk" SET embedding = $1::vector WHERE id = $2`,
+        JSON.stringify(vectors[j]),
+        batch[j].id,
+      )
+    }
+    embedded += batch.length
+  }
+
+  if (embedded === 0) {
+    throw new Error('Embedding başarısız: /embed her batch için hata döndü')
+  }
+  return { pending, embedded }
 }
 
 /**
@@ -951,6 +978,7 @@ export async function processLibraryPdfFromUrl(entryId: string, pdfUrl: string):
       })
       await enrichLibraryEntryFromPdfText(entryId, data.extractedText)
       await persistChunks(entryId, data.chunks)
+      await embedPendingChunks(entryId)
       await setStatus(entryId, 'ready')
       return
     }
@@ -1048,6 +1076,7 @@ export async function processLibraryPdfFromBytes(
 
     await enrichLibraryEntryFromPdfText(entryId, data.extractedText)
     await persistChunks(entryId, data.chunks)
+    await embedPendingChunks(entryId)
     await setStatus(entryId, 'ready')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -1128,6 +1157,7 @@ export async function processLibraryVolumePdfFromBytes(
     })
 
     await persistChunks(entryId, data.chunks, volumeId)
+    await embedPendingChunks(entryId, volumeId)
     await setVolumeStatus(volumeId, 'ready')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -1183,6 +1213,7 @@ export async function ingestExtractedTextForEntry(
       }
     }
     await persistChunks(entryId, chunks)
+    await embedPendingChunks(entryId)
     await setStatus(entryId, 'ready')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -1208,6 +1239,7 @@ export async function ingestExtractedTextForVolume(
       data: { totalPages: pages.length },
     })
     await persistChunks(entryId, chunks, volumeId)
+    await embedPendingChunks(entryId, volumeId)
     await setVolumeStatus(volumeId, 'ready')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

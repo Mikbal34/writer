@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { reprocessLibraryVolume } from '@/lib/library-pipeline'
+import { enqueueIngest } from '@/lib/queue'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -44,16 +44,14 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
       )
     }
 
+    // Fresh slate so the worker re-extracts from the stored R2 file
+    // instead of resuming the embed of stale chunks.
+    await prisma.libraryChunk.deleteMany({ where: { volumeId } })
     await prisma.libraryEntryVolume.update({
       where: { id: volumeId },
-      data: { pdfStatus: 'pending', pdfError: null },
+      data: { pdfStatus: 'queued', pdfError: null },
     })
-
-    setImmediate(() => {
-      reprocessLibraryVolume(id, volumeId).catch((err) => {
-        console.error('[volumes/reprocess] failed:', volumeId, err)
-      })
-    })
+    await enqueueIngest({ kind: 'volume', entryId: id, volumeId })
 
     return NextResponse.json({ ok: true })
   } catch (err) {
