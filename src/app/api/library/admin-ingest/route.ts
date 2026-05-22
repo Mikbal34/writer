@@ -84,25 +84,34 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "file required" }, { status: 400 });
+  const hasFile = file instanceof File;
+  // A file is normally required, but when ocrText is supplied the text alone
+  // is enough to ingest (chunks + RAG). Used for giant scanned PDFs whose
+  // file is too large to upload through the edge — the viewer PDF can be
+  // attached separately later.
+  if (!hasFile && !ocrPages) {
+    return NextResponse.json({ error: "file or ocrText required" }, { status: 400 });
   }
   if (!userId || !title) {
     return NextResponse.json({ error: "userId + title required" }, { status: 400 });
   }
-  if (file.size === 0 || file.size > MAX_BYTES) {
-    return NextResponse.json({ error: "bad file size" }, { status: 400 });
-  }
-  const fileType = fileTypeFromName(file.name);
-  if (!fileType) {
-    return NextResponse.json({ error: "pdf/epub/docx only" }, { status: 400 });
+  let fileType: "pdf" | "epub" | "docx" = "pdf";
+  if (hasFile) {
+    if (file.size === 0 || file.size > MAX_BYTES) {
+      return NextResponse.json({ error: "bad file size" }, { status: 400 });
+    }
+    const ft = fileTypeFromName(file.name);
+    if (!ft) {
+      return NextResponse.json({ error: "pdf/epub/docx only" }, { status: 400 });
+    }
+    fileType = ft;
   }
   const owner = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
   if (!owner) {
     return NextResponse.json({ error: "userId not found" }, { status: 404 });
   }
 
-  const bytes = Buffer.from(await file.arrayBuffer());
+  const bytes = hasFile ? Buffer.from(await file.arrayBuffer()) : null;
 
   // ── single-file work ────────────────────────────────────────
   if (mode === "single") {
@@ -119,16 +128,18 @@ export async function POST(req: NextRequest) {
       },
       select: { id: true },
     });
-    try {
-      const filePath = await savePdfBytes(userId, entry.id, bytes, fileType);
-      await prisma.libraryEntry.update({ where: { id: entry.id }, data: { filePath } });
-    } catch (err) {
-      console.error("[admin-ingest] save failed", entry.id, err);
+    if (hasFile && bytes) {
+      try {
+        const filePath = await savePdfBytes(userId, entry.id, bytes, fileType);
+        await prisma.libraryEntry.update({ where: { id: entry.id }, data: { filePath } });
+      } catch (err) {
+        console.error("[admin-ingest] save failed", entry.id, err);
+      }
     }
     setImmediate(() => {
       const job = ocrPages
         ? ingestExtractedTextForEntry(entry.id, ocrPages, { enrich: true })
-        : processLibraryPdfFromBytes(entry.id, file.name, bytes);
+        : processLibraryPdfFromBytes(entry.id, (file as File).name, bytes!);
       job.catch((e) => console.error("[admin-ingest] pipeline failed", entry.id, e));
     });
     return NextResponse.json({ entryId: entry.id, ocr: Boolean(ocrPages) });
@@ -179,16 +190,18 @@ export async function POST(req: NextRequest) {
     },
     select: { id: true },
   });
-  try {
-    const filePath = await saveVolumePdfBytes(userId, entryId, volume.id, bytes, fileType);
-    await prisma.libraryEntryVolume.update({ where: { id: volume.id }, data: { filePath } });
-  } catch (err) {
-    console.error("[admin-ingest] volume save failed", volume.id, err);
+  if (hasFile && bytes) {
+    try {
+      const filePath = await saveVolumePdfBytes(userId, entryId, volume.id, bytes, fileType);
+      await prisma.libraryEntryVolume.update({ where: { id: volume.id }, data: { filePath } });
+    } catch (err) {
+      console.error("[admin-ingest] volume save failed", volume.id, err);
+    }
   }
   setImmediate(() => {
     const job = ocrPages
       ? ingestExtractedTextForVolume(entryId!, volume.id, ocrPages)
-      : processLibraryVolumePdfFromBytes(entryId!, volume.id, file.name, bytes);
+      : processLibraryVolumePdfFromBytes(entryId!, volume.id, (file as File).name, bytes!);
     job.catch((e) => console.error("[admin-ingest] volume pipeline failed", volume.id, e));
   });
   return NextResponse.json({ entryId, volumeId: volume.id, volumeNumber, ocr: Boolean(ocrPages) });
