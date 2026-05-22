@@ -22,6 +22,7 @@ breaks on transformers 5.x ('SuryaDecoderConfig has no pad_token_id').
 
 from __future__ import annotations
 
+import gc
 import io
 import threading
 from dataclasses import dataclass
@@ -32,6 +33,23 @@ from PIL import Image
 # Landscape ratio above which a page is treated as a 2-page spread.
 SPREAD_RATIO = 1.15
 DEFAULT_DPI = 200
+# Cap the longest rendered side. Most scans are ~1300 px at 200 DPI; a few
+# cover/foldout pages are scanned at 5000+ px (35 MP), whose bitmap spikes
+# memory and crashes OCR. Clamp those down — normal pages are unaffected.
+MAX_RENDER_PX = 2200
+
+
+def _free_memory() -> None:
+    """Release Python + GPU memory between page slices so OCR'ing a
+    2000-page book doesn't accumulate allocations into an OOM."""
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
 _lock = threading.Lock()
 _predictors = None  # (foundation, recognition, detection, ocr_task)
@@ -132,7 +150,12 @@ def ocr_pdf(pdf_bytes: bytes, dpi: int = DEFAULT_DPI) -> list[PageText]:
             flat: list[Image.Image] = []
             counts: list[int] = []
             for i in range(start, end):
-                bitmap = doc[i].render(scale=scale)
+                page = doc[i]
+                w_pt, h_pt = page.get_size()
+                # Clamp scale so the longest side stays under MAX_RENDER_PX —
+                # protects against the occasional 5000+ px scanned page.
+                page_scale = min(scale, MAX_RENDER_PX / max(w_pt, h_pt))
+                bitmap = page.render(scale=page_scale)
                 halves = split_spread(bitmap.to_pil().convert("RGB"))
                 counts.append(len(halves))
                 flat.extend(halves)
@@ -146,7 +169,10 @@ def ocr_pdf(pdf_bytes: bytes, dpi: int = DEFAULT_DPI) -> list[PageText]:
                 pages.append(
                     PageText(page_number=start + offset + 1, text="\n".join(parts).strip())
                 )
-            # flat / bitmaps drop out of scope here → freed before next slice.
+            # Free this slice's bitmaps + GPU tensors before the next slice
+            # so a 2000-page book doesn't accumulate into an OOM.
+            del flat, texts
+            _free_memory()
         return pages
     finally:
         doc.close()
