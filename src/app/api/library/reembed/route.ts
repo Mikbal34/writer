@@ -81,10 +81,15 @@ async function fetchTargetChunks(
   entryIds: string[] | null,
 ): Promise<ChunkRow[]> {
   if (entryIds && entryIds.length > 0) {
+    // For explicit entryIds, embed ALL their chunks regardless of current
+    // embedding state — covers both stale-vector re-embeds AND chunks that
+    // never got embedded (e.g. ingest failed at the embedding step). The
+    // `embedding IS NOT NULL` filter only makes sense for the model-sweep
+    // scopes below, not for a targeted "fix these entries" request.
     return prisma.$queryRaw<ChunkRow[]>`
       SELECT lc.id, lc.content FROM "LibraryChunk" lc
       WHERE lc."libraryEntryId" = ANY(${entryIds}::text[])
-        AND lc.embedding IS NOT NULL AND lc.content IS NOT NULL`;
+        AND lc.content IS NOT NULL`;
   }
   if (scope === "all") {
     return prisma.$queryRaw<ChunkRow[]>`
@@ -126,6 +131,15 @@ async function runLoop(scope: string, entryIds: string[] | null) {
           state.failed += 1;
         }
       }
+    }
+    // For a targeted entryIds fix, flip the entries back to 'ready' once
+    // their chunks are embedded — they were left 'failed' when ingest
+    // couldn't embed (e.g. the Gemini block).
+    if (entryIds && entryIds.length > 0 && state.done > 0 && state.failed === 0) {
+      await prisma.libraryEntry.updateMany({
+        where: { id: { in: entryIds } },
+        data: { pdfStatus: "ready", pdfError: null },
+      });
     }
     state.status = "completed";
     state.finishedAt = new Date();
