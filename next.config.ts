@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Slim standalone server build for the Fly Docker image — copies only
+  // the production-needed node_modules + .next/standalone so the runner
+  // stage doesn't ship the whole node_modules tree.
+  output: "standalone",
   // pdfjs-dist must NOT be bundled on the server. When webpack
   // transpiles it (via transpilePackages), the internal worker
   // import `new URL("pdf.worker.mjs", import.meta.url)` is rewritten

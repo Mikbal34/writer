@@ -1,0 +1,57 @@
+# Fly.io app config — Next.js web + BullMQ worker as two process groups
+# sharing one image. Region fra (Frankfurt) is close to Neon eu-central
+# + Upstash eu, so DB / queue round-trips are sub-10ms.
+#
+# Secrets (set with `flyctl secrets set KEY=VAL`):
+#   DATABASE_URL          Neon Postgres
+#   REDIS_URL             Upstash rediss:// URL
+#   R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+#   ANTHROPIC_API_KEY
+#   NEXTAUTH_SECRET, NEXTAUTH_URL
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET   (auth)
+#   SURYA_OCR_URL         Modal OCR endpoint
+#   ADMIN_SESSION_SECRET, ADMIN_BULK_IMPORT_TOKEN
+# Non-secret env (in [env] below):
+#   PYTHON_SERVICE_URL    Fly internal DNS for the python-service app
+#   WORKER_CONCURRENCY    Bounded BullMQ concurrency (day-1: 2)
+
+app = "quilpen"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Python sidecar talks over Fly's internal 6PN mesh.
+  PYTHON_SERVICE_URL = "http://quilpen-python.internal:8000"
+  WORKER_CONCURRENCY = "2"
+  # Embeddings are self-hosted (BGE-M3 in python-service); contextual
+  # prefix stays off by default (Haiku cost) — flip per-corpus if needed.
+  CONTEXTUAL_PREFIX_ENABLED = "0"
+
+# ── web ─────────────────────────────────────────────────────────────
+[processes]
+  web = "npm start"
+  worker = "npm run worker"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["web"]
+
+# Web machine — small day-1 footprint; raise via `flyctl scale` later.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "1gb"
+  processes = ["web"]
+
+# Worker machine — heavier (extract + pdfjs in-process), and stays
+# running so the BullMQ poller is always live. Scale by concurrency
+# (WORKER_CONCURRENCY env) and/or machine count.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"
+  processes = ["worker"]

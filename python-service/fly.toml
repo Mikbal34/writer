@@ -1,0 +1,33 @@
+# Fly.io app config for the python-service sidecar: PDF extraction
+# (pdfjs/Tesseract/route to Modal Surya for hard scripts) + BGE-M3
+# embedding (sentence-transformers, CPU). The Node worker calls this
+# over Fly's internal 6PN mesh as PYTHON_SERVICE_URL.
+#
+# Secrets:
+#   SURYA_OCR_SECRET   (forwarded to the Modal OCR app)
+# No DB / queue secrets here — this service is stateless.
+
+app = "quilpen-python"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Modal Surya OCR endpoint — set as a secret if it ever rotates.
+  PORT = "8000"
+
+[http_service]
+  internal_port = 8000
+  # Internal-only by default (the Node worker reaches it via 6PN). If
+  # you ever want public access, expose by adding [[services.ports]].
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+# BGE-M3 needs RAM (model ~2GB + torch). 4GB on a perf vCPU is the
+# day-1 floor; scale up if latency suffers.
+[[vm]]
+  size = "performance-1x"
+  memory = "4gb"

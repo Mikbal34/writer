@@ -15,12 +15,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python deps first for better layer caching
-COPY python-service/requirements.txt ./
+# Install Python deps first for better layer caching. Paths are local to
+# this directory (Fly build context = python-service/); Railway, when
+# still building this monorepo, sets its build context to python-service
+# the same way.
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the service source
-COPY python-service/ ./
+COPY . ./
 
 ENV PYTHONUNBUFFERED=1
 

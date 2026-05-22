@@ -1,105 +1,129 @@
 /**
- * Persistent PDF storage for LibraryEntry uploads.
+ * Library document storage — R2-backed (Cloudflare). This module is the
+ * drop-in replacement for the old local-disk implementation; callers
+ * keep using the same function names. The Railway-era /data filesystem
+ * is gone in the new stack — everything lives in R2 (egress free).
  *
- * Files live at <STORAGE_ROOT>/<userId>/<entryId>.pdf. STORAGE_ROOT
- * defaults to /data/library-pdfs (Railway volume mount); local dev
- * falls back to <os.tmpdir()>/library-pdfs so tests don't need a
- * special filesystem layout.
+ * filePath is still the logical path string stored in LibraryEntry /
+ * LibraryEntryVolume rows (<root>/<userId>/<entryId>.<ext>); the R2 key
+ * is that path minus the storage-root prefix (see r2-storage.ts). The
+ * Faz 1 migration uploaded existing files at exactly these keys, so
+ * the stored filePaths keep resolving.
+ *
+ * Note: `pdfExists` is now async (HEAD against R2). The two route
+ * handlers that previously called it synchronously now `await` it.
  */
-import fs from 'node:fs'
-import path from 'node:path'
-import os from 'node:os'
-
-function storageRoot(): string {
-  const fromEnv = process.env.LIBRARY_PDF_STORAGE_ROOT
-  if (fromEnv) return fromEnv
-  if (process.env.NODE_ENV === 'production') return '/data/library-pdfs'
-  return path.join(os.tmpdir(), 'library-pdfs')
-}
-
-function entryDir(userId: string): string {
-  // userId is a cuid, but be paranoid — strip anything not alphanumeric to
-  // avoid path traversal if a future identity provider returns weird values.
-  const safe = userId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  return path.join(storageRoot(), safe)
-}
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  CopyObjectCommand,
+  ListObjectsV2Command,
+} from '@aws-sdk/client-s3'
+import type { Readable } from 'node:stream'
+import {
+  entryFilePath,
+  volumeFilePath,
+  keyFromFilePath,
+  savePdfBytesR2,
+  saveVolumePdfBytesR2,
+  getStreamFromFilePath,
+} from './r2-storage'
 
 type DocFileType = 'pdf' | 'epub' | 'docx'
 
-function extFor(fileType: DocFileType | string | null | undefined): string {
-  if (fileType === 'epub') return '.epub'
-  if (fileType === 'docx') return '.docx'
-  return '.pdf'
+// Re-export the path helpers + writers + stream reader so callers can
+// keep importing from `@/lib/library-storage` regardless of backend.
+export { entryFilePath, volumeFilePath } from './r2-storage'
+export const savePdfBytes = savePdfBytesR2
+export const saveVolumePdfBytes = saveVolumePdfBytesR2
+export const openPdfStream = getStreamFromFilePath
+
+// Local helper so we don't double-construct an S3Client.
+let _client: S3Client | null = null
+function client(): S3Client {
+  if (!_client) {
+    const account = process.env.R2_ACCOUNT_ID
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY
+    if (!account || !accessKeyId || !secretAccessKey) {
+      throw new Error('R2 env missing (R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY)')
+    }
+    _client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${account}.r2.cloudflarestorage.com`,
+      credentials: { accessKeyId, secretAccessKey },
+    })
+  }
+  return _client
+}
+function bucket(): string {
+  const b = process.env.R2_BUCKET
+  if (!b) throw new Error('R2_BUCKET is not set')
+  return b
 }
 
-function entryPath(userId: string, entryId: string, fileType: DocFileType | null = 'pdf'): string {
-  const safeId = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  return path.join(entryDir(userId), `${safeId}${extFor(fileType)}`)
-}
-
-function volumePath(
-  userId: string,
-  entryId: string,
-  volumeId: string,
-  fileType: DocFileType | null = 'pdf',
-): string {
-  const safeEntry = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  const safeVol = volumeId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  return path.join(entryDir(userId), safeEntry, `${safeVol}${extFor(fileType)}`)
-}
-
-export async function savePdfBytes(
-  userId: string,
-  entryId: string,
-  bytes: Buffer,
-  fileType: DocFileType = 'pdf',
-): Promise<string> {
-  const dir = entryDir(userId)
-  await fs.promises.mkdir(dir, { recursive: true })
-  const dest = entryPath(userId, entryId, fileType)
-  await fs.promises.writeFile(dest, bytes)
-  return dest
-}
-
-/**
- * Persist a document for a specific volume of a multi-volume entry.
- * File lives in <STORAGE_ROOT>/<userId>/<entryId>/<volumeId>.<ext> so
- * it's grouped with its sibling volumes and easy to clean up when the
- * parent entry is deleted.
- */
-export async function saveVolumePdfBytes(
-  userId: string,
-  entryId: string,
-  volumeId: string,
-  bytes: Buffer,
-  fileType: DocFileType = 'pdf',
-): Promise<string> {
-  const safeEntry = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  const dir = path.join(entryDir(userId), safeEntry)
-  await fs.promises.mkdir(dir, { recursive: true })
-  const dest = volumePath(userId, entryId, volumeId, fileType)
-  await fs.promises.writeFile(dest, bytes)
-  return dest
-}
-
-export function pdfExists(filePath: string | null | undefined): boolean {
+/** Async HEAD against R2. Empty / null path is treated as "no file". */
+export async function pdfExists(filePath: string | null | undefined): Promise<boolean> {
   if (!filePath) return false
   try {
-    return fs.statSync(filePath).isFile()
+    await client().send(new HeadObjectCommand({ Bucket: bucket(), Key: keyFromFilePath(filePath) }))
+    return true
   } catch {
     return false
   }
 }
 
-export function openPdfStream(filePath: string): fs.ReadStream {
-  return fs.createReadStream(filePath)
+/** Download a stored file fully into a Buffer (the /pdf endpoint). */
+export async function getPdfBytes(filePath: string): Promise<Buffer> {
+  const res = await client().send(new GetObjectCommand({
+    Bucket: bucket(), Key: keyFromFilePath(filePath),
+  }))
+  const chunks: Buffer[] = []
+  for await (const c of res.Body as Readable) chunks.push(Buffer.from(c))
+  return Buffer.concat(chunks)
+}
+
+export async function deletePdf(filePath: string | null | undefined): Promise<void> {
+  if (!filePath) return
+  try {
+    await client().send(new DeleteObjectCommand({ Bucket: bucket(), Key: keyFromFilePath(filePath) }))
+  } catch {
+    /* already gone — fine */
+  }
 }
 
 /**
- * Move an entry-level file to a volume-shaped path under a (possibly
- * different) parent entry. Used by the promote-to-volume flow which
- * grafts a one-off upload into a multi-volume entry without
- * re-uploading the bytes.
+ * Cleanup hook for LibraryEntry deletion: removes everything under the
+ * <userId>/<entryId>/ prefix (volume files). The entry's primary
+ * filePath (single-volume legacy) sits one level up and is unlinked
+ * separately by deletePdf().
+ */
+export async function deleteEntryVolumesDir(userId: string, entryId: string): Promise<void> {
+  const safeUser = userId.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const safeEntry = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const prefix = `${safeUser}/${safeEntry}/`
+  let token: string | undefined
+  do {
+    const list = await client().send(new ListObjectsV2Command({
+      Bucket: bucket(), Prefix: prefix, ContinuationToken: token,
+    }))
+    const keys = list.Contents?.map((o) => ({ Key: o.Key! })) ?? []
+    if (keys.length > 0) {
+      await client().send(new DeleteObjectsCommand({
+        Bucket: bucket(), Delete: { Objects: keys, Quiet: true },
+      }))
+    }
+    token = list.IsTruncated ? list.NextContinuationToken : undefined
+  } while (token)
+}
+
+/**
+ * Promote an entry-level file to a volume-shaped path: R2 has no rename,
+ * so we CopyObject to the new key and DeleteObject from the old one.
  */
 export async function moveToVolumePath(
   userId: string,
@@ -108,50 +132,13 @@ export async function moveToVolumePath(
   volumeId: string,
   fileType: DocFileType = 'pdf',
 ): Promise<string> {
-  const safeEntry = newParentEntryId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  const dir = path.join(entryDir(userId), safeEntry)
-  await fs.promises.mkdir(dir, { recursive: true })
-  const dest = volumePath(userId, newParentEntryId, volumeId, fileType)
-  try {
-    await fs.promises.rename(oldFilePath, dest)
-  } catch {
-    // Cross-device rename can fail; fall back to copy + delete.
-    await fs.promises.copyFile(oldFilePath, dest)
-    try {
-      await fs.promises.unlink(oldFilePath)
-    } catch {
-      /* ignore */
-    }
-  }
+  const dest = volumeFilePath(userId, newParentEntryId, volumeId, fileType)
+  const srcKey = keyFromFilePath(oldFilePath)
+  const dstKey = keyFromFilePath(dest)
+  await client().send(new CopyObjectCommand({
+    Bucket: bucket(), Key: dstKey,
+    CopySource: `${bucket()}/${encodeURIComponent(srcKey).replace(/%2F/g, '/')}`,
+  }))
+  await client().send(new DeleteObjectCommand({ Bucket: bucket(), Key: srcKey }))
   return dest
-}
-
-export async function deletePdf(filePath: string | null | undefined): Promise<void> {
-  if (!filePath) return
-  try {
-    await fs.promises.unlink(filePath)
-  } catch {
-    // already gone — fine
-  }
-}
-
-/**
- * Cleanup hook for LibraryEntry deletion: removes the per-entry
- * directory under <STORAGE_ROOT>/<userId>/<entryId> which holds all
- * the volume PDFs for a multi-volume entry. The entry's primary
- * filePath (single-volume legacy) is at the parent level and is
- * unlinked separately by deletePdf().
- */
-export async function deleteEntryVolumesDir(
-  userId: string,
-  entryId: string,
-): Promise<void> {
-  const safeUser = userId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  const safeEntry = entryId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  const dir = path.join(storageRoot(), safeUser, safeEntry)
-  try {
-    await fs.promises.rm(dir, { recursive: true, force: true })
-  } catch {
-    // best-effort cleanup
-  }
 }

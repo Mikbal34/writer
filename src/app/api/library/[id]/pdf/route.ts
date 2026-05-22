@@ -10,10 +10,9 @@
  * before durable storage was wired up have null filePaths.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'node:fs'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { pdfExists } from '@/lib/library-storage'
+import { pdfExists, getPdfBytes } from '@/lib/library-storage'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -49,7 +48,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       // BookHero "open in tab", etc.) don't pass ?volume=, fall back
       // to the entry's earliest volume so a single-volume upload still
       // streams without forcing every caller to plumb volumeId.
-      if (!pdfExists(filePath) && entry) {
+      if (!(await pdfExists(filePath)) && entry) {
         const firstVolume = await prisma.libraryEntryVolume.findFirst({
           where: { libraryEntryId: id },
           orderBy: { createdAt: 'asc' },
@@ -59,7 +58,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       }
     }
 
-    if (!pdfExists(filePath)) {
+    if (!(await pdfExists(filePath))) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
@@ -78,10 +77,10 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     // every time", which we need before any further optimization.
     // A proper HTTP Range handler can win the performance back
     // later without breaking reliability.
-    const bytes = await fs.promises.readFile(filePath as string)
+    const bytes = await getPdfBytes(filePath as string)
     console.info(
       '[GET /api/library/[id]/pdf]',
-      `${bytes.byteLength} bytes (buffered)`,
+      `${bytes.byteLength} bytes (R2)`,
       filePath,
     )
     return new NextResponse(new Uint8Array(bytes), {

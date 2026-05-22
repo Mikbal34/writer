@@ -51,7 +51,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       }
       return NextResponse.json({
         status: volume.pdfStatus,
-        hasFile: pdfExists(volume.filePath),
+        hasFile: await pdfExists(volume.filePath),
         fileType: fileTypeOf(volume.filePath),
         error: volume.pdfError ?? null,
       });
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     // Mirrors /pdf: when entry.filePath is null (new volume-based
     // uploads), report the earliest volume's status so the viewer's
     // empty-state matches what /pdf will actually serve.
-    if (!pdfExists(entry.filePath)) {
+    if (!(await pdfExists(entry.filePath))) {
       const firstVolume = await prisma.libraryEntryVolume.findFirst({
         where: { libraryEntryId: id },
         orderBy: { createdAt: "asc" },
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       if (firstVolume) {
         return NextResponse.json({
           status: firstVolume.pdfStatus,
-          hasFile: pdfExists(firstVolume.filePath),
+          hasFile: await pdfExists(firstVolume.filePath),
           fileType: fileTypeOf(firstVolume.filePath),
           error: firstVolume.pdfError ?? null,
         });
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     }
     return NextResponse.json({
       status: entry.pdfStatus,
-      hasFile: pdfExists(entry.filePath),
+      hasFile: await pdfExists(entry.filePath),
       fileType: fileTypeOf(entry.filePath),
       error: entry.pdfError ?? null,
     });
