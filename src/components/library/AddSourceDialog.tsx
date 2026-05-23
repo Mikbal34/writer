@@ -13,9 +13,9 @@
  * already match the design tokens 1:1, so no new theme is needed.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Plus, X, Search, Sparkles, FileText, Upload, BookOpen, Loader2,
+  Plus, X, Search, Sparkles, FileText, Upload, BookCopy, Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
@@ -451,150 +451,416 @@ function Divider() {
   return <div className="h-px bg-rule-soft my-[18px]" />
 }
 
-// ═══════════════════════════ TAB 3 — DOSYA ════════════════════════════
-type FileItem = { file: File; status: 'pending' | 'uploading' | 'done' | 'error'; entryId?: string; error?: string }
+// ═══════════════════════════ TAB 3 — DOSYA (with cilt-gruplama) ═══════
+// Standalone uploads AND multi-volume grouping in one tab. Tick 2+
+// files → "Grupla" → fill parent metadata + per-file cilt number →
+// the group lands on a list. "Yükle ve ekle" fires standalone
+// uploads (POST /upload-pdf) and group uploads (parent POST /library
+// + N × POST /[id]/volumes) in parallel.
+type PendingFile = { id: string; file: File }
+type Group = {
+  id: string
+  form: { authorSurname: string; authorName: string; title: string; year: string; publisher: string }
+  fileIds: string[]
+  volumeNumbers: Record<string, string>
+  labels: Record<string, string>
+}
+const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+const emptyGroupForm = () => ({ authorSurname: '', authorName: '', title: '', year: '', publisher: '' })
 
 function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: string) => void }) {
-  const [items, setItems] = useState<FileItem[]>([])
+  const [files, setFiles] = useState<PendingFile[]>([])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [groups, setGroups] = useState<Group[]>([])
   const [dragging, setDragging] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const addFiles = (files: FileList | File[]) => {
-    const fresh: FileItem[] = Array.from(files)
+  // Group-form overlay state.
+  const [groupFormOpen, setGroupFormOpen] = useState(false)
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
+  const [gForm, setGForm] = useState(emptyGroupForm())
+  const [gFileIds, setGFileIds] = useState<string[]>([])
+  const [gVolumes, setGVolumes] = useState<Record<string, string>>({})
+  const [gLabels, setGLabels] = useState<Record<string, string>>({})
+  const [extracting, setExtracting] = useState(false)
+
+  const fileById = useMemo(() => new Map(files.map((f) => [f.id, f])), [files])
+  const ungrouped = useMemo(() => {
+    const taken = new Set<string>()
+    for (const g of groups) for (const fid of g.fileIds) taken.add(fid)
+    return files.filter((f) => !taken.has(f.id))
+  }, [files, groups])
+
+  const addFiles = (incoming: FileList | File[]) => {
+    const fresh: PendingFile[] = Array.from(incoming)
       .filter((f) => /\.(pdf|epub|docx)$/i.test(f.name) && f.size > 0 && f.size <= 50 * 1024 * 1024)
-      .map((file) => ({ file, status: 'pending' as const }))
+      .map((file) => ({ id: newId(), file }))
     if (fresh.length === 0) return
-    setItems((prev) => [...prev, ...fresh])
+    setFiles((prev) => [...prev, ...fresh])
   }
 
-  const uploadAll = async () => {
-    setUploading(true)
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].status !== 'pending') continue
-      setItems((prev) => prev.map((it, idx) => idx === i ? { ...it, status: 'uploading' } : it))
+  const removeFile = (id: string) => {
+    setFiles((p) => p.filter((f) => f.id !== id))
+    setSelectedIds((p) => { const n = new Set(p); n.delete(id); return n })
+    setGroups((p) => p.map((g) => ({ ...g, fileIds: g.fileIds.filter((fid) => fid !== id) }))
+      .filter((g) => g.fileIds.length > 0))
+  }
+
+  const toggleSelect = (id: string) => setSelectedIds((p) => {
+    const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n
+  })
+
+  const openGroupForSelection = async () => {
+    const ids = ungrouped.filter((f) => selectedIds.has(f.id)).map((f) => f.id)
+    if (ids.length < 2) { toast.error('Grup için en az 2 dosya seç'); return }
+    setEditingGroupId(null)
+    setGForm(emptyGroupForm())
+    setGFileIds(ids)
+    const vols: Record<string, string> = {}
+    ids.forEach((fid, idx) => { vols[fid] = String(idx + 1) })
+    setGVolumes(vols); setGLabels({}); setGroupFormOpen(true)
+    // Prefill from the first file's metadata via /extract-metadata.
+    const first = fileById.get(ids[0])?.file
+    if (first) {
+      setExtracting(true)
       try {
-        const form = new FormData()
-        form.append('file', items[i].file)
-        const res = await fetch('/api/library/upload-pdf', { method: 'POST', body: form })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const entry = await res.json()
-        setItems((prev) => prev.map((it, idx) => idx === i ? { ...it, status: 'done', entryId: entry.id } : it))
-        onAdded?.(entry.id)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        setItems((prev) => prev.map((it, idx) => idx === i ? { ...it, status: 'error', error: msg } : it))
-      }
+        const fd = new FormData(); fd.append('file', first)
+        const res = await fetch('/api/library/extract-metadata', { method: 'POST', body: fd })
+        if (res.ok) {
+          const m = await res.json() as Partial<{
+            authorSurname: string; authorName: string; title: string; year: string; publisher: string
+          }>
+          setGForm((s) => ({
+            authorSurname: s.authorSurname || m.authorSurname || '',
+            authorName: s.authorName || m.authorName || '',
+            title: s.title || m.title || '',
+            year: s.year || m.year || '',
+            publisher: s.publisher || m.publisher || '',
+          }))
+        }
+      } catch { /* user fills manually */ }
+      finally { setExtracting(false) }
     }
+  }
+
+  const openGroupForEdit = (g: Group) => {
+    setEditingGroupId(g.id)
+    setGForm({ ...g.form }); setGFileIds([...g.fileIds])
+    setGVolumes({ ...g.volumeNumbers }); setGLabels({ ...g.labels })
+    setGroupFormOpen(true)
+  }
+
+  const commitGroup = () => {
+    if (!gForm.authorSurname.trim()) { toast.error('Yazar soyadı zorunlu'); return }
+    if (!gForm.title.trim()) { toast.error('Ana eser başlığı zorunlu'); return }
+    const seen = new Set<number>()
+    for (const fid of gFileIds) {
+      const n = parseInt(gVolumes[fid] ?? '', 10)
+      if (!Number.isFinite(n) || n < 1) { toast.error(`Cilt numarası geçersiz`); return }
+      if (seen.has(n)) { toast.error(`Cilt ${n} iki kez kullanıldı`); return }
+      seen.add(n)
+    }
+    if (editingGroupId) {
+      setGroups((p) => p.map((g) => g.id === editingGroupId
+        ? { ...g, form: { ...gForm }, fileIds: [...gFileIds], volumeNumbers: { ...gVolumes }, labels: { ...gLabels } }
+        : g))
+    } else {
+      setGroups((p) => [...p, { id: newId(), form: { ...gForm }, fileIds: [...gFileIds], volumeNumbers: { ...gVolumes }, labels: { ...gLabels } }])
+      setSelectedIds((p) => { const n = new Set(p); for (const fid of gFileIds) n.delete(fid); return n })
+    }
+    setGroupFormOpen(false); setEditingGroupId(null)
+    setGForm(emptyGroupForm()); setGFileIds([]); setGVolumes({}); setGLabels({})
+  }
+
+  const handleUpload = async () => {
+    if (files.length === 0) { toast.error('Yüklenecek dosya yok'); return }
+    if (groupFormOpen) { toast.error('Önce grubu kaydet veya iptal et'); return }
+    setUploading(true)
+    const errors: string[] = []
+
+    const standalonePromises = ungrouped.map(async (pf) => {
+      const fd = new FormData(); fd.append('file', pf.file)
+      const res = await fetch('/api/library/upload-pdf', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error(`${pf.file.name}: ${res.status}`)
+      const entry = await res.json(); onAdded?.(entry.id)
+    })
+
+    const groupPromises = groups.map(async (g) => {
+      const parentRes = await fetch('/api/library', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authorSurname: g.form.authorSurname.trim(),
+          authorName: g.form.authorName.trim() || undefined,
+          title: g.form.title.trim(),
+          year: g.form.year.trim() || undefined,
+          publisher: g.form.publisher.trim() || undefined,
+          importSource: 'multi-volume',
+        }),
+      })
+      if (!parentRes.ok) throw new Error(`Ana eser oluşturulamadı (${g.form.title}): ${parentRes.status}`)
+      const parent = await parentRes.json() as { id: string }
+      onAdded?.(parent.id)
+      await Promise.all(g.fileIds.map(async (fid) => {
+        const pf = fileById.get(fid); if (!pf) return
+        const volNumber = parseInt(g.volumeNumbers[fid] ?? '1', 10)
+        const label = g.labels[fid]?.trim()
+        const fd = new FormData()
+        fd.append('file', pf.file); fd.append('volumeNumber', String(volNumber))
+        if (label) fd.append('label', label)
+        const volRes = await fetch(`/api/library/${parent.id}/volumes`, { method: 'POST', body: fd })
+        if (!volRes.ok) throw new Error(`${pf.file.name} (cilt ${volNumber}): ${volRes.status}`)
+      }))
+    })
+
+    const results = await Promise.allSettled([...standalonePromises, ...groupPromises])
+    for (const r of results) if (r.status === 'rejected')
+      errors.push(r.reason instanceof Error ? r.reason.message : String(r.reason))
     setUploading(false)
-    const allDone = items.every((it) => it.status === 'done')
-    if (allDone) {
-      toast.success(`${items.length} dosya yüklendi — kuyrukta işleniyor`)
+    if (errors.length === 0) {
+      toast.success(`${files.length} dosya işleme alındı`)
       onClose()
     } else {
-      toast.success('Yükleme tamamlandı (sıraya alındı)')
+      toast.error(`${errors.length} hata`, { description: errors.slice(0, 3).join(' · ') })
     }
   }
 
-  const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i))
-  const pendingCount = items.filter((it) => it.status === 'pending').length
+  if (groupFormOpen) return (
+    <GroupForm
+      form={gForm} setForm={setGForm}
+      fileIds={gFileIds} fileById={fileById}
+      volumes={gVolumes} setVolumes={setGVolumes}
+      labels={gLabels} setLabels={setGLabels}
+      extracting={extracting}
+      onCancel={() => setGroupFormOpen(false)}
+      onCommit={commitGroup}
+      editing={!!editingGroupId}
+    />
+  )
+
+  const selectedCount = ungrouped.filter((f) => selectedIds.has(f.id)).length
 
   return (
     <div>
-      <Eyebrow>Dosya yükle</Eyebrow>
-      <p className="text-[12.5px] font-serif italic text-ink-light mb-3">
-        Sürükle bırak ya da seç. Künye otomatik okunur — yoksa kuyrukta worker çıkarır.
-      </p>
-
+      {/* Dropzone — shrinks once files are added so the file list dominates */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault(); setDragging(false)
-          addFiles(e.dataTransfer.files)
-        }}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files) }}
         onClick={() => inputRef.current?.click()}
         className={[
-          'rounded-[12px] py-[34px] px-6 text-center cursor-pointer transition',
-          'border-2 border-dashed',
+          'rounded-[12px] text-center cursor-pointer transition border-2 border-dashed',
+          files.length === 0 ? 'py-[34px] px-6' : 'py-3.5 px-4',
           dragging ? 'border-forest bg-forest/5' : 'border-ink-muted/30',
         ].join(' ')}
-        style={dragging ? undefined : {
+        style={dragging || files.length > 0 ? undefined : {
           background: 'repeating-linear-gradient(135deg, var(--color-parchment-dark) 0px, var(--color-parchment-dark) 12px, var(--color-parchment) 12px, var(--color-parchment) 24px)',
         }}
       >
         <input ref={inputRef} type="file" multiple accept=".pdf,.epub,.docx" className="hidden"
           onChange={(e) => e.target.files && addFiles(e.target.files)} />
-        <div className="w-[52px] h-[52px] mx-auto mb-2.5 rounded-full bg-forest/15 flex items-center justify-center">
-          <Upload size={22} className="text-forest" />
-        </div>
-        <div className="font-serif italic text-[18px] font-semibold" style={{ color: 'oklch(0.31 0.040 145)' }}>
-          Dosyayı buraya bırak
-        </div>
-        <div className="mt-1 text-[12.5px] text-ink-light">
-          veya <span className="text-forest underline font-semibold">bilgisayardan seç</span>
-        </div>
-        <div className="mt-3 flex gap-1.5 justify-center flex-wrap">
-          {['PDF', 'EPUB', 'DOCX'].map((f) => <Chip key={f}>{f}</Chip>)}
-        </div>
-        <div className="mt-2.5 text-[11px] text-ink-muted">
-          maks. 50 MB · birden fazla dosya
-        </div>
+        {files.length === 0 ? (
+          <>
+            <div className="w-[52px] h-[52px] mx-auto mb-2.5 rounded-full bg-forest/15 flex items-center justify-center">
+              <Upload size={22} className="text-forest" />
+            </div>
+            <div className="font-serif italic text-[18px] font-semibold" style={{ color: 'oklch(0.31 0.040 145)' }}>
+              Dosyayı buraya bırak
+            </div>
+            <div className="mt-1 text-[12.5px] text-ink-light">
+              veya <span className="text-forest underline font-semibold">bilgisayardan seç</span>
+            </div>
+            <div className="mt-3 flex gap-1.5 justify-center flex-wrap">
+              {['PDF', 'EPUB', 'DOCX'].map((f) => <Chip key={f}>{f}</Chip>)}
+            </div>
+            <div className="mt-2.5 text-[11px] text-ink-muted">
+              maks. 50 MB · birden fazla dosya · çoklu seçip "Grupla" ile cilt yapabilirsin
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-center gap-2 text-[12px] text-ink-light">
+            <Upload size={14} className="text-forest" />
+            Başka dosya eklemek için <span className="text-forest underline font-semibold">tıkla veya sürükle</span>
+          </div>
+        )}
       </div>
 
-      {items.length > 0 && (
+      {/* Action bar — appears when 2+ ungrouped selected */}
+      {selectedCount >= 2 && (
+        <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-forest/10 border border-forest/30 rounded-lg text-[12px]">
+          <BookCopy size={14} className="text-forest" />
+          <span className="flex-1 text-forest font-semibold">
+            {selectedCount} dosya seçili — çok ciltli bir esere ait mi?
+          </span>
+          <Button size="sm" onClick={openGroupForSelection}
+            className="bg-forest hover:bg-forest/90 text-white h-7 px-2.5 text-[11.5px]">
+            <BookCopy size={11} /> Grupla
+          </Button>
+        </div>
+      )}
+
+      {/* Groups list */}
+      {groups.length > 0 && (
         <div className="mt-4">
-          <Eyebrow>Sırada</Eyebrow>
-          {items.map((it, i) => (
-            <UploadRow key={i} item={it} onRemove={() => removeItem(i)} />
+          <Eyebrow>Cilt grupları</Eyebrow>
+          {groups.map((g) => (
+            <div key={g.id} className="flex items-center gap-3 px-3 py-2.5 bg-forest/8 border border-forest/25 rounded-lg mb-1.5">
+              <BookCopy size={16} className="text-forest flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-semibold text-ink truncate">{g.form.title || '(başlıksız)'}</div>
+                <div className="text-[11px] text-ink-muted mt-0.5">
+                  {g.form.authorSurname || '?'} {g.form.year ? `· ${g.form.year}` : ''} · {g.fileIds.length} cilt
+                </div>
+              </div>
+              <button onClick={() => openGroupForEdit(g)} className="text-[11px] text-forest underline px-2">Düzenle</button>
+              <button onClick={() => setGroups((p) => p.filter((x) => x.id !== g.id))}
+                className="p-1 text-ink-muted hover:text-ink"><X size={12} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Ungrouped files with checkboxes */}
+      {ungrouped.length > 0 && (
+        <div className="mt-4">
+          <Eyebrow>{groups.length > 0 ? 'Tek başına yüklenecek' : 'Dosyalar'}</Eyebrow>
+          {ungrouped.map((pf) => (
+            <FileRow
+              key={pf.id}
+              pf={pf}
+              selected={selectedIds.has(pf.id)}
+              onToggle={() => toggleSelect(pf.id)}
+              onRemove={() => removeFile(pf.id)}
+            />
           ))}
         </div>
       )}
 
       <FooterBar
-        hint={pendingCount > 0 ? `${pendingCount} dosya yüklenmeye hazır` : 'Künye otomatik çıkarılır'}
-        primary={uploadAll}
-        primaryLabel={uploading ? 'Yükleniyor…' : pendingCount > 0 ? 'Yükle ve ekle' : 'Tamam'}
+        hint={
+          files.length === 0 ? 'Künye otomatik çıkarılır'
+          : `${ungrouped.length} tek · ${groups.length} grup`
+        }
+        primary={handleUpload}
+        primaryLabel={uploading ? 'Yükleniyor…' : 'Yükle ve ekle'}
         onCancel={onClose}
-        loading={uploading || pendingCount === 0}
+        loading={uploading || files.length === 0}
       />
     </div>
   )
 }
 
-function UploadRow({ item, onRemove }: { item: FileItem; onRemove: () => void }) {
-  const sizeMB = (item.file.size / 1024 / 1024).toFixed(1)
-  const color = item.status === 'done' ? '#c14a3a' : item.status === 'error' ? '#c14a3a' : '#8a6a3d'
+function FileRow({ pf, selected, onToggle, onRemove }: {
+  pf: PendingFile; selected: boolean; onToggle: () => void; onRemove: () => void
+}) {
+  const sizeMB = (pf.file.size / 1024 / 1024).toFixed(1)
+  const ext = pf.file.name.split('.').pop()?.toUpperCase().slice(0, 4) ?? 'FILE'
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 bg-parchment-dark/40 border border-ink-muted/15 rounded-lg mb-1.5">
+    <label className={[
+      'flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1.5 border cursor-pointer transition',
+      selected ? 'bg-forest/8 border-forest/40' : 'bg-parchment-dark/40 border-ink-muted/15',
+    ].join(' ')}>
+      <input type="checkbox" checked={selected} onChange={onToggle}
+        className="w-4 h-4 accent-forest cursor-pointer" />
       <div className="w-8 h-10 rounded-sm flex items-end justify-center pb-1 text-white text-[9px] font-bold tracking-wider flex-shrink-0"
-        style={{ background: color }}>
-        {item.file.name.split('.').pop()?.toUpperCase().slice(0, 4)}
-      </div>
+        style={{ background: '#8a6a3d' }}>{ext}</div>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold text-ink truncate">{item.file.name}</div>
-        <div className="text-[11px] text-ink-muted mt-0.5">
-          {sizeMB} MB {item.error ? `· ${item.error}` : ''}
-        </div>
-        {item.status === 'uploading' && (
-          <div className="mt-1.5 h-[3px] bg-rule-soft rounded-sm overflow-hidden">
-            <div className="h-full bg-gold rounded-sm animate-pulse" style={{ width: '60%' }} />
-          </div>
+        <div className="text-[13px] font-semibold text-ink truncate">{pf.file.name}</div>
+        <div className="text-[11px] text-ink-muted mt-0.5">{sizeMB} MB</div>
+      </div>
+      <button onClick={(e) => { e.preventDefault(); onRemove() }}
+        className="p-1 text-ink-muted hover:text-ink" aria-label="Çıkar"><X size={12} /></button>
+    </label>
+  )
+}
+
+// In-tab overlay for editing a cilt group's parent metadata + per-file volume numbers.
+function GroupForm({
+  form, setForm, fileIds, fileById, volumes, setVolumes, labels, setLabels,
+  extracting, onCancel, onCommit, editing,
+}: {
+  form: Group['form']
+  setForm: React.Dispatch<React.SetStateAction<Group['form']>>
+  fileIds: string[]; fileById: Map<string, PendingFile>
+  volumes: Record<string, string>
+  setVolumes: React.Dispatch<React.SetStateAction<Record<string, string>>>
+  labels: Record<string, string>
+  setLabels: React.Dispatch<React.SetStateAction<Record<string, string>>>
+  extracting: boolean
+  onCancel: () => void; onCommit: () => void; editing: boolean
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 text-[12px] text-ink-light mb-3">
+        <button onClick={onCancel} className="inline-flex items-center gap-1 text-forest underline">
+          <X size={12} /> Geri
+        </button>
+        <span className="text-ink-muted">·</span>
+        <span className="font-serif italic">{editing ? 'Cilt grubunu düzenle' : 'Yeni cilt grubu'}</span>
+        {extracting && (
+          <span className="inline-flex items-center gap-1 text-gold-dark ml-auto">
+            <Loader2 size={11} className="animate-spin" /> künye çıkarılıyor…
+          </span>
         )}
       </div>
-      {item.status === 'done' && (
-        <span className="text-[11px] font-semibold text-[#3a7050] inline-flex items-center gap-1">
-          <BookOpen size={12} /> Sıraya alındı
-        </span>
-      )}
-      {item.status === 'error' && (
-        <span className="text-[11px] font-semibold text-[#c14a3a]">Hata</span>
-      )}
-      {item.status === 'pending' && (
-        <button onClick={onRemove} className="p-1 text-ink-muted hover:text-ink" aria-label="Çıkar">
-          <X size={12} />
-        </button>
-      )}
+
+      <Eyebrow>Ana eserin künyesi</Eyebrow>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Yazar soyadı" required>
+          <Input value={form.authorSurname} onChange={(e) => setForm((s) => ({ ...s, authorSurname: e.target.value }))} />
+        </Field>
+        <Field label="Yazar adı">
+          <Input value={form.authorName} onChange={(e) => setForm((s) => ({ ...s, authorName: e.target.value }))} />
+        </Field>
+      </div>
+      <div className="h-3" />
+      <Field label="Eser başlığı" required>
+        <Input value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} placeholder="örn. et-Tahrir ve't-Tenvir" />
+      </Field>
+      <div className="h-3" />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Yayıncı">
+          <Input value={form.publisher} onChange={(e) => setForm((s) => ({ ...s, publisher: e.target.value }))} />
+        </Field>
+        <Field label="Yıl">
+          <Input value={form.year} onChange={(e) => setForm((s) => ({ ...s, year: e.target.value }))} className="font-mono" />
+        </Field>
+      </div>
+
+      <Divider />
+
+      <Eyebrow>Ciltler ({fileIds.length})</Eyebrow>
+      <div className="space-y-1.5">
+        {fileIds.map((fid) => {
+          const pf = fileById.get(fid); if (!pf) return null
+          return (
+            <div key={fid} className="flex items-center gap-2 px-3 py-2 bg-parchment-dark/40 border border-ink-muted/15 rounded-lg">
+              <div className="w-7 h-9 rounded-sm flex items-end justify-center pb-1 text-white text-[9px] font-bold flex-shrink-0"
+                style={{ background: '#8a6a3d' }}>
+                {pf.file.name.split('.').pop()?.toUpperCase().slice(0, 4)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-semibold text-ink truncate">{pf.file.name}</div>
+              </div>
+              <Input type="number" min={1} placeholder="cilt #"
+                value={volumes[fid] ?? ''}
+                onChange={(e) => setVolumes((v) => ({ ...v, [fid]: e.target.value }))}
+                className="w-16 h-8 text-center font-mono text-[12px]" />
+              <Input placeholder="etiket (ops.)"
+                value={labels[fid] ?? ''}
+                onChange={(e) => setLabels((l) => ({ ...l, [fid]: e.target.value }))}
+                className="w-32 h-8 text-[12px]" />
+            </div>
+          )
+        })}
+      </div>
+
+      <FooterBar
+        hint="Her cilt için numara zorunlu; etiket isteğe bağlı"
+        primary={onCommit}
+        primaryLabel={editing ? 'Grubu güncelle' : 'Grup oluştur'}
+        onCancel={onCancel}
+      />
     </div>
   )
 }
