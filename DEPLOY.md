@@ -29,7 +29,7 @@ Assumptions: Ubuntu 22.04+, SSH access, sudo.
 ssh azureuser@<VM_IP>
 
 # 2. Run the bootstrap script (installs Docker, clones repo, seeds .env)
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/Mikbal34/writer_agent/main/scripts/deploy/vm-setup.sh)
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/Mikbal34/writer/main/scripts/deploy/vm-setup.sh)
 
 # 3. Edit .env with real secrets (copy from password manager)
 sudo nano /opt/quilpen/.env
