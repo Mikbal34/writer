@@ -8,9 +8,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2-dev \
     libxslt1-dev \
     tesseract-ocr \
-    tesseract-ocr-eng \
-    tesseract-ocr-tur \
-    tesseract-ocr-ara \
+    # ── Core academic OCR coverage (Tesseract is the cheap CPU path;
+    #    Surya only runs when Tesseract output looks suspect). Top-30
+    #    languages bias toward European + Cyrillic + Greek academic
+    #    corpora. Hard scripts (Arabic-family, CJK, Devanagari) go
+    #    straight to Surya, no Tesseract pack needed.
+    tesseract-ocr-eng tesseract-ocr-tur tesseract-ocr-ara \
+    # Latin Western Europe
+    tesseract-ocr-deu tesseract-ocr-fra tesseract-ocr-spa \
+    tesseract-ocr-ita tesseract-ocr-por tesseract-ocr-nld \
+    tesseract-ocr-cat \
+    # Latin Nordic
+    tesseract-ocr-swe tesseract-ocr-dan tesseract-ocr-nor \
+    tesseract-ocr-fin tesseract-ocr-isl \
+    # Latin Central / Eastern Europe
+    tesseract-ocr-pol tesseract-ocr-ces tesseract-ocr-slk \
+    tesseract-ocr-hun tesseract-ocr-ron tesseract-ocr-hrv \
+    tesseract-ocr-slv tesseract-ocr-lit tesseract-ocr-lav \
+    tesseract-ocr-est tesseract-ocr-sqi \
+    # Latin classical
+    tesseract-ocr-lat \
+    # Cyrillic
+    tesseract-ocr-rus tesseract-ocr-ukr tesseract-ocr-bul \
+    tesseract-ocr-srp tesseract-ocr-mkd \
+    # Greek
+    tesseract-ocr-ell \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

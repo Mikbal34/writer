@@ -37,9 +37,21 @@ _MIN_TEXT_CHARS = 30
 
 
 # Languages tesseract attempts in one pass. Multi-language costs ~30% on
-# CPU but is necessary because academic PDFs in this app routinely mix
-# Latin scripts with Turkish diacritics or Arabic transliteration.
-_OCR_LANGS = "eng+tur+ara"
+# Tesseract -l strings, chosen per detected script. Tesseract allows
+# multi-lang ("-l eng+deu+fra+..."); each language model is loaded once
+# and the engine picks per-character, so one pass handles a mixed
+# European corpus without re-running. Ordering puts English first as a
+# weak prior since most academic books carry some English.
+_LATIN_LANGS = (
+    "eng+deu+fra+spa+ita+por+nld+cat+swe+dan+nor+fin+isl+pol+"
+    "ces+slk+hun+ron+hrv+slv+lit+lav+est+sqi+lat+tur"
+)
+_CYRILLIC_LANGS = "rus+ukr+bul+srp+mkd"
+_GREEK_LANGS = "ell"
+# Fallback for undetermined script — includes ara so an Arabic doc
+# whose OSD failed isn't starved (Surya still carries it via the
+# coverage net below).
+_OCR_LANGS = _LATIN_LANGS + "+ara"
 
 # Cap parallelism so we don't OOM Railway. Each worker holds one
 # 300-DPI page bitmap (≈30-60 MB for a typical academic page) plus a
@@ -56,11 +68,24 @@ _OCR_WORKERS = max(1, int(os.environ.get("OCR_WORKERS", "2")))
 # existing Tesseract path, so no GPU == no behaviour change.
 _SURYA_OCR_URL = os.environ.get("SURYA_OCR_URL", "").strip()
 _SURYA_OCR_SECRET = os.environ.get("OCR_SERVICE_SECRET", "").strip()
-# Latin bad-scan safety net: if mean Tesseract word confidence over the
-# OCR'd pages drops below this, the doc is re-OCR'd via Surya.
+# Latin bad-scan safety nets. Two signals together catch what
+# confidence alone missed (the van-Ess failure: high conf on a tiny
+# set of words while 90% of the page was lost):
+#   * conf      — mean Tesseract word confidence over OCR'd pages
+#   * coverage  — mean (extracted_chars / expected_chars_per_page)
+# Either falling below its threshold escalates the whole doc to Surya.
 _OCR_CONF_THRESHOLD = float(os.environ.get("OCR_CONF_THRESHOLD", "60"))
+_OCR_MIN_COVERAGE = float(os.environ.get("OCR_MIN_COVERAGE", "0.30"))
+_EXPECTED_CHARS_PER_PAGE = float(os.environ.get("OCR_EXPECTED_CHARS_PER_PAGE", "800"))
 # Tesseract OSD script names we route to Surya instead of Tesseract.
 _HARD_SCRIPTS = {"Arabic", "Hebrew", "Thaana", "Syriac"}
+# OSD script → Tesseract -l string. Anything not listed falls back to
+# the comprehensive _OCR_LANGS default; hard scripts skip Tesseract.
+_SCRIPT_LANGS = {
+    "Latin": _LATIN_LANGS,
+    "Cyrillic": _CYRILLIC_LANGS,
+    "Greek": _GREEK_LANGS,
+}
 
 
 def _sample_indices(page_count: int, sample: int) -> list[int]:
@@ -446,10 +471,12 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
         # needing — pure native-text PDFs skip this entirely.
         #
         # Tiered routing (all Surya use gated behind SURYA_OCR_URL):
-        #   • hard script (Arabic, …)        → Surya (whole doc, one call)
-        #   • Latin                          → Tesseract (eng+tur) + conf
-        #       └─ mean conf < threshold     → escalate whole doc to Surya
-        #   • Surya unconfigured / failed    → Tesseract eng+tur+ara
+        #   • hard script (Arabic-family)    → Surya (whole doc, one call)
+        #   • Latin / Cyrillic / Greek       → Tesseract with the
+        #       script-matched -l string (e.g. 26-lang European set for
+        #       Latin), then BOTH conf + coverage are checked.
+        #       └─ low conf OR low coverage  → escalate whole doc to Surya
+        #   • Surya unconfigured / failed    → Tesseract _OCR_LANGS default
         ocr_texts: dict[int, str] = {}
         if use_ocr:
             pages_to_ocr = [
@@ -469,20 +496,31 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
                 if surya_text is not None:
                     ocr_texts = {p: surya_text.get(p, "") for p in pages_to_ocr}
                 else:
-                    # Tesseract path. Narrow to eng+tur ONLY when we
-                    # positively detected Latin — undetermined script keeps
-                    # the full set so an Arabic doc whose OSD failed isn't
-                    # starved of 'ara' (and Surya carries it via the conf net).
-                    positively_latin = script is not None and not hard
-                    langs = "eng+tur" if positively_latin else _OCR_LANGS
+                    # Tesseract path. Pick the lang set per detected
+                    # script; fall back to the comprehensive default
+                    # when OSD was undetermined.
+                    langs = _SCRIPT_LANGS.get(script, _OCR_LANGS)
                     ocr_texts, doc_conf = _parallel_ocr_conf(
                         file_path, pages_to_ocr, langs
                     )
-                    # Latin / undetermined bad scan → escalate whole doc.
-                    if not hard and doc_conf < _OCR_CONF_THRESHOLD:
+                    # Coverage signal — caught van Ess's failure mode
+                    # where Tesseract returned a tiny but confident
+                    # word set while losing 90% of the page text.
+                    text_lens = [
+                        len((ocr_texts.get(p) or "").strip())
+                        for p in pages_to_ocr
+                    ]
+                    mean_len = (sum(text_lens) / len(text_lens)) if text_lens else 0
+                    coverage = mean_len / _EXPECTED_CHARS_PER_PAGE
+                    if not hard and (
+                        doc_conf < _OCR_CONF_THRESHOLD
+                        or coverage < _OCR_MIN_COVERAGE
+                    ):
                         print(
-                            f"[pdf_extractor] Latin OCR conf {doc_conf:.0f} < "
-                            f"{_OCR_CONF_THRESHOLD:.0f}, escalating to Surya"
+                            f"[pdf_extractor] {script or 'unknown'} OCR weak: "
+                            f"conf={doc_conf:.0f}/{_OCR_CONF_THRESHOLD:.0f} "
+                            f"coverage={coverage:.2f}/{_OCR_MIN_COVERAGE:.2f} — "
+                            f"escalating to Surya"
                         )
                         esc = _ocr_via_surya(file_path)
                         if esc is not None:
