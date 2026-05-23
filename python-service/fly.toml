@@ -26,8 +26,10 @@ primary_region = "fra"
   auto_start_machines = true
   min_machines_running = 1
 
-# BGE-M3 needs RAM (model ~2GB + torch). 4GB on a perf vCPU is the
-# day-1 floor; scale up if latency suffers.
+# performance-4x = 4 vCPU + 16 GB. Drives parallel-page OCR (4 workers
+# per machine via OCR_WORKERS=4) and gives BGE-M3 + concurrent OCR
+# sessions enough RAM headroom that one big upload won't OOM-kill the
+# service. 2 machines × 4 workers = 8 parallel pages cluster-wide.
 [[vm]]
-  size = "performance-2x"
-  memory = "8gb"
+  size = "performance-4x"
+  memory = "16gb"

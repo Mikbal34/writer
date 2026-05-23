@@ -72,12 +72,18 @@ _GREEK_LANGS = "ell"
 # coverage net below).
 _OCR_LANGS = _LATIN_LANGS_EXTENDED + "+ara"
 
-# Cap parallelism so we don't OOM Railway. Each worker holds one
-# 300-DPI page bitmap (≈30-60 MB for a typical academic page) plus a
-# tesseract process. The default 2 fit comfortably on a small Railway
-# plan; bump via OCR_WORKERS when the host has more headroom. We saw a
-# 4-worker pool OOM on a 37 MB Arabic book — 2 is the safer floor.
-_OCR_WORKERS = max(1, int(os.environ.get("OCR_WORKERS", "2")))
+# Worker count = min(cpu_count, 4). performance-4x has 4 vCPU so the
+# pool can saturate the machine; smaller boxes fall back automatically.
+# Each worker holds one 300-DPI page bitmap (~30-60 MB) plus a
+# Tesseract process. With CORE 8-lang Tesseract (~400 MB per process)
+# + BGE-M3 (~1.5 GB), 4 workers on 16 GB leaves ~10 GB headroom for
+# concurrent OCR + embed requests without OOM. Override via OCR_WORKERS.
+try:
+    import multiprocessing as _mp
+    _DEFAULT_OCR_WORKERS = min(4, max(1, (_mp.cpu_count() or 2)))
+except Exception:
+    _DEFAULT_OCR_WORKERS = 2
+_OCR_WORKERS = max(1, int(os.environ.get("OCR_WORKERS", str(_DEFAULT_OCR_WORKERS))))
 
 # ── Tiered OCR routing ───────────────────────────────────────────────
 # Tesseract stays the primary engine for Latin scripts (the majority).
