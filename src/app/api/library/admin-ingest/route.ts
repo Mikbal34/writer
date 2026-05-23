@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
           .catch((e) => console.error("[admin-ingest] OCR ingest failed", entry.id, e));
       });
     } else {
-      await enqueueIngest({ kind: "entry", entryId: entry.id, filename: (file as File).name });
+      await enqueueIngest({ kind: "entry", entryId: entry.id, filename: (file as File).name }, { batch: true });
     }
     return NextResponse.json({ entryId: entry.id, ocr: Boolean(ocrPages) });
   }
@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
         .catch((e) => console.error("[admin-ingest] volume OCR ingest failed", volume.id, e));
     });
   } else {
-    await enqueueIngest({ kind: "volume", entryId: entryId!, volumeId: volume.id, filename: (file as File).name });
+    await enqueueIngest({ kind: "volume", entryId: entryId!, volumeId: volume.id, filename: (file as File).name }, { batch: true });
   }
   return NextResponse.json({ entryId, volumeId: volume.id, volumeNumber, ocr: Boolean(ocrPages) });
 }

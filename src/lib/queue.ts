@@ -57,12 +57,25 @@ export function ingestQueue(): Queue<IngestJob> {
 /**
  * Enqueue an ingest job. jobId is derived from the target so a duplicate
  * enqueue (double-click, retry) dedupes instead of processing twice.
+ *
+ * `priority` semantics (BullMQ: smaller = higher priority):
+ *   • interactive uploads (default)      → priority 1 (front of queue)
+ *   • bulk imports / batch ops           → priority 10 via { batch: true }
+ * This keeps a user's freshly-uploaded book from waiting behind a 500-
+ * row admin Zotero sync.
  */
-export async function enqueueIngest(job: IngestJob, opts: JobsOptions = {}) {
-  // BullMQ custom job ids may not contain ':'.
+export async function enqueueIngest(
+  job: IngestJob,
+  opts: JobsOptions & { batch?: boolean } = {},
+) {
   const jobId =
     job.kind === 'volume' ? `vol_${job.volumeId}`
     : job.kind === 'enrich' ? `enrich_${job.entryId}`
     : `entry_${job.entryId}`
-  return ingestQueue().add(job.kind, job, { jobId, ...opts })
+  const { batch, priority, ...rest } = opts
+  return ingestQueue().add(job.kind, job, {
+    jobId,
+    priority: priority ?? (batch ? 10 : 1),
+    ...rest,
+  })
 }

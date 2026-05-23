@@ -145,12 +145,15 @@ export async function POST(req: NextRequest) {
     // Re-run on an existing cilt: clear its chunks so the worker
     // re-extracts the replaced bytes instead of resuming a stale embed.
     await prisma.libraryChunk.deleteMany({ where: { volumeId } })
-    await enqueueIngest({
-      kind: 'volume',
-      entryId,
-      volumeId,
-      filename: file.name || `cilt-${volumeNumber}.pdf`,
-    })
+    await enqueueIngest(
+      {
+        kind: 'volume',
+        entryId,
+        volumeId,
+        filename: file.name || `cilt-${volumeNumber}.pdf`,
+      },
+      { batch: true },
+    )
 
     return NextResponse.json({ volumeId, volumeNumber })
   } catch (err) {

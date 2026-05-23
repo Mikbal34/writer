@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
                     where: { id: entryId },
                     data: { pdfStatus: 'queued', pdfError: null, filePath },
                   })
-                  await enqueueIngest({ kind: 'entry', entryId, filename: safeFilename })
+                  await enqueueIngest({ kind: 'entry', entryId, filename: safeFilename }, { batch: true })
                   filesQueued++
                 }
               }

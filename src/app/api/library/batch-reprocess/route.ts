@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
       where: { id: entry.id },
       data: { pdfStatus: "queued", pdfError: null },
     });
-    await enqueueIngest({ kind: "entry", entryId: entry.id });
+    await enqueueIngest({ kind: "entry", entryId: entry.id }, { batch: true });
     triggered++;
   }
 
