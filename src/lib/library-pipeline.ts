@@ -67,10 +67,14 @@ const VALID_ENTRY_TYPES = new Set(Object.values(EntryType))
 // false ceiling that killed cilt 1.
 const PROCESS_FETCH_TIMEOUT_MS = 30 * 60 * 1000
 // BGE-M3 dense encoding of a 100-chunk batch on CPU can take 1–3
-// minutes for long academic chunks. 2 minutes was too tight (smoke-test
-// confirmed) — bump to 5 to absorb the worst case without firing false
-// failures that retry the whole batch.
-const EMBED_FETCH_TIMEOUT_MS = 5 * 60 * 1000
+// minutes when python-service has the CPU to itself. When python is
+// concurrently running OCR (the common case during multi-cilt
+// uploads), /embed gets sliced for CPU and a single batch can run
+// 5-10 min. The 5-min cap was firing false timeouts on healthy
+// embeds — Python actually replied 27 s after the worker aborted.
+// 15 min is the realistic worst case under load; use the long
+// dispatcher so Node's own 5-min headersTimeout doesn't undercut us.
+const EMBED_FETCH_TIMEOUT_MS = 15 * 60 * 1000
 // Number of front pages to stitch into extractedText for the
 // bibliography-enrichment Haiku call. Matches python-service/routers/
 // process.py's _BIB_PAGES so prompts behave identically across paths.
@@ -703,11 +707,12 @@ async function setVolumeStatus(
 
 async function embedBatch(texts: string[]): Promise<number[][] | null> {
   try {
-    const res = await fetch(`${PYTHON_SERVICE_URL}/embed`, {
+    const res = await undiciFetch(`${PYTHON_SERVICE_URL}/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ texts }),
       signal: AbortSignal.timeout(EMBED_FETCH_TIMEOUT_MS),
+      dispatcher: _longOcrDispatcher,
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
