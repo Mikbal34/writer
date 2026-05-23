@@ -94,6 +94,9 @@ export async function POST(req: NextRequest) {
         pdfStatus: 'queued',
         fileType,
         keywords: [],
+        // uploadSizeBytes lets the processing-ETA helper give
+        // size-aware estimates without a schema migration.
+        metadata: { uploadSizeBytes: file.size },
       },
       select: { id: true, title: true, pdfStatus: true },
     })

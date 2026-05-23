@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Pencil, Trash2, Link2, FileCheck, CheckCircle2, Download, ExternalLink, BookOpen, BookCopy, Upload, AlertTriangle, Loader2, RotateCw, Search as SearchIcon, ChevronDown, ChevronRight, X, GraduationCap, Users, Link as LinkIcon, Globe, FileText, FolderClosed } from "lucide-react";
+import { processingEta, type ProcessingStatus } from "@/lib/processing-eta";
 import { StaggerItem, FadeUpLarge } from "@/components/shared/Animations";
 import { toast } from "sonner";
 import VolumesDialog from "@/components/library/VolumesDialog";
@@ -90,9 +91,16 @@ export interface LibraryEntryRow {
  tags: Array<{ tag: { id: string; name: string } }>;
  _count?: { bibliographies: number; volumes?: number; notes?: number; collections?: number };
  /** Per-volume statuses — used to render an aggregate badge on
-  *  multi-volume parents (which carry no pdfStatus of their own). */
- volumes?: Array<{ pdfStatus: string }>;
- /** Multi-volume hint from Haiku enrichment + dismissal flag. */
+  *  multi-volume parents (which carry no pdfStatus of their own).
+  *  id/createdAt/volumeNumber feed the inline ETA badge. */
+ volumes?: Array<{
+   id: string;
+   pdfStatus: string;
+   createdAt?: string;
+   volumeNumber?: number;
+ }>;
+ /** Multi-volume hint from Haiku enrichment + dismissal flag.
+  *  uploadSizeBytes drives the inline ETA estimate. */
  metadata?: {
   volumeHint?: {
    volumeNumber: number;
@@ -100,7 +108,9 @@ export interface LibraryEntryRow {
    volumeLabel?: string | null;
   };
   volumeHintDismissed?: boolean;
+  uploadSizeBytes?: number;
  } | null;
+ createdAt?: string;
 }
 
 interface LibraryEntryTableProps {
@@ -538,10 +548,18 @@ export default function LibraryEntryTable({
         const vols = entry.volumes ?? [];
         const total = vols.length || (entry._count?.volumes ?? 0);
         const failed = vols.filter((v) => v.pdfStatus === "failed").length;
-        const inProgress = vols.filter((v) =>
-         ["pending", "downloading", "extracting", "embedding"].includes(v.pdfStatus),
-        ).length;
+        const inProgressVols = vols.filter((v) =>
+         ["pending", "downloading", "extracting", "embedding", "queued"].includes(v.pdfStatus),
+        );
+        const inProgress = inProgressVols.length;
         const ready = vols.filter((v) => v.pdfStatus === "ready").length;
+        // Oldest in-flight cilt → its ETA is the longest remaining wait.
+        const oldest = inProgressVols
+          .filter((v) => v.createdAt)
+          .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''))[0];
+        const aggregateEta = oldest?.createdAt
+          ? processingEta(oldest.pdfStatus as ProcessingStatus, null, oldest.createdAt)
+          : null;
         if (failed > 0) {
          return (
           <span
@@ -557,10 +575,15 @@ export default function LibraryEntryTable({
          return (
           <span
            title={`${inProgress}/${total} cilt işleniyor`}
-           className="shrink-0 inline-flex items-center gap-1 text-ink-light font-ui text-[10px]"
+           className="shrink-0 inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-sm bg-gold/10 text-gold-dark text-[10.5px] font-medium"
           >
            <Loader2 className="h-3 w-3 animate-spin" />
-           {ready}/{total}
+           <span className="font-mono">{ready}/{total}</span>
+           {aggregateEta && (
+            <span className="font-normal italic">
+             · {aggregateEta.label} · ~{aggregateEta.remainingMin} dk
+            </span>
+           )}
           </span>
          );
         }
@@ -580,10 +603,31 @@ export default function LibraryEntryTable({
        <span title="RAG için hazır" className="shrink-0 text-forest-light">
         <FileCheck className="h-3.5 w-3.5" />
        </span>
-      ) : ["downloading", "pending", "extracting", "embedding"].includes(entry.pdfStatus ?? "") ? (
-       <span title={`İşleniyor: ${entry.pdfStatus}`} className="shrink-0 text-ink-light">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-       </span>
+      ) : ["downloading", "pending", "extracting", "embedding", "queued"].includes(entry.pdfStatus ?? "") ? (
+       (() => {
+        const eta = entry.createdAt
+          ? processingEta(
+              entry.pdfStatus as ProcessingStatus,
+              entry.metadata?.uploadSizeBytes ?? null,
+              entry.createdAt,
+            )
+          : null
+        return (
+          <span
+            title={`İşleniyor: ${entry.pdfStatus}`}
+            className="shrink-0 inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-sm bg-gold/10 text-gold-dark text-[10.5px] font-medium"
+          >
+            <Loader2 className="h-3 w-3 animate-spin" />
+            {eta ? (
+              <span className="font-normal italic">
+                {eta.label} · <span className="font-mono">~{eta.remainingMin} dk</span>
+              </span>
+            ) : (
+              <span className="font-normal italic">{entry.pdfStatus}</span>
+            )}
+          </span>
+        )
+       })()
       ) : entry.pdfStatus === "failed" ? (
        <div className="flex items-center gap-1 shrink-0">
         <button

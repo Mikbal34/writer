@@ -77,7 +77,9 @@ export async function GET(req: NextRequest) {
           },
           // pdfStatus per volume powers the aggregate badge on
           // multi-volume parent rows (no per-row `pdfStatus` of its own).
-          volumes: { select: { pdfStatus: true } },
+          // createdAt + volumeNumber + id flow into the inline ETA badge
+          // so the user sees "cilt 2 · metin çıkarılıyor · ~10 dk".
+          volumes: { select: { id: true, pdfStatus: true, createdAt: true, volumeNumber: true } },
         },
         orderBy,
         skip,

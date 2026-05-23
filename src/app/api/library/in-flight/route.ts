@@ -22,7 +22,10 @@ export async function GET() {
     const [entries, volumes] = await Promise.all([
       prisma.libraryEntry.findMany({
         where: { userId: uid, pdfStatus: { in: IN_FLIGHT as unknown as string[] } },
-        select: { id: true, title: true, authorSurname: true, pdfStatus: true, createdAt: true },
+        select: {
+          id: true, title: true, authorSurname: true, pdfStatus: true,
+          createdAt: true, metadata: true,
+        },
         orderBy: { createdAt: 'desc' },
         take: 20,
       }),
@@ -40,22 +43,33 @@ export async function GET() {
       }),
     ])
 
+    // uploadSizeBytes lives in the metadata JSON (zero schema change).
+    const sizeFrom = (m: unknown): number | null => {
+      if (!m || typeof m !== 'object') return null
+      const v = (m as Record<string, unknown>).uploadSizeBytes
+      return typeof v === 'number' ? v : null
+    }
+
     return NextResponse.json({
       count: entries.length + volumes.length,
       entries: entries.map((e) => ({
+        kind: 'entry' as const,
         id: e.id,
         title: e.title,
         authorSurname: e.authorSurname,
         status: e.pdfStatus,
-        kind: 'entry' as const,
+        createdAt: e.createdAt.toISOString(),
+        sizeBytes: sizeFrom(e.metadata),
       })),
       volumes: volumes.map((v) => ({
+        kind: 'volume' as const,
         id: v.id,
         parentId: v.libraryEntry.id,
         parentTitle: v.libraryEntry.title,
         volumeNumber: v.volumeNumber,
         status: v.pdfStatus,
-        kind: 'volume' as const,
+        createdAt: v.createdAt.toISOString(),
+        sizeBytes: null as number | null, // volumes have no metadata column yet
       })),
     })
   } catch (err) {
