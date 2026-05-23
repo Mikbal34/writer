@@ -26,10 +26,12 @@ primary_region = "fra"
   auto_start_machines = true
   min_machines_running = 1
 
-# performance-4x = 4 vCPU + 16 GB. Drives parallel-page OCR (4 workers
-# per machine via OCR_WORKERS=4) and gives BGE-M3 + concurrent OCR
-# sessions enough RAM headroom that one big upload won't OOM-kill the
-# service. 2 machines × 4 workers = 8 parallel pages cluster-wide.
+# performance-2x = 2 vCPU + 8 GB. RAM math (per machine):
+# 2 OCR procs × 400 MB (CORE 8-lang) + BGE-M3 1.5 GB + base ~1 GB
+# = ~3 GB working set on 8 GB, comfortable headroom. Old 30-lang
+# Tesseract was the OOM trigger; CORE 8-lang fix lets us run on the
+# smaller box without risk. Bump back to performance-4x if real-world
+# multi-concurrent uploads ever surface memory pressure again.
 [[vm]]
-  size = "performance-4x"
-  memory = "16gb"
+  size = "performance-2x"
+  memory = "8gb"
