@@ -49,6 +49,7 @@ import { toast } from "sonner";
 import LibraryEntryForm from "@/components/library/LibraryEntryForm";
 import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import PdfDropZone from "@/components/library/PdfDropZone";
+import { AddSourceDialog } from "@/components/library/AddSourceDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
 import VolumeHintBanner from "@/components/library/VolumeHintBanner";
 import FolderChips, {
@@ -105,6 +106,7 @@ export default function LibraryPage() {
 
   // Dialogs
   const [showEntryDialog, setShowEntryDialog] = useState(false);
+  const [showAddSource, setShowAddSource] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LibraryEntryRow | null>(null);
   const [showBibtexDialog, setShowBibtexDialog] = useState(false);
   const [showZoteroPanel, setShowZoteroPanel] = useState(false);
@@ -389,10 +391,7 @@ export default function LibraryPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setEditingEntry(null);
-                    setShowEntryDialog(true);
-                  }}
+                  onClick={() => setShowAddSource(true)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-gold text-white font-ui text-[13px] font-semibold hover:bg-gold-hover transition-colors shadow-[0_4px_12px_rgba(0,0,0,0.25)]"
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -592,7 +591,14 @@ export default function LibraryPage() {
         )}
       </div>
 
-      {/* Entry Form Dialog */}
+      {/* New unified add-source modal — 3 tabs (ISBN, manuel, dosya) */}
+      <AddSourceDialog
+        open={showAddSource}
+        onOpenChange={setShowAddSource}
+        onAdded={() => { fetchEntries() }}
+      />
+
+      {/* Entry Form Dialog (edit-existing — kept until new modal also covers editing) */}
       <Dialog
         open={showEntryDialog}
         onOpenChange={(open) => {

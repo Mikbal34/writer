@@ -21,7 +21,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { prisma } from '@/lib/db'
 import { findPdf } from '@/lib/pdf-finder'
-import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
+import { generateJSONWithUsage, HAIKU, SONNET } from '@/lib/claude'
+import { lookupByText, type BiblioHit } from '@/lib/biblio-lookup'
 import { deductCredits } from '@/lib/credits'
 import { extractPdfPages } from '@/lib/pdf-extract'
 import { chunkByPage } from '@/lib/chunker'
@@ -73,7 +74,7 @@ const BIB_PAGES = 10
  * uses, so chunks match the visible text 1:1 and the AI-quote
  * highlighter actually finds its target.
  */
-async function extractPdfLocalAsProcessResponse(
+export async function extractPdfLocalAsProcessResponse(
   bytes: Buffer,
   sourceId: string,
 ): Promise<ProcessResponse | null> {
@@ -152,14 +153,136 @@ export async function extractMetadataFromText(
   data: PdfMetadataExtraction
   inputTokens: number
   outputTokens: number
+  source: 'doi' | 'isbn' | 'haiku'
 }> {
-  const result = await generateJSONWithUsage<PdfMetadataExtraction>(
-    `Analyze the text extracted from the first pages of the following document and return bibliography metadata plus an abstract as JSON.
+  // Deterministic first: a DOI/ISBN in the text gives canonical
+  // metadata in ms — better than the LLM and free. Only fall back to
+  // Haiku when the document has no identifier or the lookup misses.
+  try {
+    const hit = await lookupByText(text)
+    if (hit && hit.title) {
+      return {
+        data: {
+          entryType: hit.entryType ?? null,
+          authorSurname: hit.authorSurname ?? null,
+          authorName: hit.authorName ?? null,
+          title: hit.title ?? null,
+          editor: null,
+          translator: null,
+          publisher: hit.publisher ?? null,
+          publishPlace: hit.publishPlace ?? null,
+          year: hit.year ?? null,
+          volume: null,
+          edition: null,
+          journalName: hit.journalName ?? null,
+          journalVolume: hit.journalVolume ?? null,
+          journalIssue: hit.journalIssue ?? null,
+          pageRange: hit.pageRange ?? null,
+          doi: hit.doi ?? null,
+          url: hit.url ?? null,
+          abstract: null,
+          keywords: null,
+          volumeNumber: null,
+          parentWork: null,
+          volumeLabel: null,
+        } as PdfMetadataExtraction,
+        inputTokens: 0,
+        outputTokens: 0,
+        source: hit.source,
+      }
+    }
+  } catch (err) {
+    console.warn('[library-pipeline] preview biblio lookup failed:', err)
+  }
 
-Text:
+  // Fallback: Haiku on a smart cover window (same prompt the worker
+  // enrich uses, so preview and final result match).
+  const result = await generateJSONWithUsage<PdfMetadataExtraction>(
+    buildEnrichPrompt(pickCoverWindow(text, 8000)),
+    'You are a bibliography extraction assistant. Respond with valid JSON only.',
+    { model: HAIKU },
+  )
+  return {
+    data: result.data,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    source: 'haiku',
+  }
+}
+
+// ── Metadata enrichment helpers ─────────────────────────────────────
+
+/**
+ * Scan front pages for the metadata-rich one (cover/copyright/edition)
+ * and stitch up to `maxChars` worth of text starting from it. The naïve
+ * `text.slice(0, 8000)` regularly missed the copyright page on books
+ * with long dedications / front matter, starving Haiku of the only
+ * page that actually carries publisher + year + ISBN.
+ */
+function pickCoverWindow(text: string, maxChars = 8000): string {
+  const pages = text.split(/\n\n---\n\n/)
+  if (pages.length <= 1) return text.slice(0, maxChars)
+  // Multilingual signals — anything that screams "this is the
+  // colophon/title page", regardless of corpus language.
+  const SIGNALS = /©|copyright|isbn\b|verlag\b|yayınev|yayın yeri|publisher|published by|first published|first edition|all rights reserved|tüm hakları|دار النشر|الطبعة|première édition|maison d'édition|издательство|первое издание/gi
+  const scored = pages.map((p, idx) => {
+    const matches = (p.match(SIGNALS) || []).length
+    // Bonus for early pages — copyright + title are nearly always in
+    // the first five front-matter pages.
+    const earlyBonus = idx < 5 ? (5 - idx) * 0.5 : 0
+    return { idx, page: p, score: matches + earlyBonus }
+  })
+  scored.sort((a, b) => b.score - a.score)
+  // Always pull the first 3 (cover / inner title / verso) plus the
+  // top-scoring outliers, deduped + page-ordered.
+  const picked = new Set<number>([0, 1, 2].filter((i) => i < pages.length))
+  for (const s of scored) {
+    if (picked.size >= 5) break
+    picked.add(s.idx)
+  }
+  const ordered = Array.from(picked).sort((a, b) => a - b)
+  let out = ''
+  for (const i of ordered) {
+    const sep = out ? '\n\n---\n\n' : ''
+    const room = maxChars - out.length - sep.length
+    if (room <= 0) break
+    out += sep + pages[i].slice(0, room)
+  }
+  return out
+}
+
+/**
+ * Treat upload placeholders as empty so the extractor can overwrite
+ * them. The upload routes seed authorSurname with "(Yükleme abc12345)"
+ * / "(test ...)" and title with "Adlandırılmamış" — those should never
+ * survive a successful Haiku/DOI pass even on non-pdf-upload sources.
+ */
+function isPlaceholderField(key: string, value: unknown): boolean {
+  if (value == null) return true
+  const s = String(value).trim()
+  if (!s) return true
+  if (key === 'authorSurname' && /^\((?:Yükleme|test|faz)/i.test(s)) return true
+  if (key === 'title' && (s === 'Adlandırılmamış' || /^__FAZ\d/.test(s))) return true
+  return false
+}
+
+const _PROMPT_RULES_HEADER = `Look for these terms when extracting the publisher / place / year (multilingual hints):
+  • English: Publisher, Published by, First published, Edition, Copyright
+  • Turkish: Yayınevi, Yayın Yeri, Baskı, Tüm hakları saklıdır
+  • German:  Verlag, Erste Auflage, Auflage, Erstausgabe
+  • Arabic:  دار النشر، الطبعة، مكان النشر
+  • French:  Éditeur, Première édition, Maison d'édition
+  • Russian: Издательство, Первое издание`
+
+function buildEnrichPrompt(coverText: string): string {
+  return `Analyze the text from the front pages (cover / title / copyright) of the following document and return bibliography metadata plus an abstract as JSON.
+
+Front pages:
 ---
-${text.slice(0, 8000)}
+${coverText}
 ---
+
+${_PROMPT_RULES_HEADER}
 
 Return in this JSON format:
 {
@@ -180,26 +303,20 @@ Return in this JSON format:
   "pageRange": "Page range or null",
   "doi": "DOI or null",
   "url": "URL or null",
-  "abstract": null,
-  "keywords": null,
-  "volumeNumber": integer (1, 2, 3, ...) IF this document is one volume of a multi-volume work; otherwise null,
-  "parentWork": "Title of the parent multi-volume work — ONLY when volumeNumber is set",
-  "volumeLabel": "Subtitle of this specific volume — ONLY when volumeNumber is set"
+  "abstract": "Concise abstract / summary (150-300 words) in the document's original language. Use the formal abstract verbatim when present; otherwise summarize the first pages.",
+  "keywords": ["up to 6 subject keywords derived from the text"] or null,
+  "volumeNumber": integer (1, 2, 3, ...) IF this PDF is one volume of a multi-volume work — look for explicit markers like "Cilt 2", "Volume II", "الجزء الثاني", "Tome 2", "Bd. 3"; otherwise null,
+  "parentWork": "Title of the parent multi-volume work ONLY when volumeNumber is also set; otherwise null",
+  "volumeLabel": "Subtitle of this specific volume ONLY when volumeNumber is also set; otherwise null"
 }
 
 Rules:
-- Leave fields you cannot extract as null. Use null for abstract/keywords (preview mode skips them).
-- Determine entryType from the document style.
+- Leave fields you cannot extract as null.
+- Determine entryType from the document style (academic article → "makale", book → "kitap").
 - If no clear author is found, use "Unknown".
-- Return ONLY the JSON, no commentary.`,
-    'You are a bibliography extraction assistant. Respond with valid JSON only.',
-    { model: HAIKU }
-  )
-  return {
-    data: result.data,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-  }
+- Be CONSERVATIVE about volumeNumber/parentWork — only when explicit markers appear. A "Volume 2 Issue 3" of a journal is NOT a parent-work volume; that's journalVolume.
+- Abstract must be in the document's original language.
+- Return ONLY the JSON, no commentary.`
 }
 
 /**
@@ -239,158 +356,183 @@ export async function enrichLibraryEntryFromPdfText(
       abstract: true,
       keywords: true,
       importSource: true,
+      metadata: true,
     },
   })
   if (!entry) return
 
-  // For drag-drop uploads the title/authorSurname are placeholders
-  // derived from the filename — always overwrite with whatever the
-  // PDF text actually says. For lit-search / Zotero / BibTeX entries
-  // the existing metadata is canonical, so we still preserve it.
-  const isUpload = entry.importSource === 'pdf-upload'
+  // Source tier:
+  //   FRESH (pdf-upload / admin-ingest / e2e tests) → fields are
+  //     placeholders, overwrite anything we extract.
+  //   non-fresh (lit-search / Zotero / BibTeX) → existing data is
+  //     canonical; only overwrite if the current value LOOKS like a
+  //     placeholder (e.g. "(Yükleme ...)" surname from a fallback path).
+  const FRESH_SOURCES = new Set(['pdf-upload', 'admin-ingest', 'faz2-test', 'faz4-e2e'])
+  const isFresh = FRESH_SOURCES.has(entry.importSource ?? '')
+
+  type EnrichSource = 'doi' | 'isbn' | 'haiku' | 'haiku+sonnet' | null
+  let source: EnrichSource = null
+  let enrichError: string | null = null
+
+  // ── 1. Deterministic lookup (DOI → Crossref / ISBN → OpenLibrary) ──
+  let biblio: BiblioHit | null = null
+  try {
+    biblio = await lookupByText(text)
+    if (biblio) source = biblio.source
+  } catch (err) {
+    console.warn('[library-pipeline] biblio lookup failed:', err)
+  }
+
+  // ── 2. Haiku on the SMART cover window when biblio missed critical
+  //    fields. Sonnet escalates if Haiku still can't fill them. ──
+  let llm: PdfMetadataExtraction | null = null
+  const haikuNeeded = !biblio?.title || !biblio?.authorSurname
+  if (haikuNeeded) {
+    try {
+      const cover = pickCoverWindow(text, 8000)
+      const haikuRes = await generateJSONWithUsage<PdfMetadataExtraction>(
+        buildEnrichPrompt(cover),
+        'You are a bibliography + abstract extraction assistant. Respond with valid JSON only.',
+        { model: HAIKU },
+      )
+      deductCredits(
+        entry.userId, 'source_upload_extract',
+        haikuRes.inputTokens, haikuRes.outputTokens, 'haiku',
+        { libraryEntryId: entryId },
+      ).catch((e) => console.error('[library-pipeline] credit deduction failed:', e))
+      llm = haikuRes.data
+      source = source ?? 'haiku'
+
+      // Sonnet escalation: Haiku regularly leaves "Unknown" / null on
+      // older monographs or non-English covers. One Sonnet retry on the
+      // same cover window usually fills it.
+      const titleMissing = !llm.title || /^\s*null\s*$/i.test(String(llm.title))
+      const authorMissing = !llm.authorSurname
+        || llm.authorSurname === 'Unknown'
+        || /^\s*null\s*$/i.test(String(llm.authorSurname))
+      if (titleMissing || authorMissing) {
+        try {
+          const sonnetRes = await generateJSONWithUsage<PdfMetadataExtraction>(
+            buildEnrichPrompt(cover),
+            'You are a bibliography + abstract extraction assistant. Respond with valid JSON only.',
+            { model: SONNET },
+          )
+          deductCredits(
+            entry.userId, 'source_upload_extract',
+            sonnetRes.inputTokens, sonnetRes.outputTokens, 'sonnet',
+            { libraryEntryId: entryId },
+          ).catch((e) => console.error('[library-pipeline] credit deduction failed:', e))
+          llm = sonnetRes.data
+          if (!biblio) source = 'haiku+sonnet'
+        } catch (err) {
+          console.warn('[library-pipeline] Sonnet escalation failed (keeping Haiku):', err)
+        }
+      }
+    } catch (err) {
+      enrichError = err instanceof Error ? err.message : String(err)
+      console.warn('[library-pipeline] Haiku enrich failed:', err)
+    }
+  }
+
+  // ── 3. Merge biblio (canonical) over llm (fallback) ──
+  const merged = {
+    entryType: biblio?.entryType ?? llm?.entryType ?? null,
+    authorSurname: biblio?.authorSurname ?? llm?.authorSurname ?? null,
+    authorName: biblio?.authorName ?? llm?.authorName ?? null,
+    title: biblio?.title ?? llm?.title ?? null,
+    editor: llm?.editor ?? null,
+    translator: llm?.translator ?? null,
+    publisher: biblio?.publisher ?? llm?.publisher ?? null,
+    publishPlace: biblio?.publishPlace ?? llm?.publishPlace ?? null,
+    year: biblio?.year ?? llm?.year ?? null,
+    volume: llm?.volume ?? null,
+    edition: llm?.edition ?? null,
+    journalName: biblio?.journalName ?? llm?.journalName ?? null,
+    journalVolume: biblio?.journalVolume ?? llm?.journalVolume ?? null,
+    journalIssue: biblio?.journalIssue ?? llm?.journalIssue ?? null,
+    pageRange: biblio?.pageRange ?? llm?.pageRange ?? null,
+    doi: biblio?.doi ?? llm?.doi ?? null,
+    url: biblio?.url ?? llm?.url ?? null,
+    abstract: biblio?.abstract ?? llm?.abstract ?? null,
+    keywords: llm?.keywords ?? null,
+    volumeNumber: llm?.volumeNumber ?? null,
+    parentWork: llm?.parentWork ?? null,
+    volumeLabel: llm?.volumeLabel ?? null,
+  }
+
+  // ── 4. Apply: write if FRESH source OR existing value looks like a
+  //    placeholder. Never overwrite canonical lit-search/Zotero data. ──
+  const data: Record<string, unknown> = {}
+  const apply = <K extends keyof typeof entry>(key: K, candidate: string | null | undefined) => {
+    if (!candidate || candidate === 'null' || candidate === 'Unknown') return
+    const existing = entry[key]
+    const writable = isFresh || isPlaceholderField(String(key), existing)
+    if (!writable && existing && String(existing).trim().length > 0) return
+    data[key as string] = candidate
+  }
+  apply('authorSurname', merged.authorSurname)
+  apply('authorName', merged.authorName)
+  apply('title', merged.title)
+  apply('editor', merged.editor)
+  apply('translator', merged.translator)
+  apply('publisher', merged.publisher)
+  apply('publishPlace', merged.publishPlace)
+  apply('year', merged.year)
+  apply('volume', merged.volume)
+  apply('edition', merged.edition)
+  apply('journalName', merged.journalName)
+  apply('journalVolume', merged.journalVolume)
+  apply('journalIssue', merged.journalIssue)
+  apply('pageRange', merged.pageRange)
+  apply('doi', merged.doi)
+  apply('url', merged.url)
+  apply('abstract', merged.abstract)
+
+  if (
+    (isFresh || !entry.keywords || entry.keywords.length === 0) &&
+    Array.isArray(merged.keywords)
+  ) {
+    const clean = merged.keywords.filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
+    if (clean.length > 0) data.keywords = clean.slice(0, 6)
+  }
+
+  if (merged.entryType && VALID_ENTRY_TYPES.has(merged.entryType as EntryType)) {
+    if (entry.entryType === 'kitap' || !entry.entryType) {
+      data.entryType = merged.entryType
+    }
+  }
+
+  // ── 5. metadata: volume hint + enrich state for the UI ──
+  // UI reads `metadata.enrich.status / source / error` to render a
+  // "✓ DOI'den çekildi" / "⚠ otomatik künye başarısız — manuel doldur"
+  // badge, plus the volume-hint banner for multi-volume works.
+  const existingMeta =
+    entry.metadata && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata)
+      ? (entry.metadata as Record<string, unknown>)
+      : {}
+  const newMeta: Record<string, unknown> = { ...existingMeta }
+  if (
+    merged.volumeNumber && typeof merged.volumeNumber === 'number' &&
+    merged.volumeNumber > 0 && merged.parentWork && String(merged.parentWork).trim()
+  ) {
+    newMeta.volumeHint = {
+      volumeNumber: Math.floor(merged.volumeNumber),
+      parentWork: String(merged.parentWork).trim(),
+      volumeLabel: merged.volumeLabel ? String(merged.volumeLabel).trim() : null,
+    }
+  }
+  newMeta.enrich = {
+    status: enrichError ? 'failed' : source ? 'ok' : 'empty',
+    source,
+    error: enrichError,
+    completedAt: new Date().toISOString(),
+  }
+  data.metadata = newMeta as Prisma.InputJsonValue
 
   try {
-    const result = await generateJSONWithUsage<PdfMetadataExtraction>(
-      `Analyze the text extracted from the first pages of the following PDF and return bibliography metadata plus an abstract as JSON.
-
-Text:
----
-${text.slice(0, 8000)}
----
-
-Return in this JSON format:
-{
-  "entryType": "kitap" | "makale" | "nesir" | "ceviri" | "tez" | "ansiklopedi" | "web",
-  "authorSurname": "Author's surname",
-  "authorName": "Author's first name or null",
-  "title": "Full title of the work",
-  "editor": "Editor or null",
-  "translator": "Translator or null",
-  "publisher": "Publisher or null",
-  "publishPlace": "Place of publication or null",
-  "year": "Publication year or null",
-  "volume": "Volume or null",
-  "edition": "Edition or null",
-  "journalName": "Journal name or null",
-  "journalVolume": "Journal volume or null",
-  "journalIssue": "Journal issue or null",
-  "pageRange": "Page range or null",
-  "doi": "DOI or null",
-  "url": "URL or null",
-  "abstract": "Concise abstract / summary of the work (around 150-300 words). If a formal abstract section is present, use it verbatim. Otherwise summarize the first pages.",
-  "keywords": ["up to 6 subject keywords derived from the text"] or null,
-  "volumeNumber": integer (1, 2, 3, ...) IF this PDF is one volume of a multi-volume work — look for explicit markers like "Cilt 2", "Volume II", "الجزء الثاني", "Tome 2", "Bd. 3" on the cover or title page; otherwise null,
-  "parentWork": "Title of the parent multi-volume work (e.g. 'et-Tahrir ve't-Tenvir', 'Encyclopaedia of Islam') ONLY when volumeNumber is also set; otherwise null",
-  "volumeLabel": "Subtitle of this specific volume (e.g. 'Sûre el-Bakara', 'A-D entries') ONLY when volumeNumber is also set; otherwise null"
-}
-
-Rules:
-- Leave fields you cannot extract as null.
-- Determine entryType from the document style (academic article → "makale", book → "kitap").
-- If no clear author is found, use "Unknown".
-- Be CONSERVATIVE about volumeNumber/parentWork — only set them when the text shows an explicit multi-volume marker. A simple "Volume 2 Issue 3" of a journal is NOT a parent-work volume; that's journalVolume.
-- Abstract must be in the document's original language.
-- Return ONLY the JSON, no commentary.`,
-      'You are a bibliography + abstract extraction assistant. Respond with valid JSON only.',
-      { model: HAIKU }
-    )
-
-    const extracted = result.data
-
-    // Charge credits (non-fatal if it fails).
-    deductCredits(
-      entry.userId,
-      'source_upload_extract',
-      result.inputTokens,
-      result.outputTokens,
-      'haiku',
-      { libraryEntryId: entryId }
-    ).catch((e) => console.error('[library-pipeline] extract credit deduction failed:', e))
-
-    // Only fill fields the entry doesn't already have — never overwrite
-    // literature-search-derived metadata. Exception: drag-drop uploads
-    // start with placeholder author/title from the filename, so for
-    // those we always overwrite.
-    const data: Record<string, unknown> = {}
-    const maybe = <K extends keyof typeof entry>(
-      key: K,
-      candidate: string | null | undefined
-    ) => {
-      if (!isUpload) {
-        const existing = entry[key]
-        if (existing && String(existing).trim().length > 0) return
-      }
-      if (!candidate || candidate === 'null' || candidate === 'Unknown') return
-      data[key as string] = candidate
-    }
-
-    maybe('authorSurname', extracted.authorSurname)
-    maybe('authorName', extracted.authorName)
-    maybe('title', extracted.title)
-    maybe('editor', extracted.editor)
-    maybe('translator', extracted.translator)
-    maybe('publisher', extracted.publisher)
-    maybe('publishPlace', extracted.publishPlace)
-    maybe('year', extracted.year)
-    maybe('volume', extracted.volume)
-    maybe('edition', extracted.edition)
-    maybe('journalName', extracted.journalName)
-    maybe('journalVolume', extracted.journalVolume)
-    maybe('journalIssue', extracted.journalIssue)
-    maybe('pageRange', extracted.pageRange)
-    maybe('doi', extracted.doi)
-    maybe('url', extracted.url)
-    maybe('abstract', extracted.abstract)
-
-    // Keywords: fill if empty (or always for drag-drop uploads).
-    if (
-      (isUpload || !entry.keywords || entry.keywords.length === 0) &&
-      Array.isArray(extracted.keywords)
-    ) {
-      const clean = extracted.keywords.filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
-      if (clean.length > 0) data.keywords = clean.slice(0, 6)
-    }
-
-    // entryType — trust the PDF-derived type when the entry is a default
-    // "kitap" (always true for drag-drop uploads).
-    if (extracted.entryType && VALID_ENTRY_TYPES.has(extracted.entryType as EntryType)) {
-      if (entry.entryType === 'kitap' || !entry.entryType) {
-        data.entryType = extracted.entryType
-      }
-    }
-
-    // Multi-volume hint — when Haiku detects "Cilt 2 / Volume II / الجزء"
-    // markers we write the signal to metadata so the library page can
-    // show a banner: "Bu cilt görünüyor — mevcut esere ekle / yeni
-    // multi-volume entry oluştur". We don't auto-restructure anything;
-    // the user resolves the suggestion.
-    if (
-      extracted.volumeNumber &&
-      typeof extracted.volumeNumber === 'number' &&
-      extracted.volumeNumber > 0 &&
-      extracted.parentWork &&
-      String(extracted.parentWork).trim().length > 0
-    ) {
-      data.metadata = {
-        volumeHint: {
-          volumeNumber: Math.floor(extracted.volumeNumber),
-          parentWork: String(extracted.parentWork).trim(),
-          volumeLabel: extracted.volumeLabel
-            ? String(extracted.volumeLabel).trim()
-            : null,
-        },
-      } as Prisma.InputJsonValue
-    }
-
-    if (Object.keys(data).length > 0) {
-      await prisma.libraryEntry.update({
-        where: { id: entryId },
-        data,
-      })
-    }
+    await prisma.libraryEntry.update({ where: { id: entryId }, data })
   } catch (err) {
-    console.warn('[library-pipeline] metadata extraction failed:', err)
-    // Non-fatal — chunking still proceeds.
+    console.warn('[library-pipeline] entry update after enrich failed:', err)
   }
 }
 

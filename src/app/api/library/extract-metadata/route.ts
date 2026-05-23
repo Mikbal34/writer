@@ -1,36 +1,38 @@
 /**
  * POST /api/library/extract-metadata
  *
- * Preview-only metadata extraction — receives a file, runs the same
- * Python extraction + Haiku metadata pass we'd do on a real upload,
- * but **commits nothing**. Used by the bulk upload dialog's "Grupla"
- * step so the form can be prefilled with author / title / year /
- * publisher pulled from the first cilt's cover.
+ * Preview-only metadata extraction for the bulk-upload dialog. PDFs are
+ * extracted locally with pdfjs and run through the DOI/ISBN-aware
+ * extractMetadataFromText helper — no Python round-trip, no Fly proxy
+ * timeout chain that broke this on slow scanned books. For EPUB/DOCX
+ * (rare in the preview flow) we still call the Python sidecar with a
+ * short timeout; on failure we return a graceful "preview unavailable"
+ * and let the user upload anyway (worker enrich will run later).
  *
- * Native metadata (EPUB DC, DOCX core_properties) is returned as-is
- * when present; for PDFs we fall back to Haiku on the extracted text.
+ * Commits nothing — the dialog uses the returned fields to prefill the
+ * group form, then the actual upload creates the entry.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
-import { extractMetadataFromText } from '@/lib/library-pipeline'
+import {
+  extractMetadataFromText,
+  extractPdfLocalAsProcessResponse,
+} from '@/lib/library-pipeline'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const MAX_BYTES = 50 * 1024 * 1024
-const PYTHON_SERVICE_URL =
-  process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
+const PYTHON_TIMEOUT_MS = 20_000 // EPUB/DOCX fallback only — keep short.
 
-interface ProcessBytesResponse {
-  extractedText: string
-  metadata?: {
-    title?: string
-    author?: string
-    year?: string
-    publisher?: string
-    abstract?: string
-    language?: string
-  } | null
+interface PreviewResponse {
+  source: 'doi' | 'isbn' | 'haiku' | 'native' | 'empty' | 'error'
+  authorSurname: string | null
+  authorName: string | null
+  title: string | null
+  year: string | null
+  publisher: string | null
 }
 
 function splitAuthor(full: string | null | undefined): {
@@ -41,17 +43,11 @@ function splitAuthor(full: string | null | undefined): {
   const s = full.trim()
   if (s.includes(',')) {
     const [last, ...rest] = s.split(',')
-    return {
-      authorSurname: last.trim() || null,
-      authorName: rest.join(',').trim() || null,
-    }
+    return { authorSurname: last.trim() || null, authorName: rest.join(',').trim() || null }
   }
   const parts = s.split(/\s+/)
   if (parts.length === 1) return { authorSurname: parts[0], authorName: null }
-  return {
-    authorSurname: parts[parts.length - 1],
-    authorName: parts.slice(0, -1).join(' '),
-  }
+  return { authorSurname: parts[parts.length - 1], authorName: parts.slice(0, -1).join(' ') }
 }
 
 export async function POST(req: NextRequest) {
@@ -68,79 +64,101 @@ export async function POST(req: NextRequest) {
     }
     const lower = file.name.toLowerCase()
     if (!/\.(pdf|epub|docx)$/.test(lower)) {
-      return NextResponse.json(
-        { error: 'Only PDF / EPUB / DOCX accepted' },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: 'Only PDF / EPUB / DOCX accepted' }, { status: 400 })
     }
 
-    // Forward to Python /process-bytes — same endpoint the real upload
-    // hits. We use a dummy sourceId; nothing persists from here.
-    const pyForm = new FormData()
-    pyForm.append('sourceId', `preview-${Date.now()}`)
-    pyForm.append('file', file, file.name)
+    const bytes = Buffer.from(await file.arrayBuffer())
 
-    const pyRes = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
-      method: 'POST',
-      body: pyForm,
-    })
-    if (!pyRes.ok) {
-      const body = await pyRes.text().catch(() => '')
-      return NextResponse.json(
-        { error: `Python extraction failed (${pyRes.status}): ${body.slice(0, 200)}` },
-        { status: 500 },
-      )
-    }
-    const data = (await pyRes.json()) as ProcessBytesResponse
-
-    // Prefer native metadata (EPUB DC / DOCX core_properties) when
-    // present — much more reliable than Haiku on first-chapter text.
-    if (data.metadata && (data.metadata.title || data.metadata.author)) {
-      const { authorSurname, authorName } = splitAuthor(data.metadata.author)
-      return NextResponse.json({
-        source: 'native',
-        authorSurname: authorSurname || null,
-        authorName: authorName || null,
-        title: data.metadata.title || null,
-        year: data.metadata.year || null,
-        publisher: data.metadata.publisher || null,
-      })
-    }
-
-    // Fallback: Haiku on the extracted text.
-    if (!data.extractedText || data.extractedText.length < 200) {
-      return NextResponse.json({
-        source: 'empty',
-        authorSurname: null,
-        authorName: null,
-        title: null,
-        year: null,
-        publisher: null,
-      })
+    // ── PDF: local pdfjs path ──────────────────────────────────────
+    if (lower.endsWith('.pdf')) {
+      let extractedText = ''
+      try {
+        const data = await extractPdfLocalAsProcessResponse(bytes, `preview-${Date.now()}`)
+        extractedText = data?.extractedText ?? ''
+      } catch (err) {
+        console.warn('[extract-metadata] pdfjs local extract failed:', err)
+      }
+      if (!extractedText || extractedText.length < 200) {
+        // Scanned PDF without a text layer — preview unavailable. The
+        // user uploads; worker runs the full Tesseract/Surya pipeline
+        // and the enrich runs after that.
+        return NextResponse.json<PreviewResponse>({
+          source: 'empty', authorSurname: null, authorName: null,
+          title: null, year: null, publisher: null,
+        })
+      }
+      try {
+        const { data: meta, source } = await extractMetadataFromText(extractedText)
+        return NextResponse.json<PreviewResponse>({
+          source,
+          authorSurname:
+            meta.authorSurname && meta.authorSurname !== 'Unknown' ? meta.authorSurname : null,
+          authorName: meta.authorName ?? null,
+          title: meta.title ?? null,
+          year: meta.year ?? null,
+          publisher: meta.publisher ?? null,
+        })
+      } catch (err) {
+        console.error('[extract-metadata] DOI/ISBN/Haiku failed:', err)
+        return NextResponse.json<PreviewResponse>({
+          source: 'error', authorSurname: null, authorName: null,
+          title: null, year: null, publisher: null,
+        })
+      }
     }
 
+    // ── EPUB / DOCX: Python sidecar with a short timeout ───────────
     try {
-      const { data: meta } = await extractMetadataFromText(data.extractedText)
-      return NextResponse.json({
-        source: 'haiku',
-        authorSurname:
-          meta.authorSurname && meta.authorSurname !== 'Unknown'
-            ? meta.authorSurname
-            : null,
-        authorName: meta.authorName,
-        title: meta.title,
-        year: meta.year,
-        publisher: meta.publisher,
+      const pyForm = new FormData()
+      pyForm.append('sourceId', `preview-${Date.now()}`)
+      pyForm.append('file', file, file.name)
+      const pyRes = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
+        method: 'POST',
+        body: pyForm,
+        signal: AbortSignal.timeout(PYTHON_TIMEOUT_MS),
+      })
+      if (!pyRes.ok) {
+        return NextResponse.json<PreviewResponse>({
+          source: 'empty', authorSurname: null, authorName: null,
+          title: null, year: null, publisher: null,
+        })
+      }
+      const data = (await pyRes.json()) as {
+        extractedText?: string
+        metadata?: { title?: string; author?: string; year?: string; publisher?: string } | null
+      }
+      if (data.metadata && (data.metadata.title || data.metadata.author)) {
+        const { authorSurname, authorName } = splitAuthor(data.metadata.author)
+        return NextResponse.json<PreviewResponse>({
+          source: 'native',
+          authorSurname: authorSurname || null,
+          authorName: authorName || null,
+          title: data.metadata.title || null,
+          year: data.metadata.year || null,
+          publisher: data.metadata.publisher || null,
+        })
+      }
+      if (data.extractedText && data.extractedText.length >= 200) {
+        const { data: meta, source } = await extractMetadataFromText(data.extractedText)
+        return NextResponse.json<PreviewResponse>({
+          source,
+          authorSurname:
+            meta.authorSurname && meta.authorSurname !== 'Unknown' ? meta.authorSurname : null,
+          authorName: meta.authorName ?? null,
+          title: meta.title ?? null,
+          year: meta.year ?? null,
+          publisher: meta.publisher ?? null,
+        })
+      }
+      return NextResponse.json<PreviewResponse>({
+        source: 'empty', authorSurname: null, authorName: null,
+        title: null, year: null, publisher: null,
       })
     } catch (err) {
-      console.error('[extract-metadata] Haiku failed:', err)
-      return NextResponse.json({
-        source: 'error',
-        authorSurname: null,
-        authorName: null,
-        title: null,
-        year: null,
-        publisher: null,
+      console.warn('[extract-metadata] EPUB/DOCX preview failed:', err)
+      return NextResponse.json<PreviewResponse>({
+        source: 'empty', authorSurname: null, authorName: null,
+        title: null, year: null, publisher: null,
       })
     }
   } catch (err) {

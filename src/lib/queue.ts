@@ -14,6 +14,10 @@ export const INGEST_QUEUE = 'library-ingest'
 export type IngestJob =
   | { kind: 'entry'; entryId: string; filename?: string }
   | { kind: 'volume'; entryId: string; volumeId: string; filename?: string }
+  // Metadata-only re-run: re-extract front pages from the stored R2
+  // file and re-run the enrich pipeline (DOI/ISBN → Haiku → Sonnet).
+  // Chunks/embeddings are untouched.
+  | { kind: 'enrich'; entryId: string }
 
 function redisUrl(): string {
   const url = process.env.REDIS_URL
@@ -56,6 +60,9 @@ export function ingestQueue(): Queue<IngestJob> {
  */
 export async function enqueueIngest(job: IngestJob, opts: JobsOptions = {}) {
   // BullMQ custom job ids may not contain ':'.
-  const jobId = job.kind === 'volume' ? `vol_${job.volumeId}` : `entry_${job.entryId}`
+  const jobId =
+    job.kind === 'volume' ? `vol_${job.volumeId}`
+    : job.kind === 'enrich' ? `enrich_${job.entryId}`
+    : `entry_${job.entryId}`
   return ingestQueue().add(job.kind, job, { jobId, ...opts })
 }
