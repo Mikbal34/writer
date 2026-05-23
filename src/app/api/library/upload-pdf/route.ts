@@ -64,12 +64,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Dosya geçerli görünmüyor (çok küçük)' }, { status: 400 })
     }
 
-    // Create a stub entry. authorSurname is required + part of the
-    // (userId, authorSurname, title) unique index, so we generate a
-    // short random placeholder per upload to avoid colliding when the
-    // user drops two PDFs with the same filename. Haiku enrichment
-    // overwrites both fields a few seconds later, so the placeholder
-    // is short-lived; if extraction fails it stays as a clear marker.
+    // Optional user-typed metadata from the add-source modal — if the
+    // user filled the form, those values are canonical and the worker's
+    // enrich won't overwrite them (isPlaceholderField sees non-placeholder
+    // values and skips). If blank, we fall back to a clearly-placeholder
+    // authorSurname / filename-derived title so the worker enrich can
+    // safely overwrite them with extracted data.
+    const formStr = (k: string) => {
+      const v = form.get(k)
+      return typeof v === 'string' && v.trim() ? v.trim() : null
+    }
+    const userAuthorSurname = formStr('authorSurname')
+    const userTitle = formStr('title')
     const placeholderSurname = `(Yükleme ${randomUUID().slice(0, 8)})`
     // Prod's `keywords` column is NOT NULL with no default, and the
     // pg driver adapter under Prisma 7 doesn't auto-fill String[]
@@ -78,8 +84,12 @@ export async function POST(req: NextRequest) {
       data: {
         userId: session.user.id,
         entryType: 'kitap',
-        title: titleFromFilename(file.name),
-        authorSurname: placeholderSurname,
+        title: userTitle ?? titleFromFilename(file.name),
+        authorSurname: userAuthorSurname ?? placeholderSurname,
+        authorName: formStr('authorName'),
+        year: formStr('year'),
+        publisher: formStr('publisher'),
+        publishPlace: formStr('publishPlace'),
         importSource: 'pdf-upload',
         pdfStatus: 'queued',
         fileType,

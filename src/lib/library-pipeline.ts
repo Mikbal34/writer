@@ -141,74 +141,10 @@ export interface PdfMetadataExtraction {
   volumeLabel: string | null
 }
 
-/**
- * Standalone Haiku metadata pass — no DB, no side effects. Used by
- * the bulk-upload preview ("Grupla → otomatik künye") to prefill a
- * group form without committing anything. Caller decides what to do
- * with the result.
- */
-export async function extractMetadataFromText(
-  text: string,
-): Promise<{
-  data: PdfMetadataExtraction
-  inputTokens: number
-  outputTokens: number
-  source: 'doi' | 'isbn' | 'haiku'
-}> {
-  // Deterministic first: a DOI/ISBN in the text gives canonical
-  // metadata in ms — better than the LLM and free. Only fall back to
-  // Haiku when the document has no identifier or the lookup misses.
-  try {
-    const hit = await lookupByText(text)
-    if (hit && hit.title) {
-      return {
-        data: {
-          entryType: hit.entryType ?? null,
-          authorSurname: hit.authorSurname ?? null,
-          authorName: hit.authorName ?? null,
-          title: hit.title ?? null,
-          editor: null,
-          translator: null,
-          publisher: hit.publisher ?? null,
-          publishPlace: hit.publishPlace ?? null,
-          year: hit.year ?? null,
-          volume: null,
-          edition: null,
-          journalName: hit.journalName ?? null,
-          journalVolume: hit.journalVolume ?? null,
-          journalIssue: hit.journalIssue ?? null,
-          pageRange: hit.pageRange ?? null,
-          doi: hit.doi ?? null,
-          url: hit.url ?? null,
-          abstract: null,
-          keywords: null,
-          volumeNumber: null,
-          parentWork: null,
-          volumeLabel: null,
-        } as PdfMetadataExtraction,
-        inputTokens: 0,
-        outputTokens: 0,
-        source: hit.source,
-      }
-    }
-  } catch (err) {
-    console.warn('[library-pipeline] preview biblio lookup failed:', err)
-  }
-
-  // Fallback: Haiku on a smart cover window (same prompt the worker
-  // enrich uses, so preview and final result match).
-  const result = await generateJSONWithUsage<PdfMetadataExtraction>(
-    buildEnrichPrompt(pickCoverWindow(text, 8000)),
-    'You are a bibliography extraction assistant. Respond with valid JSON only.',
-    { model: HAIKU },
-  )
-  return {
-    data: result.data,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-    source: 'haiku',
-  }
-}
+// extractMetadataFromText removed — its only caller was the
+// /api/library/extract-metadata preview route, which is gone now that
+// the add-source modal does not need a sync preview. All enrichment
+// runs through the worker queue (enrichLibraryEntryFromPdfText).
 
 // ── Metadata enrichment helpers ─────────────────────────────────────
 
@@ -1305,6 +1241,30 @@ export async function processLibraryVolumePdfFromBytes(
     await persistChunks(entryId, data.chunks, volumeId)
     await embedPendingChunks(entryId, volumeId)
     await setVolumeStatus(volumeId, 'ready')
+
+    // Multi-volume parent enrich: if the parent entry's metadata is
+    // still placeholder (user uploaded the group without typing
+    // author/title), use THIS volume's extracted text to enrich the
+    // parent. The first volume to finish wins; enrich's own
+    // isPlaceholderField guard means later volumes won't overwrite.
+    try {
+      const parent = await prisma.libraryEntry.findUnique({
+        where: { id: entryId },
+        select: { authorSurname: true, title: true },
+      })
+      if (
+        parent && data.extractedText && data.extractedText.length >= 200 &&
+        (
+          /^\((?:Yükleme|test|faz)/i.test(parent.authorSurname ?? '') ||
+          parent.title === 'Adlandırılmamış' ||
+          !parent.title
+        )
+      ) {
+        await enrichLibraryEntryFromPdfText(entryId, data.extractedText)
+      }
+    } catch (err) {
+      console.warn(`[library-pipeline] parent enrich after volume failed (non-fatal):`, err)
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[library-pipeline] volume processFromBytes failed for ${volumeId}:`, err)

@@ -15,7 +15,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Plus, X, Search, Sparkles, FileText, Upload, BookCopy, Loader2,
+  Plus, X, Search, Sparkles, Upload, BookCopy, Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
@@ -25,7 +25,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 
-type Tab = 'isbn' | 'manual' | 'file'
+type Tab = 'isbn' | 'file'
 
 interface Props {
   open: boolean
@@ -54,7 +54,7 @@ interface BiblioHit {
   abstract?: string | null
 }
 
-export function AddSourceDialog({ open, onOpenChange, defaultTab = 'isbn', onAdded }: Props) {
+export function AddSourceDialog({ open, onOpenChange, defaultTab = 'file', onAdded }: Props) {
   const [tab, setTab] = useState<Tab>(defaultTab)
   useEffect(() => { if (open) setTab(defaultTab) }, [open, defaultTab])
 
@@ -95,19 +95,16 @@ export function AddSourceDialog({ open, onOpenChange, defaultTab = 'isbn', onAdd
 
           {/* Tabs */}
           <div className="flex gap-1 mt-[18px]">
-            <ModalTab id="isbn" icon={Search} label="ISBN ile" detail="otomatik doldur"
-              active={tab === 'isbn'} onClick={() => setTab('isbn')} />
-            <ModalTab id="manual" icon={FileText} label="Manuel" detail="formu kendin doldur"
-              active={tab === 'manual'} onClick={() => setTab('manual')} />
-            <ModalTab id="file" icon={Upload} label="Dosya ile" detail="PDF / EPUB sürükle"
+            <ModalTab id="file" icon={Upload} label="Dosya & Künye" detail="yükle veya manuel"
               active={tab === 'file'} onClick={() => setTab('file')} />
+            <ModalTab id="isbn" icon={Search} label="ISBN / DOI" detail="otomatik doldur"
+              active={tab === 'isbn'} onClick={() => setTab('isbn')} />
           </div>
         </div>
 
         {/* Body */}
         <div className="flex-1 px-6 pt-[22px] pb-1 max-h-[60vh] overflow-auto">
           {tab === 'isbn' && <IsbnTab onClose={() => onOpenChange(false)} onAdded={onAdded} />}
-          {tab === 'manual' && <ManualTab onClose={() => onOpenChange(false)} onAdded={onAdded} />}
           {tab === 'file' && <FileTab onClose={() => onOpenChange(false)} onAdded={onAdded} />}
         </div>
       </DialogContent>
@@ -328,114 +325,6 @@ function Chip({ children, variant }: { children: React.ReactNode; variant?: 'oli
   return <span className={`${base} bg-ink/8 text-ink-light`}>{children}</span>
 }
 
-// ═══════════════════════════ TAB 2 — MANUEL ═══════════════════════════
-function ManualTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: string) => void }) {
-  const [f, setF] = useState({
-    entryType: 'kitap', authorSurname: '', authorName: '',
-    title: '', shortTitle: '',
-    publisher: '', publishPlace: '', year: '', volume: '', edition: '',
-  })
-  const [saving, setSaving] = useState(false)
-
-  const upd = <K extends keyof typeof f>(k: K, v: string) => setF((s) => ({ ...s, [k]: v }))
-
-  const commit = async () => {
-    if (!f.authorSurname.trim() || !f.title.trim()) {
-      toast.error('Soyad ve başlık zorunlu')
-      return
-    }
-    setSaving(true)
-    try {
-      const res = await fetch('/api/library', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...f, importSource: 'manual' }),
-      })
-      if (!res.ok) throw new Error(`POST failed: ${res.status}`)
-      const entry = await res.json()
-      toast.success('Kütüphaneye eklendi')
-      onAdded?.(entry.id)
-      onClose()
-    } catch (err) {
-      console.error(err)
-      toast.error('Kaydedilemedi')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Tür" required>
-          <Select value={f.entryType} onValueChange={(v) => upd('entryType', String(v ?? 'kitap'))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="kitap">Kitap</SelectItem>
-              <SelectItem value="makale">Makale</SelectItem>
-              <SelectItem value="tez">Tez</SelectItem>
-              <SelectItem value="ansiklopedi">Ansiklopedi</SelectItem>
-              <SelectItem value="nesir">Nesir</SelectItem>
-              <SelectItem value="ceviri">Çeviri</SelectItem>
-              <SelectItem value="web">Web</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Yıl">
-          <Input value={f.year} onChange={(e) => upd('year', e.target.value)} placeholder="örn. 1976" className="font-mono" />
-        </Field>
-      </div>
-
-      <Divider />
-      <Eyebrow>Yazar</Eyebrow>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Soyad" required>
-          <Input value={f.authorSurname} onChange={(e) => upd('authorSurname', e.target.value)} placeholder="örn. Wolfson" />
-        </Field>
-        <Field label="Ad">
-          <Input value={f.authorName} onChange={(e) => upd('authorName', e.target.value)} placeholder="örn. Harry Austryn" />
-        </Field>
-      </div>
-
-      <Divider />
-      <Field label="Başlık" required>
-        <Input value={f.title} onChange={(e) => upd('title', e.target.value)} placeholder="Eserin tam başlığı" />
-      </Field>
-      <div className="h-3" />
-      <Field label="Kısa başlık">
-        <Input value={f.shortTitle} onChange={(e) => upd('shortTitle', e.target.value)} placeholder="örn. Philosophy of Kalam" />
-      </Field>
-
-      <Divider />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Yayıncı">
-          <Input value={f.publisher} onChange={(e) => upd('publisher', e.target.value)} placeholder="örn. Harvard Univ. Press" />
-        </Field>
-        <Field label="Yayın yeri">
-          <Input value={f.publishPlace} onChange={(e) => upd('publishPlace', e.target.value)} placeholder="örn. Cambridge, MA" />
-        </Field>
-      </div>
-      <div className="h-3" />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Cilt">
-          <Input value={f.volume} onChange={(e) => upd('volume', e.target.value)} placeholder="—" />
-        </Field>
-        <Field label="Baskı">
-          <Input value={f.edition} onChange={(e) => upd('edition', e.target.value)} placeholder="1." />
-        </Field>
-      </div>
-
-      <FooterBar
-        hint="Zorunlu alanlar yıldızla işaretli"
-        primary={commit}
-        primaryLabel="Kütüphaneye ekle"
-        onCancel={onClose}
-        loading={saving}
-      />
-    </div>
-  )
-}
-
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -448,7 +337,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 }
 
 function Divider() {
-  return <div className="h-px bg-rule-soft my-[18px]" />
+  return <div className="h-px bg-ink-muted/15 my-[18px]" />
 }
 
 // ═══════════════════════════ TAB 3 — DOSYA (with cilt-gruplama) ═══════
@@ -476,6 +365,15 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   const [uploading, setUploading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Optional inline metadata — applies to the entry/group being created.
+  // Empty values fall through to worker auto-extraction (the banner says
+  // so, and isPlaceholderField in enrich won't overwrite anything the
+  // user actually typed).
+  const [form, setForm] = useState({
+    authorSurname: '', authorName: '', title: '',
+    year: '', publisher: '', publishPlace: '',
+  })
+
   // Group-form overlay state.
   const [groupFormOpen, setGroupFormOpen] = useState(false)
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
@@ -483,7 +381,6 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   const [gFileIds, setGFileIds] = useState<string[]>([])
   const [gVolumes, setGVolumes] = useState<Record<string, string>>({})
   const [gLabels, setGLabels] = useState<Record<string, string>>({})
-  const [extracting, setExtracting] = useState(false)
 
   const fileById = useMemo(() => new Map(files.map((f) => [f.id, f])), [files])
   const ungrouped = useMemo(() => {
@@ -511,37 +408,24 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
     const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n
   })
 
-  const openGroupForSelection = async () => {
+  const openGroupForSelection = () => {
     const ids = ungrouped.filter((f) => selectedIds.has(f.id)).map((f) => f.id)
     if (ids.length < 2) { toast.error('Grup için en az 2 dosya seç'); return }
     setEditingGroupId(null)
-    setGForm(emptyGroupForm())
+    // Preserve the main form's metadata as the group's starting values —
+    // user already filled (or skipped) it once. Blank means worker will
+    // enrich the parent from the first volume's text.
+    setGForm({
+      authorSurname: form.authorSurname,
+      authorName: form.authorName,
+      title: form.title,
+      year: form.year,
+      publisher: form.publisher,
+    })
     setGFileIds(ids)
     const vols: Record<string, string> = {}
     ids.forEach((fid, idx) => { vols[fid] = String(idx + 1) })
     setGVolumes(vols); setGLabels({}); setGroupFormOpen(true)
-    // Prefill from the first file's metadata via /extract-metadata.
-    const first = fileById.get(ids[0])?.file
-    if (first) {
-      setExtracting(true)
-      try {
-        const fd = new FormData(); fd.append('file', first)
-        const res = await fetch('/api/library/extract-metadata', { method: 'POST', body: fd })
-        if (res.ok) {
-          const m = await res.json() as Partial<{
-            authorSurname: string; authorName: string; title: string; year: string; publisher: string
-          }>
-          setGForm((s) => ({
-            authorSurname: s.authorSurname || m.authorSurname || '',
-            authorName: s.authorName || m.authorName || '',
-            title: s.title || m.title || '',
-            year: s.year || m.year || '',
-            publisher: s.publisher || m.publisher || '',
-          }))
-        }
-      } catch { /* user fills manually */ }
-      finally { setExtracting(false) }
-    }
   }
 
   const openGroupForEdit = (g: Group) => {
@@ -552,8 +436,8 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   }
 
   const commitGroup = () => {
-    if (!gForm.authorSurname.trim()) { toast.error('Yazar soyadı zorunlu'); return }
-    if (!gForm.title.trim()) { toast.error('Ana eser başlığı zorunlu'); return }
+    // Parent metadata is OPTIONAL — left blank, the worker enriches the
+    // parent from the first volume's text after upload.
     const seen = new Set<number>()
     for (const fid of gFileIds) {
       const n = parseInt(gVolumes[fid] ?? '', 10)
@@ -573,32 +457,89 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
     setGForm(emptyGroupForm()); setGFileIds([]); setGVolumes({}); setGLabels({})
   }
 
+  // What does the CTA do, given current state?
+  //   - 0 files + form (author+title) → "Künye kaydet" (no-PDF entry)
+  //   - 0 files + 0 form              → disabled
+  //   - 1 standalone file              → upload with form values (or auto)
+  //   - 2+ standalone files            → upload each; form values shared
+  //                                      across them isn't meaningful, so
+  //                                      we skip form fields entirely
+  //   - 1+ groups (± standalone)       → group parents use group's own
+  //                                      form, standalone files auto
+  const hasFormMin = form.authorSurname.trim() && form.title.trim()
+  const standaloneCount = ungrouped.length
+  const useFormForStandalone = standaloneCount === 1  // only meaningful for the single-entry case
+  const showFormSection = files.length <= 1 && groups.length === 0  // hide once we're in bulk territory
+
   const handleUpload = async () => {
-    if (files.length === 0) { toast.error('Yüklenecek dosya yok'); return }
     if (groupFormOpen) { toast.error('Önce grubu kaydet veya iptal et'); return }
+
+    // No files at all → pure metadata entry (the old Manuel use case).
+    if (files.length === 0) {
+      if (!hasFormMin) { toast.error('Yazar soyadı ve başlık gerekli'); return }
+      setUploading(true)
+      try {
+        const res = await fetch('/api/library', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            authorSurname: form.authorSurname.trim(),
+            authorName: form.authorName.trim() || undefined,
+            title: form.title.trim(),
+            year: form.year.trim() || undefined,
+            publisher: form.publisher.trim() || undefined,
+            publishPlace: form.publishPlace.trim() || undefined,
+            importSource: 'manual',
+          }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const entry = await res.json()
+        toast.success('Kütüphaneye eklendi')
+        onAdded?.(entry.id)
+        onClose()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Kaydedilemedi')
+      } finally { setUploading(false) }
+      return
+    }
+
     setUploading(true)
     const errors: string[] = []
 
     const standalonePromises = ungrouped.map(async (pf) => {
-      const fd = new FormData(); fd.append('file', pf.file)
+      const fd = new FormData()
+      fd.append('file', pf.file)
+      // Attach user-typed metadata for the single-file case only — for
+      // bulk standalone uploads the same form values would be wrong on
+      // every file, so we skip them and let the worker auto-fill each.
+      if (useFormForStandalone) {
+        if (form.authorSurname.trim()) fd.append('authorSurname', form.authorSurname.trim())
+        if (form.authorName.trim()) fd.append('authorName', form.authorName.trim())
+        if (form.title.trim()) fd.append('title', form.title.trim())
+        if (form.year.trim()) fd.append('year', form.year.trim())
+        if (form.publisher.trim()) fd.append('publisher', form.publisher.trim())
+        if (form.publishPlace.trim()) fd.append('publishPlace', form.publishPlace.trim())
+      }
       const res = await fetch('/api/library/upload-pdf', { method: 'POST', body: fd })
       if (!res.ok) throw new Error(`${pf.file.name}: ${res.status}`)
       const entry = await res.json(); onAdded?.(entry.id)
     })
 
     const groupPromises = groups.map(async (g) => {
+      // Parent entry — group's own form fields. Empty author/title get
+      // placeholders the worker can spot + overwrite from the first
+      // volume's text once it's processed.
       const parentRes = await fetch('/api/library', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          authorSurname: g.form.authorSurname.trim(),
+          authorSurname: g.form.authorSurname.trim() || `(Yükleme ${newId().slice(0, 8)})`,
           authorName: g.form.authorName.trim() || undefined,
-          title: g.form.title.trim(),
+          title: g.form.title.trim() || 'Adlandırılmamış',
           year: g.form.year.trim() || undefined,
           publisher: g.form.publisher.trim() || undefined,
           importSource: 'multi-volume',
         }),
       })
-      if (!parentRes.ok) throw new Error(`Ana eser oluşturulamadı (${g.form.title}): ${parentRes.status}`)
+      if (!parentRes.ok) throw new Error(`Ana eser oluşturulamadı: ${parentRes.status}`)
       const parent = await parentRes.json() as { id: string }
       onAdded?.(parent.id)
       await Promise.all(g.fileIds.map(async (fid) => {
@@ -631,7 +572,6 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
       fileIds={gFileIds} fileById={fileById}
       volumes={gVolumes} setVolumes={setGVolumes}
       labels={gLabels} setLabels={setGLabels}
-      extracting={extracting}
       onCancel={() => setGroupFormOpen(false)}
       onCommit={commitGroup}
       editing={!!editingGroupId}
@@ -642,6 +582,15 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
 
   return (
     <div>
+      {/* Banner — the deal */}
+      <div className="mb-3 px-3 py-2 rounded-lg bg-gold-soft/20 border border-gold/30 text-[12px] text-ink-light flex items-start gap-2.5">
+        <Sparkles size={14} className="text-gold-dark flex-shrink-0 mt-0.5" />
+        <div>
+          <span className="font-semibold text-ink">Yazar/başlık doldurursan canonical.</span>{' '}
+          Boş bırakırsan dosya işlenirken otomatik dolar (~1-2 dk). Sadece künye eklemek için aşağıdaki formu doldurup gönderebilirsin (dosya gerek yok).
+        </div>
+      </div>
+
       {/* Dropzone — shrinks once files are added so the file list dominates */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
@@ -736,15 +685,59 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
         </div>
       )}
 
+      {/* Optional inline metadata. Hidden once we're in bulk territory
+          (2+ standalone or any groups) — there it'd be ambiguous, so
+          we let the worker auto-fill each instead. */}
+      {showFormSection && (
+        <div className="mt-4">
+          <Eyebrow>{files.length === 0 ? 'Künye (PDF eklemeden kaydet)' : 'Künye (opsiyonel)'}</Eyebrow>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Yazar soyadı" required={files.length === 0}>
+              <Input value={form.authorSurname} onChange={(e) => setForm((s) => ({ ...s, authorSurname: e.target.value }))} placeholder="örn. Wolfson" />
+            </Field>
+            <Field label="Yazar adı">
+              <Input value={form.authorName} onChange={(e) => setForm((s) => ({ ...s, authorName: e.target.value }))} placeholder="örn. Harry Austryn" />
+            </Field>
+          </div>
+          <div className="h-3" />
+          <Field label="Başlık" required={files.length === 0}>
+            <Input value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} placeholder="Eserin tam başlığı" />
+          </Field>
+          <div className="h-3" />
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Yayıncı">
+              <Input value={form.publisher} onChange={(e) => setForm((s) => ({ ...s, publisher: e.target.value }))} />
+            </Field>
+            <Field label="Yer">
+              <Input value={form.publishPlace} onChange={(e) => setForm((s) => ({ ...s, publishPlace: e.target.value }))} />
+            </Field>
+            <Field label="Yıl">
+              <Input value={form.year} onChange={(e) => setForm((s) => ({ ...s, year: e.target.value }))} placeholder="1976" className="font-mono" />
+            </Field>
+          </div>
+        </div>
+      )}
+
+      {!showFormSection && files.length > 1 && groups.length === 0 && (
+        <div className="mt-3 text-[11.5px] text-ink-muted italic">
+          Birden fazla bağımsız dosya yüklüyorsun — künye her biri için ayrı ayrı worker tarafından otomatik çıkarılacak.
+        </div>
+      )}
+
       <FooterBar
         hint={
-          files.length === 0 ? 'Künye otomatik çıkarılır'
-          : `${ungrouped.length} tek · ${groups.length} grup`
+          files.length === 0
+            ? (hasFormMin ? 'Sadece künye eklenecek (PDF yok)' : 'Yazar + başlık doldur veya dosya seç')
+            : `${ungrouped.length} tek · ${groups.length} grup`
         }
         primary={handleUpload}
-        primaryLabel={uploading ? 'Yükleniyor…' : 'Yükle ve ekle'}
+        primaryLabel={
+          uploading ? 'Yükleniyor…'
+          : files.length === 0 ? 'Künye kaydet'
+          : 'Yükle ve ekle'
+        }
         onCancel={onClose}
-        loading={uploading || files.length === 0}
+        loading={uploading || (files.length === 0 && !hasFormMin)}
       />
     </div>
   )
@@ -777,7 +770,7 @@ function FileRow({ pf, selected, onToggle, onRemove }: {
 // In-tab overlay for editing a cilt group's parent metadata + per-file volume numbers.
 function GroupForm({
   form, setForm, fileIds, fileById, volumes, setVolumes, labels, setLabels,
-  extracting, onCancel, onCommit, editing,
+  onCancel, onCommit, editing,
 }: {
   form: Group['form']
   setForm: React.Dispatch<React.SetStateAction<Group['form']>>
@@ -786,7 +779,6 @@ function GroupForm({
   setVolumes: React.Dispatch<React.SetStateAction<Record<string, string>>>
   labels: Record<string, string>
   setLabels: React.Dispatch<React.SetStateAction<Record<string, string>>>
-  extracting: boolean
   onCancel: () => void; onCommit: () => void; editing: boolean
 }) {
   return (
@@ -797,16 +789,18 @@ function GroupForm({
         </button>
         <span className="text-ink-muted">·</span>
         <span className="font-serif italic">{editing ? 'Cilt grubunu düzenle' : 'Yeni cilt grubu'}</span>
-        {extracting && (
-          <span className="inline-flex items-center gap-1 text-gold-dark ml-auto">
-            <Loader2 size={11} className="animate-spin" /> künye çıkarılıyor…
-          </span>
-        )}
       </div>
 
-      <Eyebrow>Ana eserin künyesi</Eyebrow>
+      <div className="mb-3 px-3 py-2 rounded-lg bg-gold-soft/20 border border-gold/30 text-[12px] text-ink-light flex items-start gap-2.5">
+        <Sparkles size={14} className="text-gold-dark flex-shrink-0 mt-0.5" />
+        <div>
+          Ana eserin künyesini doldurursan canonical; boş bırakırsan ilk cilt işlenirken worker otomatik dolduracak.
+        </div>
+      </div>
+
+      <Eyebrow>Ana eserin künyesi (opsiyonel)</Eyebrow>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Yazar soyadı" required>
+        <Field label="Yazar soyadı">
           <Input value={form.authorSurname} onChange={(e) => setForm((s) => ({ ...s, authorSurname: e.target.value }))} />
         </Field>
         <Field label="Yazar adı">
@@ -814,7 +808,7 @@ function GroupForm({
         </Field>
       </div>
       <div className="h-3" />
-      <Field label="Eser başlığı" required>
+      <Field label="Eser başlığı">
         <Input value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} placeholder="örn. et-Tahrir ve't-Tenvir" />
       </Field>
       <div className="h-3" />
