@@ -12,7 +12,7 @@ set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/Mikbal34/writer.git}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/quilpen}"
-BRANCH="${BRANCH:-main}"
+BRANCH="${BRANCH:-faz2-worker-queue}"
 
 echo "==> apt update + base packages"
 apt-get update -qq
