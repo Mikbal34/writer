@@ -23,6 +23,21 @@ import { prisma } from '@/lib/db'
 import { findPdf } from '@/lib/pdf-finder'
 import { generateJSONWithUsage, HAIKU, SONNET } from '@/lib/claude'
 import { lookupByText, type BiblioHit } from '@/lib/biblio-lookup'
+import { presignDownloadUrl } from '@/lib/r2-storage'
+import { Agent, fetch as undiciFetch } from 'undici'
+
+// Node 22 built-in fetch's bundled undici defaults headersTimeout=5min —
+// too tight for our /process-url call (Python runs Tesseract on a
+// scanned book, easily 5-15 min before sending response headers).
+// Use undici's own fetch + Agent so the dispatcher actually takes
+// effect (passing dispatcher to Node's built-in fetch is unreliable —
+// the bundled undici may ignore an Agent constructed from the npm
+// package). AbortSignal (PROCESS_FETCH_TIMEOUT_MS) stays the ceiling.
+const _longOcrDispatcher = new Agent({
+  headersTimeout: 30 * 60 * 1000,
+  bodyTimeout: 30 * 60 * 1000,
+  connectTimeout: 30_000,
+})
 import { deductCredits } from '@/lib/credits'
 import { extractPdfPages } from '@/lib/pdf-extract'
 import { chunkByPage } from '@/lib/chunker'
@@ -46,7 +61,11 @@ const VALID_ENTRY_TYPES = new Set(Object.values(EntryType))
 // works corpus genuinely take 3-8 min to chunk, so the earlier 3-min
 // cap was producing false timeouts on healthy cilts. /embed is short
 // because batches are fast even on slow networks.
-const PROCESS_FETCH_TIMEOUT_MS = 10 * 60 * 1000
+// 30 min — matches the undici dispatcher's headersTimeout above. Big
+// scanned books (200+ pages × 30 Tesseract langs) regularly need 15-20
+// min in Python before the response headers come back; 10 min was the
+// false ceiling that killed cilt 1.
+const PROCESS_FETCH_TIMEOUT_MS = 30 * 60 * 1000
 // BGE-M3 dense encoding of a 100-chunk batch on CPU can take 1–3
 // minutes for long academic chunks. 2 minutes was too tight (smoke-test
 // confirmed) — bump to 5 to absorb the worst case without firing false
@@ -1112,30 +1131,33 @@ export async function processLibraryPdfFromBytes(
     }
 
     if (!data) {
-      // Fallback to Python service (scanned/image-only PDFs need its
-      // Tesseract OCR pipeline; pdfjs has no OCR mode).
-      const form = new FormData()
-      form.append('sourceId', entryId)
-      form.append(
-        'file',
-        new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }),
-        filename
-      )
-
-      const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
-        method: 'POST',
-        body: form,
-        signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
+      // Fallback to Python service via a R2 presigned URL (no
+      // multipart body across Fly's internal mesh — that path
+      // silently corrupted 27-44MB uploads). Python downloads the
+      // PDF straight from R2, runs Tesseract/Surya, returns chunks.
+      void filename // kept for backward-compat with /process-bytes callers
+      const entry = await prisma.libraryEntry.findUnique({
+        where: { id: entryId }, select: { filePath: true },
       })
-
+      if (!entry?.filePath) {
+        await setStatus(entryId, 'failed', { pdfError: 'no filePath for OCR fallback' })
+        return
+      }
+      const url = await presignDownloadUrl(entry.filePath)
+      const res = await undiciFetch(`${PYTHON_SERVICE_URL}/process-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId: entryId, url }),
+        signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
+        dispatcher: _longOcrDispatcher,
+      })
       if (!res.ok) {
         const body = await res.text().catch(() => '')
-        const msg = `Python /process-bytes HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`
+        const msg = `Python /process-url HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`
         console.error('[library-pipeline]', msg)
         await setStatus(entryId, 'failed', { pdfError: msg })
         return
       }
-
       data = (await res.json()) as ProcessResponse
     }
 
@@ -1200,28 +1222,31 @@ export async function processLibraryVolumePdfFromBytes(
     }
 
     if (!data) {
-      const form = new FormData()
-      form.append('sourceId', volumeId)
-      form.append(
-        'file',
-        new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }),
-        filename
-      )
-
-      const res = await fetch(`${PYTHON_SERVICE_URL}/process-bytes`, {
-        method: 'POST',
-        body: form,
-        signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
+      // Same R2-presigned-URL handoff as the entry-level processor —
+      // no large multipart bodies across Fly internal mesh.
+      void filename
+      const vol = await prisma.libraryEntryVolume.findUnique({
+        where: { id: volumeId }, select: { filePath: true },
       })
-
+      if (!vol?.filePath) {
+        await setVolumeStatus(volumeId, 'failed', { pdfError: 'no filePath for OCR fallback' })
+        return
+      }
+      const url = await presignDownloadUrl(vol.filePath)
+      const res = await undiciFetch(`${PYTHON_SERVICE_URL}/process-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId: volumeId, url }),
+        signal: AbortSignal.timeout(PROCESS_FETCH_TIMEOUT_MS),
+        dispatcher: _longOcrDispatcher,
+      })
       if (!res.ok) {
         const body = await res.text().catch(() => '')
-        const msg = `Python /process-bytes HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`
+        const msg = `Python /process-url HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`
         console.error('[library-pipeline]', msg)
         await setVolumeStatus(volumeId, 'failed', { pdfError: msg })
         return
       }
-
       data = (await res.json()) as ProcessResponse
     }
 

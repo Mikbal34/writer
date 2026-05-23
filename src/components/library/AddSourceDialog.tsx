@@ -743,11 +743,28 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   )
 }
 
+// File-size heuristic for the upload-time estimate. We can't run pdfjs
+// here without parsing the file — but bytes/page ratio is a strong
+// signal in the real corpus: native-text PDFs run ~0.05-0.3 MB/page,
+// scanned image-only books run 1-3+ MB/page. With just total size:
+//   <2 MB     → almost always native text (single article or small book)
+//   2-10 MB   → text or thin scan
+//   10-25 MB  → likely scan
+//   >25 MB    → definitely scanned book; OCR will dominate the wait
+function estimateProcessing(file: File): { label: string; suspect: boolean } {
+  const mb = file.size / 1024 / 1024
+  if (mb < 2) return { label: '~30 sn', suspect: false }
+  if (mb < 10) return { label: '~1-2 dk', suspect: false }
+  if (mb < 25) return { label: '~5-15 dk · taranmış olabilir', suspect: true }
+  return { label: '~15-30 dk · taranmış kitap', suspect: true }
+}
+
 function FileRow({ pf, selected, onToggle, onRemove }: {
   pf: PendingFile; selected: boolean; onToggle: () => void; onRemove: () => void
 }) {
   const sizeMB = (pf.file.size / 1024 / 1024).toFixed(1)
   const ext = pf.file.name.split('.').pop()?.toUpperCase().slice(0, 4) ?? 'FILE'
+  const est = estimateProcessing(pf.file)
   return (
     <label className={[
       'flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1.5 border cursor-pointer transition',
@@ -759,7 +776,13 @@ function FileRow({ pf, selected, onToggle, onRemove }: {
         style={{ background: '#8a6a3d' }}>{ext}</div>
       <div className="flex-1 min-w-0">
         <div className="text-[13px] font-semibold text-ink truncate">{pf.file.name}</div>
-        <div className="text-[11px] text-ink-muted mt-0.5">{sizeMB} MB</div>
+        <div className="text-[11px] text-ink-muted mt-0.5 flex items-center gap-2">
+          <span>{sizeMB} MB</span>
+          <span className="text-ink-muted/60">·</span>
+          <span className={est.suspect ? 'text-gold-dark font-medium' : 'text-ink-muted'}>
+            {est.label}
+          </span>
+        </div>
       </div>
       <button onClick={(e) => { e.preventDefault(); onRemove() }}
         className="p-1 text-ink-muted hover:text-ink" aria-label="Çıkar"><X size={12} /></button>

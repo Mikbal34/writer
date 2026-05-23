@@ -18,6 +18,7 @@ import {
   HeadObjectCommand,
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import type { Readable } from 'node:stream'
 
 type DocFileType = 'pdf' | 'epub' | 'docx'
@@ -139,6 +140,25 @@ export async function pdfExistsR2(filePath: string | null | undefined): Promise<
   } catch {
     return false
   }
+}
+
+/**
+ * Generate a short-lived signed URL for a stored file. Used by the
+ * worker → python-service handoff: instead of POSTing a 27-44MB PDF
+ * body across Fly's internal IPv6 mesh (which silently corrupts the
+ * upload mid-stream for large multipart bodies), the worker hands a
+ * URL to python-service and python downloads it from R2 directly.
+ * Sub-200-byte mesh payload; arbitrary file size; one less hop.
+ */
+export async function presignDownloadUrl(
+  filePath: string,
+  expiresInSeconds = 900,
+): Promise<string> {
+  return await getSignedUrl(
+    client(),
+    new GetObjectCommand({ Bucket: bucket(), Key: keyFromFilePath(filePath) }),
+    { expiresIn: expiresInSeconds },
+  )
 }
 
 export async function deletePdfR2(filePath: string | null | undefined): Promise<void> {

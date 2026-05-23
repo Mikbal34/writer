@@ -49,6 +49,7 @@ import { toast } from "sonner";
 import LibraryEntryForm from "@/components/library/LibraryEntryForm";
 import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import { AddSourceDialog } from "@/components/library/AddSourceDialog";
+import { ProcessingBanner } from "@/components/library/ProcessingBanner";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
 import VolumeHintBanner from "@/components/library/VolumeHintBanner";
 import FolderChips, {
@@ -106,6 +107,9 @@ export default function LibraryPage() {
   // Dialogs
   const [showEntryDialog, setShowEntryDialog] = useState(false);
   const [showAddSource, setShowAddSource] = useState(false);
+  // Bumped on every upload to force an immediate ProcessingBanner refetch
+  // (vs waiting up to 20s for the next poll).
+  const [bannerRefresh, setBannerRefresh] = useState(0);
   const [editingEntry, setEditingEntry] = useState<LibraryEntryRow | null>(null);
   const [showBibtexDialog, setShowBibtexDialog] = useState(false);
   const [showZoteroPanel, setShowZoteroPanel] = useState(false);
@@ -401,6 +405,8 @@ export default function LibraryPage() {
           </section>
 
 
+          <ProcessingBanner refreshKey={bannerRefresh} />
+
           {/* === Toolbar: search with embedded ask CTA + folder chips + sort === */}
           <div className="flex items-center gap-2.5 px-9 py-3 border-b border-sandy/60 bg-panel flex-wrap">
             <div className="relative flex-1 min-w-[280px] max-w-[460px]">
@@ -581,11 +587,11 @@ export default function LibraryPage() {
         )}
       </div>
 
-      {/* New unified add-source modal — 3 tabs (ISBN, manuel, dosya) */}
+      {/* New unified add-source modal — 2 tabs (Dosya & Künye, ISBN/DOI) */}
       <AddSourceDialog
         open={showAddSource}
         onOpenChange={setShowAddSource}
-        onAdded={() => { fetchEntries() }}
+        onAdded={() => { fetchEntries(); setBannerRefresh((n) => n + 1) }}
       />
 
       {/* Entry Form Dialog (edit-existing — kept until new modal also covers editing) */}
