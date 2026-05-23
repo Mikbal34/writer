@@ -24,7 +24,11 @@ primary_region = "fra"
 [env]
   # Python sidecar talks over Fly's internal 6PN mesh.
   PYTHON_SERVICE_URL = "http://quilpen-python.internal:8000"
-  WORKER_CONCURRENCY = "2"
+  # Per-worker concurrency. 2 worker machines × 4 = 8 in-flight ingest
+  # jobs cluster-wide, each fanning out into python's 4-process OCR
+  # pool. Drop back to 2 if Upstash connection count or DB pool
+  # pressure shows up — current Neon pool can handle 16+ concurrent.
+  WORKER_CONCURRENCY = "4"
   # Embeddings are self-hosted (BGE-M3 in python-service); contextual
   # prefix stays off by default (Haiku cost) — flip per-corpus if needed.
   CONTEXTUAL_PREFIX_ENABLED = "0"
