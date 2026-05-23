@@ -29,5 +29,5 @@ primary_region = "fra"
 # BGE-M3 needs RAM (model ~2GB + torch). 4GB on a perf vCPU is the
 # day-1 floor; scale up if latency suffers.
 [[vm]]
-  size = "performance-1x"
-  memory = "4gb"
+  size = "performance-2x"
+  memory = "8gb"

@@ -18,13 +18,19 @@ _EMBED_DIM = 1024
 
 @lru_cache(maxsize=1)
 def _model():
-    # Imported lazily so the service can boot (and serve extraction
-    # routes) without paying the multi-second model load until the
-    # first /embed call. sentence-transformers picks CUDA automatically
-    # when present, else CPU.
+    # sentence-transformers picks CUDA automatically when present, else CPU.
     from sentence_transformers import SentenceTransformer
 
     return SentenceTransformer(_MODEL_NAME)
+
+
+def preload() -> None:
+    """Force the BGE-M3 weights into RAM. Called from main.py at FastAPI
+    startup so each python-service machine has the model loaded BEFORE
+    Fly marks it healthy and routes traffic — otherwise the very first
+    /embed on a newly-booted machine spends ~30-60s loading and trips
+    the Node worker's 2-min embed timeout."""
+    _model()
 
 
 def _encode(texts: list[str]) -> list[list[float]]:

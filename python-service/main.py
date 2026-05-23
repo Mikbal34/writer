@@ -28,6 +28,16 @@ app.include_router(docx_gen.router, tags=["DOCX Generation"])
 app.include_router(process.router, tags=["Process"])
 
 
+@app.on_event("startup")
+async def _preload_embedder():
+    # Force BGE-M3 weights into RAM BEFORE Fly marks this machine healthy
+    # and routes /embed traffic. Otherwise the first /embed on a freshly
+    # booted machine spends ~30-60s loading the model and trips the Node
+    # worker's 2-min embed timeout (each scale-out machine repeats this).
+    from services.embedder import preload
+    preload()
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "writer-agent-python"}

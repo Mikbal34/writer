@@ -15,9 +15,17 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Prisma 7's config loader resolves env("DATABASE_URL") at `generate`
+# time. Real Fly secrets are runtime-only, so set a placeholder just for
+# the build. `prisma generate` only emits client code — it doesn't
+# connect — so the URL value is irrelevant.
+ENV DATABASE_URL=postgres://placeholder@localhost/dummy
 RUN npx prisma generate
 # Next eslint flag — schema CI already lints; skip during build for speed.
 ENV NEXT_DISABLE_ESLINT_DURING_BUILD=1
+# Fly's default remote builder VM has ~2GB RAM; Next.js webpack build of
+# this app pushes past it (heap OOM, SIGABRT). Raise the V8 heap ceiling.
+ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 # ── runner: minimal-ish prod image ───────────────────────────────────

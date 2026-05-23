@@ -46,7 +46,11 @@ const VALID_ENTRY_TYPES = new Set(Object.values(EntryType))
 // cap was producing false timeouts on healthy cilts. /embed is short
 // because batches are fast even on slow networks.
 const PROCESS_FETCH_TIMEOUT_MS = 10 * 60 * 1000
-const EMBED_FETCH_TIMEOUT_MS = 2 * 60 * 1000
+// BGE-M3 dense encoding of a 100-chunk batch on CPU can take 1–3
+// minutes for long academic chunks. 2 minutes was too tight (smoke-test
+// confirmed) — bump to 5 to absorb the worst case without firing false
+// failures that retry the whole batch.
+const EMBED_FETCH_TIMEOUT_MS = 5 * 60 * 1000
 // Number of front pages to stitch into extractedText for the
 // bibliography-enrichment Haiku call. Matches python-service/routers/
 // process.py's _BIB_PAGES so prompts behave identically across paths.
