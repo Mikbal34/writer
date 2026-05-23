@@ -1,0 +1,24 @@
+# Production reverse proxy + automatic HTTPS via Let's Encrypt.
+# Caddy issues + renews the cert as long as DNS for the domain points
+# at this VM. For a fresh-VM test, swap quilpen.com for the bare IP
+# (using :80 only) until DNS is cut over.
+
+quilpen.com, www.quilpen.com {
+	reverse_proxy web:3000
+
+	# Long uploads — academic PDFs can be 50+ MB. Default Caddy buffer
+	# is fine but request_body limit is conservative; bump for safety.
+	request_body {
+		max_size 100MB
+	}
+
+	# Forward real client IP to Next.js so middleware sees the real
+	# source rather than the docker bridge gateway.
+	header_up X-Real-IP {remote_host}
+}
+
+# Health check + plain HTTP (port 80 auto-redirects to HTTPS above).
+:80 {
+	respond /healthz "ok" 200
+	# Anything else gets sent to the HTTPS site above via auto-redirect.
+}

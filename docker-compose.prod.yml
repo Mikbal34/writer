@@ -1,0 +1,114 @@
+# Production deployment — provider-agnostic. Runs identically on
+# Azure / Hetzner / Oracle / DigitalOcean / any Docker host. Caddy
+# handles SSL via Let's Encrypt automatically; the only requirement
+# is a domain pointing at the VM's public IP.
+#
+# Local-dev compose (postgres for offline work) is in docker-compose.yml.
+# Production has no local DB — Neon/Upstash/R2 are all external.
+#
+# First-time setup on a fresh VM:
+#   1. Install docker (curl -fsSL https://get.docker.com | sh)
+#   2. git clone <repo> /opt/quilpen && cd /opt/quilpen
+#   3. cp .env.example .env  &  fill in secrets
+#   4. docker compose -f docker-compose.prod.yml up -d --build
+#      (10-20 min first time — Tesseract + sentence-transformers)
+#   5. Point DNS A record at VM, Caddy issues cert automatically
+#
+# Updates: git pull && docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+    networks:
+      - quilpen
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "start"]
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PYTHON_SERVICE_URL: http://python:8000
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_BUCKET: ${R2_BUCKET}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      SURYA_OCR_URL: ${SURYA_OCR_URL}
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET}
+      ADMIN_BULK_IMPORT_TOKEN: ${ADMIN_BULK_IMPORT_TOKEN:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      CONTEXTUAL_PREFIX_ENABLED: "0"
+    depends_on:
+      - python
+    networks:
+      - quilpen
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    environment:
+      NODE_ENV: production
+      PYTHON_SERVICE_URL: http://python:8000
+      WORKER_CONCURRENCY: "4"
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_BUCKET: ${R2_BUCKET}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY}
+      CONTEXTUAL_PREFIX_ENABLED: "0"
+    depends_on:
+      - python
+    networks:
+      - quilpen
+
+  python:
+    build:
+      context: ./python-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      PORT: "8000"
+      OCR_WORKERS: "4"
+      SURYA_OCR_URL: ${SURYA_OCR_URL}
+      OCR_SERVICE_SECRET: ${OCR_SERVICE_SECRET:-}
+    networks:
+      - quilpen
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  quilpen:
+    driver: bridge
