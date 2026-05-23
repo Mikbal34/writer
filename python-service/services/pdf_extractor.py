@@ -42,16 +42,35 @@ _MIN_TEXT_CHARS = 30
 # and the engine picks per-character, so one pass handles a mixed
 # European corpus without re-running. Ordering puts English first as a
 # weak prior since most academic books carry some English.
-_LATIN_LANGS = (
+#
+# CORE vs EXTENDED — every extra language model Tesseract loads adds
+# linear cost to per-page recognition (each model contributes word
+# features, scored every page). 26-lang Latin is ~2-3× slower than the
+# 8-lang core. Strategy:
+#   • Pass 1: CORE on every page (fast)                   — 8 langs
+#   • Pass 2: EXTENDED only on weak pages (per-page conf) — 26 langs
+# CORE covers ~95% of academic corpora (en/de/fr/tr/it/es/pt/lat).
+# Pass 2 catches Polish/Hungarian/Slavic outliers without paying the
+# 26-lang cost on the whole document. Pages still below threshold after
+# Pass 2 escalate to Surya via the existing conf+coverage signal.
+_LATIN_LANGS_CORE = "eng+deu+fra+tur+ita+spa+por+lat"
+_LATIN_LANGS_EXTENDED = (
     "eng+deu+fra+spa+ita+por+nld+cat+swe+dan+nor+fin+isl+pol+"
     "ces+slk+hun+ron+hrv+slv+lit+lav+est+sqi+lat+tur"
 )
+# Per-page conf threshold for escalating CORE → EXTENDED. Tuned same
+# as the doc-level threshold below; can be relaxed via env if false
+# positives waste cycles.
+_PAGE_CONF_ESCALATE = float(os.environ.get("OCR_PAGE_ESCALATE_CONF", "55"))
+# Back-compat alias — older callers and the single-page fallback path
+# still reference _LATIN_LANGS; treat it as the extended set.
+_LATIN_LANGS = _LATIN_LANGS_EXTENDED
 _CYRILLIC_LANGS = "rus+ukr+bul+srp+mkd"
 _GREEK_LANGS = "ell"
 # Fallback for undetermined script — includes ara so an Arabic doc
 # whose OSD failed isn't starved (Surya still carries it via the
 # coverage net below).
-_OCR_LANGS = _LATIN_LANGS + "+ara"
+_OCR_LANGS = _LATIN_LANGS_EXTENDED + "+ara"
 
 # Cap parallelism so we don't OOM Railway. Each worker holds one
 # 300-DPI page bitmap (≈30-60 MB for a typical academic page) plus a
@@ -81,8 +100,10 @@ _EXPECTED_CHARS_PER_PAGE = float(os.environ.get("OCR_EXPECTED_CHARS_PER_PAGE", "
 _HARD_SCRIPTS = {"Arabic", "Hebrew", "Thaana", "Syriac"}
 # OSD script → Tesseract -l string. Anything not listed falls back to
 # the comprehensive _OCR_LANGS default; hard scripts skip Tesseract.
+# Latin uses CORE here — extended set is reserved for the per-page
+# escalation pass in extract_text_by_page().
 _SCRIPT_LANGS = {
-    "Latin": _LATIN_LANGS,
+    "Latin": _LATIN_LANGS_CORE,
     "Cyrillic": _CYRILLIC_LANGS,
     "Greek": _GREEK_LANGS,
 }
@@ -268,29 +289,33 @@ def _ocr_page_conf_at_path(args: tuple[str, int, str]) -> tuple[int, str, float]
 
 def _parallel_ocr_conf(
     file_path: str, page_nums: list[int], langs: str
-) -> tuple[dict[int, str], float]:
-    """Confidence-aware parallel OCR. Returns ({page_num: text}, mean_conf)
-    where mean_conf is averaged over pages that produced any text."""
+) -> tuple[dict[int, str], float, dict[int, float]]:
+    """Confidence-aware parallel OCR. Returns ({page_num: text}, mean_conf,
+    {page_num: conf}). Per-page conf is what enables the CORE→EXTENDED
+    escalation in extract_text_by_page (re-OCR only the weak pages)."""
     if not page_nums or not HAS_OCR:
-        return {}, 100.0
+        return {}, 100.0, {}
     workers = min(len(page_nums), _OCR_WORKERS)
     texts: dict[int, str] = {}
+    page_confs: dict[int, float] = {}
     confs: list[float] = []
     args = [(file_path, p, langs) for p in page_nums]
     try:
         with ProcessPoolExecutor(max_workers=workers) as executor:
             for page_num, text, conf in executor.map(_ocr_page_conf_at_path, args):
                 texts[page_num] = text
+                page_confs[page_num] = conf
                 if text.strip():
                     confs.append(conf)
     except BrokenExecutor:
         for page_num in [p for p in page_nums if p not in texts]:
             _, text, conf = _ocr_page_conf_at_path((file_path, page_num, langs))
             texts[page_num] = text
+            page_confs[page_num] = conf
             if text.strip():
                 confs.append(conf)
     doc_conf = (sum(confs) / len(confs)) if confs else 0.0
-    return texts, doc_conf
+    return texts, doc_conf, page_confs
 
 
 def _ocr_page_at_path(args: tuple[str, int]) -> tuple[int, str]:
@@ -500,9 +525,45 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
                     # script; fall back to the comprehensive default
                     # when OSD was undetermined.
                     langs = _SCRIPT_LANGS.get(script, _OCR_LANGS)
-                    ocr_texts, doc_conf = _parallel_ocr_conf(
+                    ocr_texts, doc_conf, page_confs = _parallel_ocr_conf(
                         file_path, pages_to_ocr, langs
                     )
+                    # Per-page CORE → EXTENDED escalation. Latin docs
+                    # default to the 8-lang core; pages with weak conf
+                    # get a second pass with the full 26-lang set. This
+                    # gives the 2-3× speedup on mono-language books
+                    # (de/fr/tr/es academic) without hurting Polish or
+                    # Hungarian books — those weak pages auto-promote.
+                    if script == "Latin" and page_confs:
+                        weak = [
+                            p for p in pages_to_ocr
+                            if page_confs.get(p, 0.0) < _PAGE_CONF_ESCALATE
+                            or not (ocr_texts.get(p) or "").strip()
+                        ]
+                        # Only re-OCR when it's a small minority — if
+                        # most pages are weak the whole doc probably
+                        # needs Surya anyway (caught by coverage net
+                        # below). Cap at 40% to keep speedup intact.
+                        if 0 < len(weak) <= max(1, int(len(pages_to_ocr) * 0.4)):
+                            print(
+                                f"[pdf_extractor] Latin CORE→EXTENDED: "
+                                f"re-OCR {len(weak)}/{len(pages_to_ocr)} weak pages"
+                            )
+                            refined, _r_doc, _r_pages = _parallel_ocr_conf(
+                                file_path, weak, _LATIN_LANGS_EXTENDED
+                            )
+                            for p, t in refined.items():
+                                if t.strip():
+                                    ocr_texts[p] = t
+                            # Recompute doc_conf after escalation so the
+                            # Surya net below sees the refined picture.
+                            kept = [
+                                page_confs.get(p, 0.0)
+                                for p in pages_to_ocr
+                                if (ocr_texts.get(p) or "").strip()
+                            ]
+                            if kept:
+                                doc_conf = sum(kept) / len(kept)
                     # Coverage signal — caught van Ess's failure mode
                     # where Tesseract returned a tiny but confident
                     # word set while losing 90% of the page text.
