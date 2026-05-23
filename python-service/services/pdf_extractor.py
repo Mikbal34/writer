@@ -109,6 +109,41 @@ _SCRIPT_LANGS = {
 }
 
 
+# Mean luminance threshold above which a rendered page is treated as
+# essentially blank (white separator pages, scan inserts). Tuned conserv-
+# atively at 248/255 — real text pages average 200-240 due to ink, so
+# 248 only catches near-uniform white. Drop via env if false positives
+# (very faint scans) appear.
+_BLANK_LUMA_THRESHOLD = float(os.environ.get("OCR_BLANK_LUMA", "248"))
+
+
+def _is_blank_page(file_path: str, page_num: int) -> bool:
+    """Cheap blankness check via 75-DPI render + sub-sampled mean pixel
+    value. Used to skip Tesseract on separator/blank pages in scanned
+    books — typical academic scans have 5-10% blank pages and each
+    saves ~5-10 s of OCR work. The 75-DPI render itself is ~50 ms so
+    the trade is firmly net-positive whenever even one page is blank."""
+    if not HAS_OCR:
+        return False
+    try:
+        doc = fitz.open(file_path)
+        try:
+            pix = doc.load_page(page_num).get_pixmap(dpi=75)
+            sample = pix.samples
+            if not sample:
+                return True
+            # Sub-sample ~4 k bytes — enough to estimate mean luminance
+            # without scanning the whole bitmap.
+            step = max(1, len(sample) // 4096)
+            subset = sample[::step]
+            mean = sum(subset) / len(subset)
+            return mean > _BLANK_LUMA_THRESHOLD
+        finally:
+            doc.close()
+    except Exception:
+        return False
+
+
 def _sample_indices(page_count: int, sample: int) -> list[int]:
     """Evenly spaced page indices for script sampling (skip the cover)."""
     if page_count <= 0:
@@ -508,6 +543,24 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
                 p for p, text in native_texts.items()
                 if len(text.strip()) < _MIN_TEXT_CHARS
             ]
+            # Pre-filter blank pages — 5-10% of typical academic scans
+            # are separator/blank pages and each saves ~5-10 s of
+            # Tesseract work. The 75-DPI check is ~50 ms per page so
+            # the overhead is dwarfed by the savings on real scans.
+            if pages_to_ocr:
+                kept: list[int] = []
+                blanks = 0
+                for p in pages_to_ocr:
+                    if _is_blank_page(file_path, p):
+                        blanks += 1
+                    else:
+                        kept.append(p)
+                if blanks:
+                    print(
+                        f"[pdf_extractor] skipped {blanks}/{len(pages_to_ocr)} "
+                        f"blank pages from OCR"
+                    )
+                pages_to_ocr = kept
             if pages_to_ocr and not _SURYA_OCR_URL:
                 # Surya not configured → original Tesseract path, unchanged.
                 ocr_texts = _parallel_ocr(file_path, pages_to_ocr)
