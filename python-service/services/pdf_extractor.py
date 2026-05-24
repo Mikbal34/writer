@@ -105,12 +105,18 @@ _EXPECTED_CHARS_PER_PAGE = float(os.environ.get("OCR_EXPECTED_CHARS_PER_PAGE", "
 # Tesseract OSD script names we route to Surya instead of Tesseract.
 _HARD_SCRIPTS = {"Arabic", "Hebrew", "Thaana", "Syriac"}
 # Smart routing thresholds — Tesseract is the fast/free CPU path,
-# Surya is the GPU path for hard/heavy work. Defaults:
-#   • >120 pages → Surya (GPU faster than CPU at this size)
-#   • >25 MB AND >=60 pages → Surya (dense scan, Tesseract slow)
-# Both gated behind SURYA_OCR_URL.
-_HEAVY_SCAN_PAGES = int(os.environ.get("OCR_HEAVY_PAGES", "120"))
-_HEAVY_SCAN_MB = float(os.environ.get("OCR_HEAVY_MB", "25"))
+# Surya is the GPU path for non-trivial scans. Tesseract on CPU is
+# painfully slow on serious academic books (German 500-page scans
+# took 56 min and still timed out at 30-min worker cap). New defaults
+# are MUCH more aggressive about Surya routing:
+#   • >30 pages_to_ocr → Surya (any real academic scan)
+#   • >15 MB AND >=20 pages → Surya (dense modest-size scan)
+# Tesseract reserved for very small documents (lecture notes, single
+# articles) where its no-network advantage actually wins. Both gated
+# behind SURYA_OCR_URL.
+_HEAVY_SCAN_PAGES = int(os.environ.get("OCR_HEAVY_PAGES", "30"))
+_HEAVY_SCAN_MB = float(os.environ.get("OCR_HEAVY_MB", "15"))
+_HEAVY_SCAN_MIN_PAGES_FOR_MB = int(os.environ.get("OCR_HEAVY_MIN_PAGES", "20"))
 
 # N-user spillover — bound local Tesseract concurrency to vCPU count
 # so 10 simultaneous uploads don't thrash the CPU. When the local
@@ -123,10 +129,11 @@ _LOCAL_OCR_SEMAPHORE = threading.Semaphore(_LOCAL_OCR_LIMIT)
 
 
 def _is_heavy_scan(file_path: str, pages_to_ocr: list[int]) -> bool:
-    """True when the document should skip Tesseract upfront: hard
-    scripts already triggered separately, this catches Latin/Cyrillic/
-    Greek scans that are big enough that GPU clearly beats CPU.
-    Returns False only when Surya is unconfigured (dev fallback)."""
+    """True when the document should skip Tesseract upfront. New
+    aggressive default: any scan with >30 OCR pages goes to Surya.
+    Tesseract local is reserved for tiny docs (lecture notes etc.)
+    where avoiding the network round-trip actually wins. Returns
+    False only when Surya is unconfigured (dev fallback)."""
     if not _SURYA_OCR_URL:
         return False
     n = len(pages_to_ocr)
@@ -134,7 +141,7 @@ def _is_heavy_scan(file_path: str, pages_to_ocr: list[int]) -> bool:
         return True
     try:
         size_mb = os.path.getsize(file_path) / 1_048_576
-        if size_mb > _HEAVY_SCAN_MB and n >= 60:
+        if size_mb > _HEAVY_SCAN_MB and n >= _HEAVY_SCAN_MIN_PAGES_FOR_MB:
             return True
     except OSError:
         pass

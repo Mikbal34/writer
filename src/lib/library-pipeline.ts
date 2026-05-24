@@ -34,8 +34,8 @@ import { Agent, fetch as undiciFetch } from 'undici'
 // the bundled undici may ignore an Agent constructed from the npm
 // package). AbortSignal (PROCESS_FETCH_TIMEOUT_MS) stays the ceiling.
 const _longOcrDispatcher = new Agent({
-  headersTimeout: 30 * 60 * 1000,
-  bodyTimeout: 30 * 60 * 1000,
+  headersTimeout: 60 * 60 * 1000,
+  bodyTimeout: 60 * 60 * 1000,
   connectTimeout: 30_000,
 })
 import { deductCredits } from '@/lib/credits'
@@ -61,11 +61,12 @@ const VALID_ENTRY_TYPES = new Set(Object.values(EntryType))
 // works corpus genuinely take 3-8 min to chunk, so the earlier 3-min
 // cap was producing false timeouts on healthy cilts. /embed is short
 // because batches are fast even on slow networks.
-// 30 min — matches the undici dispatcher's headersTimeout above. Big
-// scanned books (200+ pages × 30 Tesseract langs) regularly need 15-20
-// min in Python before the response headers come back; 10 min was the
-// false ceiling that killed cilt 1.
-const PROCESS_FETCH_TIMEOUT_MS = 30 * 60 * 1000
+// 60 min — Surya on big German/Arabic scans (500+ pages) can run
+// 15-30 min on Modal GPU, plus cold start + queue. 30 min was tight
+// when a multi-cilt batch hit at once. The undici dispatcher above
+// already allows up to 30 min headers; bump THIS cap so we don't
+// abort the worker before Surya finishes.
+const PROCESS_FETCH_TIMEOUT_MS = 60 * 60 * 1000
 // BGE-M3 dense encoding of a 100-chunk batch on CPU can take 1–3
 // minutes when python-service has the CPU to itself. When python is
 // concurrently running OCR (the common case during multi-cilt
