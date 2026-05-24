@@ -349,14 +349,19 @@ def _ocr_via_surya(file_path: str) -> dict[int, str] | None:
         return None
 
 
-# Page-range chunk size for parallel Surya. 100 pages × ~2 sec/page
-# = ~200 sec/chunk on L4 GPU. Modal autoscales to N concurrent GPUs
-# (limited by SURYA_PARALLEL_LIMIT below).
-_SURYA_CHUNK_PAGES = int(os.environ.get("SURYA_CHUNK_PAGES", "100"))
-# Don't fan out beyond this — Modal endpoint's own concurrency_limit
-# should be >= this. 10 parallel = handles 1000-page mega books in
-# ~3 min.
-_SURYA_PARALLEL_LIMIT = int(os.environ.get("SURYA_PARALLEL_LIMIT", "10"))
+# Page-range chunk size for parallel Surya. Surya empirically runs
+# ~10-12 sec/page on L4 (~1.7 line/sec × ~20 lines/page), not the
+# 2 sec/page I first guessed — so 100-page chunks took 17-20 min each
+# and "parallel chunked" effectively serialized. 20-page chunks land
+# ~4 min wall time per chunk regardless of book size.
+_SURYA_CHUNK_PAGES = int(os.environ.get("SURYA_CHUNK_PAGES", "20"))
+# Hard ceiling on concurrent Modal HTTP requests per /process-url
+# call. Modal endpoint's own concurrency_limit must be >= this AND
+# big enough to absorb across all uvicorn workers (50 here × 4
+# uvicorn workers = up to 200 concurrent if 4 users hit at once;
+# Modal limit should be ≥ 50 to guarantee ANY single book completes
+# in one wave without queueing).
+_SURYA_PARALLEL_LIMIT = int(os.environ.get("SURYA_PARALLEL_LIMIT", "50"))
 
 
 def _ocr_via_surya_chunked(file_path: str) -> dict[int, str] | None:
