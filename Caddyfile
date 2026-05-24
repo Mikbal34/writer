@@ -4,6 +4,9 @@
 # (using :80 only) until DNS is cut over.
 
 quilpen.com, www.quilpen.com {
+	# Caddy automatically sets X-Forwarded-For + X-Forwarded-Proto on
+	# every reverse_proxy hop, so middleware sees the real client IP
+	# without an explicit header_up directive.
 	reverse_proxy web:3000
 
 	# Long uploads — academic PDFs can be 50+ MB. Default Caddy buffer
@@ -11,14 +14,13 @@ quilpen.com, www.quilpen.com {
 	request_body {
 		max_size 100MB
 	}
-
-	# Forward real client IP to Next.js so middleware sees the real
-	# source rather than the docker bridge gateway.
-	header_up X-Real-IP {remote_host}
 }
 
-# Health check + plain HTTP (port 80 auto-redirects to HTTPS above).
+# Pre-DNS test: hit the VM's bare IP over HTTP and Caddy serves the
+# app + healthz from the catch-all below. Once DNS is cut over, this
+# becomes the HTTP→HTTPS redirector.
 :80 {
 	respond /healthz "ok" 200
-	# Anything else gets sent to the HTTPS site above via auto-redirect.
+	reverse_proxy web:3000
 }
+
