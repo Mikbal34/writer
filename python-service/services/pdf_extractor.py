@@ -104,27 +104,52 @@ _OCR_MIN_COVERAGE = float(os.environ.get("OCR_MIN_COVERAGE", "0.30"))
 _EXPECTED_CHARS_PER_PAGE = float(os.environ.get("OCR_EXPECTED_CHARS_PER_PAGE", "800"))
 # Tesseract OSD script names we route to Surya instead of Tesseract.
 _HARD_SCRIPTS = {"Arabic", "Hebrew", "Thaana", "Syriac"}
-# All-Modal OCR routing — when SURYA_OCR_URL is configured, every scan
-# goes to Modal GPU. Tesseract stays as emergency fallback (Modal down
-# / network blip). Rationale: at N-user scale, ANY scan on CPU is a
-# bottleneck — a single 50-page scan ties up a Tesseract worker for
-# 2-3 min. Modal autoscales 0→N GPUs on demand, $0 idle, per-second
-# billing. Even at 1000 books/mo total Modal cost is ~$50, way under
-# the cost of provisioning enough CPU to handle the same load.
-#
-# Old thresholds (OCR_HEAVY_PAGES / OCR_HEAVY_MB) deprecated — kept
-# the env names for backwards-compat but unused. The Tesseract path
-# below kicks in only when Surya is unconfigured (dev) or returns an
-# error (transient failure).
+# Smart routing thresholds — Tesseract is the fast/free CPU path,
+# Surya is the GPU path for hard/heavy work. Defaults:
+#   • >120 pages → Surya (GPU faster than CPU at this size)
+#   • >25 MB AND >=60 pages → Surya (dense scan, Tesseract slow)
+# Both gated behind SURYA_OCR_URL.
+_HEAVY_SCAN_PAGES = int(os.environ.get("OCR_HEAVY_PAGES", "120"))
+_HEAVY_SCAN_MB = float(os.environ.get("OCR_HEAVY_MB", "25"))
+
+# N-user spillover — bound local Tesseract concurrency to vCPU count
+# so 10 simultaneous uploads don't thrash the CPU. When the local
+# semaphore is exhausted, the NEXT scan request transparently routes
+# to Surya regardless of size. Tesseract handles steady state; Modal
+# absorbs bursts. This is the spillover pattern big systems use.
+import threading
+_LOCAL_OCR_LIMIT = int(os.environ.get("OCR_LOCAL_LIMIT", str(_DEFAULT_OCR_WORKERS)))
+_LOCAL_OCR_SEMAPHORE = threading.Semaphore(_LOCAL_OCR_LIMIT)
 
 
 def _is_heavy_scan(file_path: str, pages_to_ocr: list[int]) -> bool:
-    """True whenever any OCR work exists AND Surya is configured —
-    we route every scan to Modal GPU at production scale. Returns
-    False only when SURYA_OCR_URL is unset (dev / fallback)."""
+    """True when the document should skip Tesseract upfront: hard
+    scripts already triggered separately, this catches Latin/Cyrillic/
+    Greek scans that are big enough that GPU clearly beats CPU.
+    Returns False only when Surya is unconfigured (dev fallback)."""
     if not _SURYA_OCR_URL:
         return False
-    return len(pages_to_ocr) > 0
+    n = len(pages_to_ocr)
+    if n > _HEAVY_SCAN_PAGES:
+        return True
+    try:
+        size_mb = os.path.getsize(file_path) / 1_048_576
+        if size_mb > _HEAVY_SCAN_MB and n >= 60:
+            return True
+    except OSError:
+        pass
+    return False
+
+
+def _try_acquire_local_ocr_slot() -> bool:
+    """Non-blocking attempt to grab a local Tesseract slot. Returns
+    True if a slot was acquired (caller must call _release_local_ocr_slot
+    when done); False if all slots are busy → caller should spill to Surya."""
+    return _LOCAL_OCR_SEMAPHORE.acquire(blocking=False)
+
+
+def _release_local_ocr_slot() -> None:
+    _LOCAL_OCR_SEMAPHORE.release()
 # OSD script → Tesseract -l string. Anything not listed falls back to
 # the comprehensive _OCR_LANGS default; hard scripts skip Tesseract.
 # Latin uses CORE here — extended set is reserved for the per-page
@@ -596,27 +621,47 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
                 hard = script in _HARD_SCRIPTS
                 heavy = _is_heavy_scan(file_path, pages_to_ocr)
                 surya_text: dict[int, str] | None = None
-                # All-Modal routing: every scan goes to Surya GPU when
-                # SURYA_OCR_URL is configured. Tesseract is now the
-                # disaster-recovery fallback (Modal down / network
-                # blip). At N-user scale, CPU OCR is a queue-killing
-                # bottleneck; Modal autoscales 0→N GPUs per request.
-                if hard or heavy:
+                # Smart routing decision:
+                #   1. Hard scripts (Arabic/Hebrew) → Surya (Tesseract bad)
+                #   2. Heavy scans (>120 pages or >25MB+60p) → Surya (GPU)
+                #   3. Local CPU at capacity → Surya (spillover, see
+                #      _try_acquire_local_ocr_slot above)
+                #   4. Everything else → Tesseract (fast, free, local)
+                local_slot_acquired = False
+                spill_reason = None
+                if hard:
+                    spill_reason = f"hard script ({script})"
+                elif heavy:
                     try:
                         size_mb = os.path.getsize(file_path) / 1_048_576
                     except OSError:
                         size_mb = 0
-                    print(
-                        f"[pdf_extractor] scan → Surya GPU "
-                        f"({len(pages_to_ocr)} pages, {size_mb:.0f} MB"
-                        f"{', hard script' if hard else ''})"
-                    )
+                    spill_reason = f"heavy scan ({len(pages_to_ocr)} pages, {size_mb:.0f} MB)"
+                else:
+                    # Try to grab a local Tesseract slot. If at capacity,
+                    # spill over to Surya so the request doesn't queue.
+                    local_slot_acquired = _try_acquire_local_ocr_slot()
+                    if not local_slot_acquired:
+                        spill_reason = f"local OCR capacity full ({_LOCAL_OCR_LIMIT} slots in use)"
+
+                if spill_reason:
+                    print(f"[pdf_extractor] scan → Surya GPU ({spill_reason})")
                     surya_text = _ocr_via_surya(file_path)
                     if surya_text is None:
                         print("[pdf_extractor] Surya failed → falling back to Tesseract")
+                        # Couldn't reach Surya, fall through to local
+                        # Tesseract path. Grab a slot if we don't have
+                        # one (blocking is OK as last resort).
+                        if not local_slot_acquired:
+                            _LOCAL_OCR_SEMAPHORE.acquire()
+                            local_slot_acquired = True
 
                 if surya_text is not None:
                     ocr_texts = {p: surya_text.get(p, "") for p in pages_to_ocr}
+                    # Release any local slot we grabbed but didn't end up using.
+                    if local_slot_acquired:
+                        _release_local_ocr_slot()
+                        local_slot_acquired = False
                 else:
                     # Tesseract path. Pick the lang set per detected
                     # script; fall back to the comprehensive default
@@ -685,6 +730,10 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
                             for p in pages_to_ocr:
                                 if esc.get(p, "").strip():
                                     ocr_texts[p] = esc[p]
+                    # Tesseract path done — release the local slot.
+                    if local_slot_acquired:
+                        _release_local_ocr_slot()
+                        local_slot_acquired = False
 
         # Pull printed-page labels (the "49" the book shows even when
         # the PDF index is 64 because of front matter). PyMuPDF exposes
