@@ -558,11 +558,22 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
     for (const r of results) if (r.status === 'rejected')
       errors.push(r.reason instanceof Error ? r.reason.message : String(r.reason))
     setUploading(false)
+    const successCount = files.length - errors.length
     if (errors.length === 0) {
       toast.success(`${files.length} dosya işleme alındı`)
       onClose()
     } else {
-      toast.error(`${errors.length} hata`, { description: errors.slice(0, 3).join(' · ') })
+      // Show ALL failed filenames (newline-separated) so the user
+      // knows exactly which to retry. Keep the dialog open so they
+      // can re-pick / re-upload without redoing the whole batch.
+      toast.error(
+        `${successCount}/${files.length} başarılı — ${errors.length} hata`,
+        {
+          description: errors.join('\n'),
+          duration: 20000,
+        },
+      )
+      // Don't onClose() — user can see what's left + retry the rest
     }
   }
 
