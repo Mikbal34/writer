@@ -502,7 +502,14 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
       return
     }
 
-    setUploading(true)
+    // Optimistic close: kick off uploads in the background and let the
+    // user get on with their day. Toasts report each file's result;
+    // the library page polls the in-flight feed so entries appear in
+    // real-time as they finish. Big PDF batches (5 × 30 MB) previously
+    // froze the dialog for 2-3 min, which felt broken.
+    const totalFiles = files.length
+    toast.success(`${totalFiles} dosya yüklemeye başlandı — kütüphanede ilerlemeyi görebilirsin`)
+    onClose()
     const errors: string[] = []
 
     const standalonePromises = ungrouped.map(async (pf) => {
@@ -554,27 +561,23 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
       }))
     })
 
+    // Fire-and-forget — dialog already closed. We still wait so we
+    // can surface per-file failures as toasts after the fact.
     const results = await Promise.allSettled([...standalonePromises, ...groupPromises])
     for (const r of results) if (r.status === 'rejected')
       errors.push(r.reason instanceof Error ? r.reason.message : String(r.reason))
-    setUploading(false)
-    const successCount = files.length - errors.length
+    const successCount = totalFiles - errors.length
     if (errors.length === 0) {
-      toast.success(`${files.length} dosya işleme alındı`)
-      onClose()
-    } else {
-      // Show ALL failed filenames (newline-separated) so the user
-      // knows exactly which to retry. Keep the dialog open so they
-      // can re-pick / re-upload without redoing the whole batch.
-      toast.error(
-        `${successCount}/${files.length} başarılı — ${errors.length} hata`,
-        {
-          description: errors.join('\n'),
-          duration: 20000,
-        },
-      )
-      // Don't onClose() — user can see what's left + retry the rest
+      // Already toasted "X dosya başladı" at the top — quiet success.
+      return
     }
+    toast.error(
+      `${successCount}/${totalFiles} yüklendi — ${errors.length} hata`,
+      {
+        description: errors.join('\n'),
+        duration: 30000,
+      },
+    )
   }
 
   if (groupFormOpen) return (
