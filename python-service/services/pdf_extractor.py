@@ -128,20 +128,37 @@ _LOCAL_OCR_LIMIT = int(os.environ.get("OCR_LOCAL_LIMIT", str(_DEFAULT_OCR_WORKER
 _LOCAL_OCR_SEMAPHORE = threading.Semaphore(_LOCAL_OCR_LIMIT)
 
 
-def _is_heavy_scan(file_path: str, pages_to_ocr: list[int]) -> bool:
-    """True when the document should skip Tesseract upfront. New
-    aggressive default: any scan with >30 OCR pages goes to Surya.
-    Tesseract local is reserved for tiny docs (lecture notes etc.)
-    where avoiding the network round-trip actually wins. Returns
+def _is_heavy_scan(
+    file_path: str, pages_to_ocr: list[int], total_pages: int = 0,
+) -> bool:
+    """True when the document should skip Tesseract upfront. Three
+    independent signals — any one trips the route to Surya GPU:
+
+      • pages_to_ocr count > 30 (lots of scan work)
+      • file size > 15 MB (chunky scan even if pdfjs found some text)
+      • total page count > 100 AND has any OCR work (big book —
+        PyMuPDF can over-extract from hybrid PDFs, masking the fact
+        the doc is mostly a scan; total-page count is robust to that)
+
+    Tesseract local is reserved for genuinely small docs. Returns
     False only when Surya is unconfigured (dev fallback)."""
     if not _SURYA_OCR_URL:
         return False
     n = len(pages_to_ocr)
     if n > _HEAVY_SCAN_PAGES:
         return True
+    if total_pages > 100 and n > 0:
+        # Big book with any OCR need → GPU regardless. Catches the
+        # VanEss-style case where PyMuPDF extracts copyright pages
+        # natively, shrinking pages_to_ocr to a small number even
+        # though the body is 500 scanned pages.
+        return True
     try:
         size_mb = os.path.getsize(file_path) / 1_048_576
-        if size_mb > _HEAVY_SCAN_MB and n >= _HEAVY_SCAN_MIN_PAGES_FOR_MB:
+        if size_mb > _HEAVY_SCAN_MB:
+            # File-size alone catches dense scans regardless of
+            # page count. 25 MB compressed PDF is virtually always
+            # an image-heavy scan.
             return True
     except OSError:
         pass
@@ -626,7 +643,18 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
             elif pages_to_ocr:
                 script = _detect_script(file_path, page_count)
                 hard = script in _HARD_SCRIPTS
-                heavy = _is_heavy_scan(file_path, pages_to_ocr)
+                heavy = _is_heavy_scan(file_path, pages_to_ocr, total_pages=page_count)
+                # Visibility into the routing decision so we don't
+                # have to guess from process trees again.
+                try:
+                    _size_mb = os.path.getsize(file_path) / 1_048_576
+                except OSError:
+                    _size_mb = 0
+                print(
+                    f"[pdf_extractor] routing decision: pages_to_ocr={len(pages_to_ocr)}, "
+                    f"total_pages={page_count}, size={_size_mb:.0f}MB, "
+                    f"script={script}, heavy={heavy}, hard={script in _HARD_SCRIPTS}"
+                )
                 surya_text: dict[int, str] | None = None
                 # Smart routing decision:
                 #   1. Hard scripts (Arabic/Hebrew) → Surya (Tesseract bad)
