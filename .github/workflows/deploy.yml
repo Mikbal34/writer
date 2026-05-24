@@ -1,0 +1,56 @@
+# Auto-deploy to production on every push to the active branch.
+# Replaces "ssh in, git pull, docker compose up" with a one-line
+# git push from the laptop.
+#
+# Required GitHub secrets (Settings → Secrets and variables → Actions):
+#   AZURE_VM_HOST   — public IP of the production VM (e.g. 4.180.10.105)
+#   AZURE_VM_USER   — SSH user (e.g. azureuser)
+#   AZURE_SSH_KEY   — full contents of the private key (.pem file)
+
+name: deploy
+
+on:
+  push:
+    branches:
+      - main
+      - faz2-worker-queue
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: SSH + pull + rebuild
+        env:
+          HOST: ${{ secrets.AZURE_VM_HOST }}
+          USER: ${{ secrets.AZURE_VM_USER }}
+          KEY: ${{ secrets.AZURE_SSH_KEY }}
+        run: |
+          set -e
+          mkdir -p ~/.ssh
+          printf '%s' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -i ~/.ssh/deploy_key "$USER@$HOST" bash <<'REMOTE'
+          set -e
+          cd /opt/quilpen
+          echo "==> git pull"
+          sudo git pull --ff-only
+          echo "==> docker compose build + up (rolling)"
+          sudo docker compose -f docker-compose.prod.yml up -d --build
+          echo "==> health check (60s)"
+          for i in 1 2 3 4 5 6; do
+            sleep 10
+            code=$(curl -sS -o /dev/null -w "%{http_code}" http://localhost/healthz || echo "000")
+            echo "  attempt $i → $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+          done
+          echo "==> health check failed!"
+          sudo docker compose -f docker-compose.prod.yml logs --tail 40
+          exit 1
+          REMOTE
