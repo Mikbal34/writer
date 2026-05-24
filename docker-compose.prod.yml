@@ -63,6 +63,7 @@ services:
       CONTEXTUAL_PREFIX_ENABLED: "0"
     depends_on:
       - python
+      - postgres
     networks:
       - quilpen
 
@@ -87,6 +88,7 @@ services:
       CONTEXTUAL_PREFIX_ENABLED: "0"
     depends_on:
       - python
+      - postgres
     networks:
       - quilpen
 
@@ -105,9 +107,40 @@ services:
     networks:
       - quilpen
 
+  # Self-hosted Postgres with pgvector — replaces Neon. Saves $25/mo.
+  # Data persists on the docker volume `postgres-data`, which sits on
+  # the VM's OS disk (Azure managed disk, persistent across container
+  # AND VM restarts). Backups go to R2 via scripts/deploy/backup-db.sh.
+  #
+  # Connection from web/worker: postgres://quilpen:PWD@postgres:5432/quilpen
+  # (DATABASE_URL in .env). External access intentionally blocked —
+  # SSH-tunnel from laptop if you need psql access.
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: quilpen
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: quilpen
+      # Persist defaults — tune for our small (3-5 GB) corpus
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quilpen -d quilpen"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - quilpen
+
 volumes:
   caddy-data:
   caddy-config:
+  postgres-data:
 
 networks:
   quilpen:
