@@ -353,51 +353,33 @@ export async function enrichLibraryEntryFromPdfText(
   // ── 2. Haiku on the SMART cover window when biblio missed critical
   //    fields. Sonnet escalates if Haiku still can't fill them. ──
   let llm: PdfMetadataExtraction | null = null
-  const haikuNeeded = !biblio?.title || !biblio?.authorSurname
-  if (haikuNeeded) {
+  // Sonnet (not Haiku) for metadata extraction. Empirical: Sonnet
+  // preserves diacritics (İbn, ğ, ş), extracts ISBN/publisher/place
+  // that Haiku misses, and doesn't hallucinate typos (Haiku produced
+  // "Felsefeleeri" / "Kitaabevi" / "Eğora" on the same covers Sonnet
+  // got right). Cost: ~$0.01/book vs ~$0.001 for Haiku — at 1000
+  // books/mo, $9/mo extra for dramatically better metadata. Sonnet is
+  // the right tool here, Haiku is now reserved for cheap classification
+  // tasks where the 10× quality gap isn't worth it.
+  const llmNeeded = !biblio?.title || !biblio?.authorSurname
+  if (llmNeeded) {
     try {
       const cover = pickCoverWindow(text, 16000)
-      const haikuRes = await generateJSONWithUsage<PdfMetadataExtraction>(
+      const sonnetRes = await generateJSONWithUsage<PdfMetadataExtraction>(
         buildEnrichPrompt(cover),
         'You are a bibliography + abstract extraction assistant. Respond with valid JSON only.',
-        { model: HAIKU },
+        { model: SONNET },
       )
       deductCredits(
         entry.userId, 'source_upload_extract',
-        haikuRes.inputTokens, haikuRes.outputTokens, 'haiku',
+        sonnetRes.inputTokens, sonnetRes.outputTokens, 'sonnet',
         { libraryEntryId: entryId },
       ).catch((e) => console.error('[library-pipeline] credit deduction failed:', e))
-      llm = haikuRes.data
-      source = source ?? 'haiku'
-
-      // Sonnet escalation: Haiku regularly leaves "Unknown" / null on
-      // older monographs or non-English covers. One Sonnet retry on the
-      // same cover window usually fills it.
-      const titleMissing = !llm.title || /^\s*null\s*$/i.test(String(llm.title))
-      const authorMissing = !llm.authorSurname
-        || llm.authorSurname === 'Unknown'
-        || /^\s*null\s*$/i.test(String(llm.authorSurname))
-      if (titleMissing || authorMissing) {
-        try {
-          const sonnetRes = await generateJSONWithUsage<PdfMetadataExtraction>(
-            buildEnrichPrompt(cover),
-            'You are a bibliography + abstract extraction assistant. Respond with valid JSON only.',
-            { model: SONNET },
-          )
-          deductCredits(
-            entry.userId, 'source_upload_extract',
-            sonnetRes.inputTokens, sonnetRes.outputTokens, 'sonnet',
-            { libraryEntryId: entryId },
-          ).catch((e) => console.error('[library-pipeline] credit deduction failed:', e))
-          llm = sonnetRes.data
-          if (!biblio) source = 'haiku+sonnet'
-        } catch (err) {
-          console.warn('[library-pipeline] Sonnet escalation failed (keeping Haiku):', err)
-        }
-      }
+      llm = sonnetRes.data
+      source = source ?? 'sonnet'
     } catch (err) {
       enrichError = err instanceof Error ? err.message : String(err)
-      console.warn('[library-pipeline] Haiku enrich failed:', err)
+      console.warn('[library-pipeline] Sonnet enrich failed:', err)
     }
   }
 
