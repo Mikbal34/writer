@@ -44,8 +44,15 @@ export function ingestQueue(): Queue<IngestJob> {
     _queue = new Queue<IngestJob>(INGEST_QUEUE, {
       connection: makeRedis(),
       defaultJobOptions: {
-        attempts: 4,
-        backoff: { type: 'exponential', delay: 5000 },
+        // 2 attempts (was 4) — every BullMQ retry of a heavy-scan
+        // entry re-fires ALL Surya chunk requests to Modal. With 4
+        // attempts × 29 chunks = 116 zombie Modal calls per cilt
+        // when something flakes. 2 attempts keeps the safety net but
+        // caps wasted GPU work.
+        attempts: 2,
+        // Longer initial delay so transient blips (Modal cold start,
+        // Redis hiccup) clear before retry hits.
+        backoff: { type: 'exponential', delay: 15000 },
         removeOnComplete: { count: 1000 },
         removeOnFail: { count: 5000 },
       },

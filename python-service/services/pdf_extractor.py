@@ -330,17 +330,21 @@ def _ocr_via_surya(file_path: str) -> dict[int, str] | None:
                     time.sleep(8)
                     continue
                 # 5xx / 429 → Modal briefly saturated; retry the SAME step
-                # with backoff instead of failing the whole document.
-                if exc.code in (429, 500, 502, 503) and transient < 8:
+                # with backoff. Cap at 3 retries (~70s total wait): each
+                # chunk has ~50 sibling chunks competing for GPU slots, so
+                # waiting 5 min per chunk just inflates the zombie queue.
+                # Better to fail fast and let BullMQ retry (which we also
+                # capped at 2 attempts).
+                if exc.code in (429, 500, 502, 503) and transient < 3:
                     transient += 1
-                    time.sleep(min(60, 5 * 2 ** transient))
+                    time.sleep(min(40, 5 * 2 ** transient))
                     continue
                 raise
             except urllib.error.URLError:
                 # Connection dropped (saturation) — retry with backoff.
-                if transient < 8:
+                if transient < 3:
                     transient += 1
-                    time.sleep(min(60, 5 * 2 ** transient))
+                    time.sleep(min(40, 5 * 2 ** transient))
                     continue
                 raise
         return None
