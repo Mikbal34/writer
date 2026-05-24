@@ -62,6 +62,8 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       CONTEXTUAL_PREFIX_ENABLED: "0"
       TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      VOYAGE_MODEL: ${VOYAGE_MODEL:-}
     depends_on:
       - python
       - postgres
@@ -88,6 +90,8 @@ services:
       GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY}
       CONTEXTUAL_PREFIX_ENABLED: "0"
       TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      VOYAGE_MODEL: ${VOYAGE_MODEL:-}
     depends_on:
       - python
       - postgres

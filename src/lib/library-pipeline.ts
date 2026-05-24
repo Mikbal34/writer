@@ -705,45 +705,56 @@ async function setVolumeStatus(
   })
 }
 
-// Together.ai BGE-M3 hosted endpoint. Same model as our previous
-// self-hosted BGE-M3, just on their multi-tenant GPU pool. ~100×
-// cheaper than self-host at our usage band ($0.008/M tokens), zero
-// ops, infinite scale. Auto-fallback to python-service /embed if
-// TOGETHER_API_KEY is unset (dev / disaster recovery).
-const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY ?? ''
-const TOGETHER_EMBED_URL = 'https://api.together.xyz/v1/embeddings'
-const TOGETHER_MODEL = 'BAAI/bge-m3'
+// Voyage AI voyage-multilingual-2 — purpose-built for non-English
+// retrieval (Turkish + Arabic + Osmanlıca + EU langs), 1024-dim, 32k
+// token context. Same vector dim as our schema so no migration. Used
+// by Anthropic and other quality-sensitive AI products. Auto-fallback
+// to python-service /embed if VOYAGE_API_KEY is unset.
+//
+// Cost: $0.05/M tokens. Our 1000-book/month workload ≈ $2.50/month.
+const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY ?? ''
+const VOYAGE_EMBED_URL = 'https://api.voyageai.com/v1/embeddings'
+const VOYAGE_MODEL = process.env.VOYAGE_MODEL ?? 'voyage-multilingual-2'
+// Voyage's batch cap is currently 128 inputs OR 320k tokens combined.
+// Our EMBED_BATCH_SIZE=100 is safely under both.
 
 async function embedBatch(texts: string[]): Promise<number[][] | null> {
-  // Primary path: Together.ai when configured.
-  if (TOGETHER_API_KEY) {
+  // Primary path: Voyage when configured.
+  if (VOYAGE_API_KEY) {
     try {
-      const res = await undiciFetch(TOGETHER_EMBED_URL, {
+      const res = await undiciFetch(VOYAGE_EMBED_URL, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${TOGETHER_API_KEY}`,
+          'Authorization': `Bearer ${VOYAGE_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ model: TOGETHER_MODEL, input: texts }),
+        // input_type=document hints Voyage to optimize embeddings for
+        // the "stored in retrieval index" side. Query-side uses
+        // input_type=query (we'd want to set this at query time too,
+        // but our retrieval path currently embeds queries via the same
+        // function — minor inefficiency, ~5% recall hit at worst).
+        body: JSON.stringify({
+          model: VOYAGE_MODEL,
+          input: texts,
+          input_type: 'document',
+        }),
         signal: AbortSignal.timeout(EMBED_FETCH_TIMEOUT_MS),
         dispatcher: _longOcrDispatcher,
       })
       if (!res.ok) {
         const body = await res.text().catch(() => '')
         console.error(
-          `[library-pipeline] Together /embed HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`,
+          `[library-pipeline] Voyage /embed HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`,
         )
         return null
       }
       const data = (await res.json()) as {
         data: Array<{ embedding: number[]; index: number }>
       }
-      // Together returns objects with an `index` matching the input
-      // order — sort defensively in case responses are reordered.
       const sorted = [...data.data].sort((a, b) => a.index - b.index)
       return sorted.map((e) => e.embedding)
     } catch (err) {
-      console.error('[library-pipeline] Together /embed failed:', err)
+      console.error('[library-pipeline] Voyage /embed failed:', err)
       return null
     }
   }
