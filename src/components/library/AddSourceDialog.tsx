@@ -391,7 +391,7 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
 
   const addFiles = (incoming: FileList | File[]) => {
     const fresh: PendingFile[] = Array.from(incoming)
-      .filter((f) => /\.(pdf|epub|docx)$/i.test(f.name) && f.size > 0 && f.size <= 50 * 1024 * 1024)
+      .filter((f) => /\.(pdf|epub|docx)$/i.test(f.name) && f.size > 0 && f.size <= 150 * 1024 * 1024)
       .map((file) => ({ id: newId(), file }))
     if (fresh.length === 0) return
     setFiles((prev) => [...prev, ...fresh])
@@ -725,7 +725,7 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
               {['PDF', 'EPUB', 'DOCX'].map((f) => <Chip key={f}>{f}</Chip>)}
             </div>
             <div className="mt-2.5 text-[11px] text-ink-muted">
-              maks. 50 MB · birden fazla dosya · çoklu seçip "Grupla" ile cilt yapabilirsin
+              maks. 150 MB · birden fazla dosya · çoklu seçip "Grupla" ile cilt yapabilirsin
             </div>
           </>
         ) : (
