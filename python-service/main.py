@@ -1,17 +1,22 @@
 """
-Writer Agent Python Service
-FastAPI service for PDF extraction, DOCX generation, and embeddings.
+Quilpen Python Service
+FastAPI service for PDF extraction, DOCX generation, and OCR routing.
+
+NOTE: /embed endpoint removed 2026-05-24 — Voyage AI handles all
+embedding now (see src/lib/library-pipeline.ts). The BGE-M3 model
+(~2.5 GB image bloat + 30-60s cold start) is gone with it. Routers
+left in place: extract / docx_gen / process.
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import extract, embed, docx_gen, process
+from routers import extract, docx_gen, process
 
 app = FastAPI(
-    title="Writer Agent Python Service",
-    description="PDF extraction, DOCX generation, and embedding service",
-    version="1.0.0",
+    title="Quilpen Python Service",
+    description="PDF extraction, DOCX generation, and OCR routing",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -23,24 +28,13 @@ app.add_middleware(
 )
 
 app.include_router(extract.router, tags=["Extract"])
-app.include_router(embed.router, tags=["Embed"])
 app.include_router(docx_gen.router, tags=["DOCX Generation"])
 app.include_router(process.router, tags=["Process"])
 
 
-@app.on_event("startup")
-async def _preload_embedder():
-    # Force BGE-M3 weights into RAM BEFORE Fly marks this machine healthy
-    # and routes /embed traffic. Otherwise the first /embed on a freshly
-    # booted machine spends ~30-60s loading the model and trips the Node
-    # worker's 2-min embed timeout (each scale-out machine repeats this).
-    from services.embedder import preload
-    preload()
-
-
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "writer-agent-python"}
+    return {"status": "ok", "service": "quilpen-python"}
 
 
 if __name__ == "__main__":

@@ -11,6 +11,6 @@ pytesseract==0.3.10
 Pillow==10.4.0
 EbookLib==0.18
 beautifulsoup4==4.12.3
-# BGE-M3 self-hosted embeddings (replaces Gemini API). Pulls torch (CPU
-# wheel in the service image). GPU is only used by the Modal backfill.
-sentence-transformers==3.3.1
+# sentence-transformers + torch dropped 2026-05-24 — embedding moved
+# to Voyage AI (see src/lib/library-pipeline.ts). Image went from
+# ~3.5 GB to ~700 MB.

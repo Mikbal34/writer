@@ -42,17 +42,11 @@ WORKDIR /app
 # still building this monorepo, sets its build context to python-service
 # the same way.
 COPY requirements.txt ./
-# Install CPU-only torch FIRST so sentence-transformers reuses it. The
-# full torch wheel ships CUDA libs (~2GB) we don't need; including them
-# pushes the image past Fly's 8 GB rootfs limit.
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Bake the BGE-M3 model into the image (~2.3 GB). First /embed call at
-# runtime would otherwise download it from HuggingFace, blowing past the
-# Node worker's 2-min embed timeout. Build is slower but cold start is
-# fast forever — the model lives in the image's HF cache.
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')"
+# Embedding lives on Voyage AI now (see src/lib/library-pipeline.ts).
+# The python service no longer hosts BGE-M3 — image shrank from
+# ~3.5 GB to ~700 MB, cold start dropped from ~30-60 s to ~3-5 s.
 
 # Copy the service source
 COPY . ./
