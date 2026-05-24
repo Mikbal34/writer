@@ -61,6 +61,7 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       CONTEXTUAL_PREFIX_ENABLED: "0"
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
     depends_on:
       - python
       - postgres
@@ -86,6 +87,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY}
       CONTEXTUAL_PREFIX_ENABLED: "0"
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
     depends_on:
       - python
       - postgres

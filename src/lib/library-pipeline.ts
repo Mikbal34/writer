@@ -705,7 +705,50 @@ async function setVolumeStatus(
   })
 }
 
+// Together.ai BGE-M3 hosted endpoint. Same model as our previous
+// self-hosted BGE-M3, just on their multi-tenant GPU pool. ~100×
+// cheaper than self-host at our usage band ($0.008/M tokens), zero
+// ops, infinite scale. Auto-fallback to python-service /embed if
+// TOGETHER_API_KEY is unset (dev / disaster recovery).
+const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY ?? ''
+const TOGETHER_EMBED_URL = 'https://api.together.xyz/v1/embeddings'
+const TOGETHER_MODEL = 'BAAI/bge-m3'
+
 async function embedBatch(texts: string[]): Promise<number[][] | null> {
+  // Primary path: Together.ai when configured.
+  if (TOGETHER_API_KEY) {
+    try {
+      const res = await undiciFetch(TOGETHER_EMBED_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${TOGETHER_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model: TOGETHER_MODEL, input: texts }),
+        signal: AbortSignal.timeout(EMBED_FETCH_TIMEOUT_MS),
+        dispatcher: _longOcrDispatcher,
+      })
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        console.error(
+          `[library-pipeline] Together /embed HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`,
+        )
+        return null
+      }
+      const data = (await res.json()) as {
+        data: Array<{ embedding: number[]; index: number }>
+      }
+      // Together returns objects with an `index` matching the input
+      // order — sort defensively in case responses are reordered.
+      const sorted = [...data.data].sort((a, b) => a.index - b.index)
+      return sorted.map((e) => e.embedding)
+    } catch (err) {
+      console.error('[library-pipeline] Together /embed failed:', err)
+      return null
+    }
+  }
+
+  // Fallback: self-hosted python /embed (dev / disaster recovery).
   try {
     const res = await undiciFetch(`${PYTHON_SERVICE_URL}/embed`, {
       method: 'POST',
