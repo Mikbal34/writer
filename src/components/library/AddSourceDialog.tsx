@@ -527,6 +527,22 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
         if (form.publishPlace.trim()) fd.append('publishPlace', form.publishPlace.trim())
       }
       const res = await fetch('/api/library/upload-pdf', { method: 'POST', body: fd })
+      if (res.status === 409) {
+        // Duplicate — already in library. Surface a friendly toast
+        // and re-use the existing entry id; do NOT throw, this isn't
+        // an error worth red-toasting.
+        const body = await res.json().catch(() => ({})) as {
+          existingId?: string
+          existingTitle?: string
+          existingAuthor?: string
+        }
+        toast.info(
+          `${pf.file.name} zaten kütüphanende`,
+          { description: body.existingTitle ? `${body.existingAuthor ?? ''} — ${body.existingTitle}` : undefined },
+        )
+        if (body.existingId) onAdded?.(body.existingId)
+        return
+      }
       if (!res.ok) throw new Error(`${pf.file.name}: ${res.status}`)
       const entry = await res.json(); onAdded?.(entry.id)
     })

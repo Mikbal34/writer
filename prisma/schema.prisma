@@ -533,6 +533,12 @@ model LibraryEntry {
   zoteroKey     String?
   filePath      String? // Local path to downloaded PDF/file
   fileType      String? // "pdf" | "doc" | etc.
+  // SHA-256 hex of the uploaded file's bytes. Lets the upload route
+  // dedupe transparently — same user uploading the same file twice
+  // gets a 409 pointing back at the existing entry instead of a new
+  // row that the enrich step would later fail to update due to the
+  // (userId, authorSurname, title) unique constraint.
+  fileHash      String?
 
   // Literature-search enrichment
   abstract       String?  @db.Text
@@ -564,6 +570,9 @@ model LibraryEntry {
   @@unique([userId, authorSurname, title])
   @@index([userId])
   @@index([userId, pdfStatus])
+  // Dedup lookup on upload — point lookup by (userId, fileHash) must
+  // be fast since every PDF upload hits it.
+  @@index([userId, fileHash])
 }
 
 // A multi-volume work (Tabari Tafsir, hadith külliyatı, ansiklopedi)

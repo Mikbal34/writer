@@ -9,7 +9,7 @@
  * year fields will have populated themselves.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
+import { randomUUID, createHash } from 'crypto'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { savePdfBytesR2 } from '@/lib/r2-storage'
@@ -64,6 +64,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Dosya geçerli görünmüyor (çok küçük)' }, { status: 400 })
     }
 
+    // Dedup — SHA-256 the bytes and look for an existing entry under
+    // the same user. Same file twice = same hash; we return 409 with
+    // the existing entry's id so the frontend can show "already in
+    // your library" instead of creating a duplicate entry that the
+    // worker's enrich would later fail to update (the title-author
+    // unique constraint would fire).
+    const fileHash = createHash('sha256').update(bytes).digest('hex')
+    const existing = await prisma.libraryEntry.findFirst({
+      where: { userId: session.user.id, fileHash },
+      select: { id: true, title: true, authorSurname: true, pdfStatus: true },
+    })
+    if (existing) {
+      return NextResponse.json(
+        {
+          error: 'duplicate',
+          message: `"${existing.title}" zaten kütüphanende.`,
+          existingId: existing.id,
+          existingTitle: existing.title,
+          existingAuthor: existing.authorSurname,
+        },
+        { status: 409 },
+      )
+    }
+
     // Optional user-typed metadata from the add-source modal — if the
     // user filled the form, those values are canonical and the worker's
     // enrich won't overwrite them (isPlaceholderField sees non-placeholder
@@ -93,6 +117,7 @@ export async function POST(req: NextRequest) {
         importSource: 'pdf-upload',
         pdfStatus: 'queued',
         fileType,
+        fileHash,
         keywords: [],
         // uploadSizeBytes lets the processing-ETA helper give
         // size-aware estimates without a schema migration.
