@@ -152,7 +152,7 @@ export default function VolumesDialog({
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("PUT", uploadUrl);
-        xhr.setRequestHeader("Content-Type", contentType);
+        // Content-Type not set (browser default + R2 ignores it).
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) resolve();
           else reject(new Error(`R2 ${xhr.status}`));

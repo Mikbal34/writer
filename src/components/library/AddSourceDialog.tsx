@@ -542,7 +542,9 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhr.open('PUT', uploadUrl)
-        xhr.setRequestHeader('Content-Type', contentType)
+        // Content-Type intentionally not set — browser sends the file's
+        // detected type but R2 ignores it (we removed it from the signed
+        // URL). Avoids signature mismatch when browser appends charset.
         xhr.upload.onprogress = (evt) => {
           if (evt.lengthComputable && evt.loaded === evt.total) {
             // (optional UI hook for per-file progress later)

@@ -99,6 +99,14 @@ export async function savePdfBytesR2(
   return filePath
 }
 
+// Note: presignUploadUrl / presignVolumeUploadUrl below intentionally
+// DO NOT set ContentType on PutObjectCommand. Including it in the
+// signature forces the browser to send EXACTLY that header — but
+// browsers sometimes append charset (`application/pdf; charset=utf-8`)
+// or use a slightly different MIME (`application/x-pdf`) which the
+// SDK then rejects as a signature mismatch. Server-side saves above
+// DO set it because we control the Node SDK request fully.
+
 export async function saveVolumePdfBytesR2(
   userId: string,
   entryId: string,
@@ -180,7 +188,7 @@ export async function presignUploadUrl(
   userId: string,
   entryId: string,
   fileType: DocFileType = 'pdf',
-  expiresInSeconds = 600,
+  expiresInSeconds = 1800, // 30 min — slow residential uploads of 100+ MB can drag past 10 min
 ): Promise<{ uploadUrl: string; filePath: string }> {
   const filePath = entryFilePath(userId, entryId, fileType)
   const uploadUrl = await getSignedUrl(
@@ -188,7 +196,7 @@ export async function presignUploadUrl(
     new PutObjectCommand({
       Bucket: bucket(),
       Key: keyFromFilePath(filePath),
-      ContentType: contentTypeFor(fileType),
+      // No ContentType in signature — see note above saveVolumePdfBytesR2.
     }),
     { expiresIn: expiresInSeconds },
   )
@@ -201,7 +209,7 @@ export async function presignVolumeUploadUrl(
   entryId: string,
   volumeId: string,
   fileType: DocFileType = 'pdf',
-  expiresInSeconds = 600,
+  expiresInSeconds = 1800, // 30 min — slow residential uploads of 100+ MB can drag past 10 min
 ): Promise<{ uploadUrl: string; filePath: string }> {
   const filePath = volumeFilePath(userId, entryId, volumeId, fileType)
   const uploadUrl = await getSignedUrl(
@@ -209,7 +217,7 @@ export async function presignVolumeUploadUrl(
     new PutObjectCommand({
       Bucket: bucket(),
       Key: keyFromFilePath(filePath),
-      ContentType: contentTypeFor(fileType),
+      // No ContentType in signature — see note above saveVolumePdfBytesR2.
     }),
     { expiresIn: expiresInSeconds },
   )
