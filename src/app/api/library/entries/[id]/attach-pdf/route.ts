@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db'
 import { savePdfBytesR2 } from '@/lib/r2-storage'
 import { enqueueIngest } from '@/lib/queue'
 
-const MAX_BYTES = 50 * 1024 * 1024 // 50 MB
+const MAX_BYTES = 200 * 1024 * 1024 // 200 MB — bumped from 50
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'file is empty' }, { status: 400 })
     }
     if (file.size > MAX_BYTES) {
-      return NextResponse.json({ error: 'file larger than 50 MB' }, { status: 413 })
+      return NextResponse.json({ error: 'file larger than 200 MB' }, { status: 413 })
     }
 
     const bytes = Buffer.from(await file.arrayBuffer())

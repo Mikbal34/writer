@@ -20,7 +20,7 @@ import { enqueueIngest } from '@/lib/queue'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const MAX_BYTES = 50 * 1024 * 1024
+const MAX_BYTES = 200 * 1024 * 1024 // 200 MB — bumped from 50; direct-to-R2 path is the long-term answer for unlimited
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'file is empty' }, { status: 400 })
     }
     if (file.size > MAX_BYTES) {
-      return NextResponse.json({ error: 'file larger than 50 MB' }, { status: 413 })
+      return NextResponse.json({ error: 'file larger than 200 MB' }, { status: 413 })
     }
     const lowerName = file.name.toLowerCase()
     let detectedType: 'pdf' | 'epub' | 'docx' | null = null

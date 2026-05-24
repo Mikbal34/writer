@@ -161,6 +161,61 @@ export async function presignDownloadUrl(
   )
 }
 
+/**
+ * Generate a signed PUT URL the browser can use to upload a file
+ * DIRECTLY to R2, bypassing our server entirely. Caller gives us the
+ * entryId + fileType; we compute the same canonical path savePdfBytesR2
+ * would have used so the worker reads it back at the right key.
+ *
+ * Why PUT (not POST + form-data): R2 supports presigned PUT cleanly,
+ * and browsers can use fetch(uploadUrl, { method:'PUT', body:file })
+ * with progress via XMLHttpRequest. Simpler than multipart form POST
+ * which has more moving pieces (signature in form fields, conditions
+ * encoding, etc.) and same security properties.
+ *
+ * Caller MUST then call /api/library/confirm-upload to enqueue the
+ * worker — server has no way to know the upload finished otherwise.
+ */
+export async function presignUploadUrl(
+  userId: string,
+  entryId: string,
+  fileType: DocFileType = 'pdf',
+  expiresInSeconds = 600,
+): Promise<{ uploadUrl: string; filePath: string }> {
+  const filePath = entryFilePath(userId, entryId, fileType)
+  const uploadUrl = await getSignedUrl(
+    client(),
+    new PutObjectCommand({
+      Bucket: bucket(),
+      Key: keyFromFilePath(filePath),
+      ContentType: contentTypeFor(fileType),
+    }),
+    { expiresIn: expiresInSeconds },
+  )
+  return { uploadUrl, filePath }
+}
+
+/** Same as presignUploadUrl but for a volume (multi-cilt) entry. */
+export async function presignVolumeUploadUrl(
+  userId: string,
+  entryId: string,
+  volumeId: string,
+  fileType: DocFileType = 'pdf',
+  expiresInSeconds = 600,
+): Promise<{ uploadUrl: string; filePath: string }> {
+  const filePath = volumeFilePath(userId, entryId, volumeId, fileType)
+  const uploadUrl = await getSignedUrl(
+    client(),
+    new PutObjectCommand({
+      Bucket: bucket(),
+      Key: keyFromFilePath(filePath),
+      ContentType: contentTypeFor(fileType),
+    }),
+    { expiresIn: expiresInSeconds },
+  )
+  return { uploadUrl, filePath }
+}
+
 export async function deletePdfR2(filePath: string | null | undefined): Promise<void> {
   if (!filePath) return
   try {

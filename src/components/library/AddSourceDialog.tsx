@@ -513,28 +513,64 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
     const errors: string[] = []
 
     const standalonePromises = ungrouped.map(async (pf) => {
-      const fd = new FormData()
-      fd.append('file', pf.file)
-      // Attach user-typed metadata for the single-file case only — for
-      // bulk standalone uploads the same form values would be wrong on
-      // every file, so we skip them and let the worker auto-fill each.
+      // 2-step direct-to-R2 upload — file bytes never touch our server,
+      // so neither RAM nor request-body limits apply. See
+      // /api/library/presign-upload + /api/library/confirm-upload.
+      const meta: Record<string, string> = {}
       if (useFormForStandalone) {
-        if (form.authorSurname.trim()) fd.append('authorSurname', form.authorSurname.trim())
-        if (form.authorName.trim()) fd.append('authorName', form.authorName.trim())
-        if (form.title.trim()) fd.append('title', form.title.trim())
-        if (form.year.trim()) fd.append('year', form.year.trim())
-        if (form.publisher.trim()) fd.append('publisher', form.publisher.trim())
-        if (form.publishPlace.trim()) fd.append('publishPlace', form.publishPlace.trim())
+        if (form.authorSurname.trim()) meta.authorSurname = form.authorSurname.trim()
+        if (form.authorName.trim()) meta.authorName = form.authorName.trim()
+        if (form.title.trim()) meta.title = form.title.trim()
+        if (form.year.trim()) meta.year = form.year.trim()
+        if (form.publisher.trim()) meta.publisher = form.publisher.trim()
+        if (form.publishPlace.trim()) meta.publishPlace = form.publishPlace.trim()
       }
-      const res = await fetch('/api/library/upload-pdf', { method: 'POST', body: fd })
-      if (res.status === 409) {
-        // Duplicate — already in library. Surface a friendly toast
-        // and re-use the existing entry id; do NOT throw, this isn't
-        // an error worth red-toasting.
-        const body = await res.json().catch(() => ({})) as {
-          existingId?: string
-          existingTitle?: string
-          existingAuthor?: string
+
+      // Step 1: get signed upload URL
+      const presignRes = await fetch('/api/library/presign-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: pf.file.name, size: pf.file.size, ...meta }),
+      })
+      if (!presignRes.ok) throw new Error(`${pf.file.name}: presign ${presignRes.status}`)
+      const { entryId, uploadUrl, contentType } = await presignRes.json() as {
+        entryId: string; uploadUrl: string; contentType: string
+      }
+
+      // Step 2: PUT bytes directly to R2 (with progress via XHR so big
+      // files don't look frozen — fetch lacks upload progress events)
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('PUT', uploadUrl)
+        xhr.setRequestHeader('Content-Type', contentType)
+        xhr.upload.onprogress = (evt) => {
+          if (evt.lengthComputable && evt.loaded === evt.total) {
+            // (optional UI hook for per-file progress later)
+          }
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else reject(new Error(`R2 upload ${xhr.status}`))
+        }
+        xhr.onerror = () => reject(new Error('network error during R2 upload'))
+        xhr.send(pf.file)
+      })
+
+      // Step 3: compute SHA-256 client-side for server-side dedup check
+      const buf = await pf.file.arrayBuffer()
+      const hashBytes = await crypto.subtle.digest('SHA-256', buf)
+      const fileHash = Array.from(new Uint8Array(hashBytes))
+        .map((b) => b.toString(16).padStart(2, '0')).join('')
+
+      // Step 4: confirm with server (dedup + enqueue)
+      const confirmRes = await fetch('/api/library/confirm-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entryId, fileHash }),
+      })
+      if (confirmRes.status === 409) {
+        const body = await confirmRes.json().catch(() => ({})) as {
+          existingId?: string; existingTitle?: string; existingAuthor?: string
         }
         toast.info(
           `${pf.file.name} zaten kütüphanende`,
@@ -543,8 +579,8 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
         if (body.existingId) onAdded?.(body.existingId)
         return
       }
-      if (!res.ok) throw new Error(`${pf.file.name}: ${res.status}`)
-      const entry = await res.json(); onAdded?.(entry.id)
+      if (!confirmRes.ok) throw new Error(`${pf.file.name}: confirm ${confirmRes.status}`)
+      onAdded?.(entryId)
     })
 
     const groupPromises = groups.map(async (g) => {
