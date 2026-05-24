@@ -27,12 +27,21 @@ export default function VolumeHintBanner({
   const [promoteEntry, setPromoteEntry] = useState<LibraryEntryRow | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
 
-  const hints = entries.filter(
-    (e) =>
-      e.metadata?.volumeHint?.parentWork &&
-      e.metadata?.volumeHint?.volumeNumber &&
-      !e.metadata?.volumeHintDismissed,
-  );
+  const hints = entries.filter((e) => {
+    const hint = e.metadata?.volumeHint;
+    if (!hint?.parentWork || !hint?.volumeNumber) return false;
+    if (e.metadata?.volumeHintDismissed) return false;
+    // Self-loop guard: Sonnet sometimes tags an entry whose title IS
+    // the series name (e.g. VanEss "Theologie und Gesellschaft" with
+    // its Abschlußband cilt) with a hint pointing back at itself.
+    // Suppress these — "make X a volume of X" is never useful.
+    const norm = (s: string) => s.toLowerCase().trim().replace(/\s+/g, " ");
+    if (norm(hint.parentWork) === norm(e.title)) return false;
+    // Entries that already have their own volumes are clearly the
+    // PARENT of a group, not a stray child — never suggest demoting.
+    if ((e._count?.volumes ?? 0) > 0) return false;
+    return true;
+  });
 
   async function dismiss(entryId: string) {
     setDismissingId(entryId);
