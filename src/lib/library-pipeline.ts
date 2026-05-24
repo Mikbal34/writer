@@ -714,7 +714,10 @@ async function setVolumeStatus(
 // Cost: $0.05/M tokens. Our 1000-book/month workload ≈ $2.50/month.
 const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY ?? ''
 const VOYAGE_EMBED_URL = 'https://api.voyageai.com/v1/embeddings'
-const VOYAGE_MODEL = process.env.VOYAGE_MODEL ?? 'voyage-multilingual-2'
+// `||` not `??` — docker-compose sets VOYAGE_MODEL="" when unset in .env,
+// and ?? only checks null/undefined, so empty string would slip through
+// and hit Voyage with a missing model param (HTTP 400 "Model is not supported").
+const VOYAGE_MODEL = process.env.VOYAGE_MODEL || 'voyage-multilingual-2'
 // Voyage's batch cap is currently 128 inputs OR 320k tokens combined.
 // Our EMBED_BATCH_SIZE=100 is safely under both.
 
