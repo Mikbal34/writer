@@ -11,9 +11,15 @@
 set -euo pipefail
 
 cd /opt/quilpen
-set -a
-. ./.env
-set +a
+
+# Read specific vars without sourcing (some values contain shell metacharacters)
+read_env() {
+	grep -E "^${1}=" .env | head -1 | sed "s/^${1}=//" | sed 's/^"//;s/"$//'
+}
+R2_ACCESS_KEY_ID=$(read_env R2_ACCESS_KEY_ID)
+R2_SECRET_ACCESS_KEY=$(read_env R2_SECRET_ACCESS_KEY)
+R2_ACCOUNT_ID=$(read_env R2_ACCOUNT_ID)
+R2_BUCKET=$(read_env R2_BUCKET)
 
 STAMP=$(date -u +%Y%m%d_%H%M%S)
 DUMP_FILE="/tmp/quilpen-db-${STAMP}.dump"
