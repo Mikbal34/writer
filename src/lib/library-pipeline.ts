@@ -178,7 +178,7 @@ export interface PdfMetadataExtraction {
  * with long dedications / front matter, starving Haiku of the only
  * page that actually carries publisher + year + ISBN.
  */
-function pickCoverWindow(text: string, maxChars = 8000): string {
+function pickCoverWindow(text: string, maxChars = 16000): string {
   const pages = text.split(/\n\n---\n\n/)
   if (pages.length <= 1) return text.slice(0, maxChars)
   // Multilingual signals — anything that screams "this is the
@@ -192,11 +192,16 @@ function pickCoverWindow(text: string, maxChars = 8000): string {
     return { idx, page: p, score: matches + earlyBonus }
   })
   scored.sort((a, b) => b.score - a.score)
-  // Always pull the first 3 (cover / inner title / verso) plus the
-  // top-scoring outliers, deduped + page-ordered.
-  const picked = new Set<number>([0, 1, 2].filter((i) => i < pages.length))
+  // Always pull the first 5 pages (cover, title, verso, copyright,
+  // toc front) AND the last 3 pages (back cover / colophon often
+  // carries publisher + barcode + ISBN on TR + DE editions). Then
+  // top-scoring outliers fill remaining slots.
+  const picked = new Set<number>([0, 1, 2, 3, 4].filter((i) => i < pages.length))
+  // Last 3 pages — back-of-book metadata is common for trade
+  // editions (publisher logo, ISBN barcode, edition history).
+  for (let i = Math.max(0, pages.length - 3); i < pages.length; i++) picked.add(i)
   for (const s of scored) {
-    if (picked.size >= 5) break
+    if (picked.size >= 12) break
     picked.add(s.idx)
   }
   const ordered = Array.from(picked).sort((a, b) => a - b)
@@ -269,11 +274,14 @@ Return in this JSON format:
   "volumeLabel": "Subtitle of this specific volume ONLY when volumeNumber is also set; otherwise null"
 }
 
-Rules:
-- Leave fields you cannot extract as null.
-- Determine entryType from the document style (academic article → "makale", book → "kitap").
-- If no clear author is found, use "Unknown".
-- Be CONSERVATIVE about volumeNumber/parentWork — only when explicit markers appear. A "Volume 2 Issue 3" of a journal is NOT a parent-work volume; that's journalVolume.
+CRITICAL RULES — strict accuracy over completeness:
+- NULL > GUESS. If a field is not clearly present in the text, return null. Never invent a publisher, year, or place from "looks plausible".
+- TRANSCRIPTION: copy text VERBATIM with original diacritics (İ ğ ş ç ı ö ü, ä ö ü ß, é è ê, ş й ı). Do not anglicize "İbn" → "Ibn" or "Topaloğlu" → "Topaloglu". OCR sometimes drops diacritics — if you see the bare-Latin form but the surrounding Turkish/Arabic context implies the full diacritic, prefer the diacritic form.
+- TRANSLATIONS: when the book is a translation (look for "Türkçesi", "Çeviren", "Translated by", "Aus dem Englischen", "ترجمة"), the year MUST be the publication year of THIS edition (Turkish/German/etc), not the original. The original year, if mentioned, goes in null or the abstract.
+- PUBLISHER: look for it on the cover, copyright page (©), AND back cover. Many editions print it as a logo + small text — extract the text near the logo. Do not guess from translator name or context.
+- entryType from document style: academic article → "makale", book → "kitap", thesis → "tez", encyclopedia article → "ansiklopedi".
+- Author: surname goes in authorSurname; given names in authorName. If unsure of split, put the full name in authorSurname.
+- volumeNumber/parentWork: ONLY when explicit markers ("Cilt 2", "الجزء الثاني"). A "Volume 2 Issue 3" of a journal is journalVolume, not parentWork.
 - Abstract must be in the document's original language.
 - Return ONLY the JSON, no commentary.`
 }
@@ -348,7 +356,7 @@ export async function enrichLibraryEntryFromPdfText(
   const haikuNeeded = !biblio?.title || !biblio?.authorSurname
   if (haikuNeeded) {
     try {
-      const cover = pickCoverWindow(text, 8000)
+      const cover = pickCoverWindow(text, 16000)
       const haikuRes = await generateJSONWithUsage<PdfMetadataExtraction>(
         buildEnrichPrompt(cover),
         'You are a bibliography + abstract extraction assistant. Respond with valid JSON only.',
