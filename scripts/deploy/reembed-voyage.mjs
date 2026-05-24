@@ -8,6 +8,8 @@
 //   docker compose -f docker-compose.prod.yml exec worker \
 //     node /tmp/reembed.mjs
 
+import { Pool } from 'pg'
+import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
 
 const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY
@@ -18,7 +20,10 @@ if (!VOYAGE_API_KEY) {
   process.exit(1)
 }
 
-const prisma = new PrismaClient()
+// Match src/lib/db.ts construction — Prisma 7 needs an adapter
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 4 })
+const adapter = new PrismaPg(pool)
+const prisma = new PrismaClient({ adapter })
 const BATCH_SIZE = 100
 const CONCURRENCY = 4
 const FORCE = process.argv.includes('--force')
