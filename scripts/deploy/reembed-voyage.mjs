@@ -1,55 +1,61 @@
-// One-shot script: re-embed every LibraryChunk via Voyage AI.
-// Run on the Azure VM:
-//   docker compose -f docker-compose.prod.yml exec worker \
-//     node /app/scripts/deploy/reembed-voyage.mjs
+// One-shot: re-embed every LibraryChunk via Voyage AI.
+// Uses Prisma (already in worker container) so it runs without extra
+// npm installs. Idempotent + resumable via embeddingModel marker col.
 //
-// Idempotent + resumable: marker column `embeddingModel` skips already-
-// migrated chunks on resume. Cost: ~$1.90 for 157k chunks at $0.05/M
-// (voyage-multilingual-2).
+// Run on Azure VM:
+//   docker compose -f docker-compose.prod.yml cp \
+//     scripts/deploy/reembed-voyage.mjs worker:/tmp/reembed.mjs
+//   docker compose -f docker-compose.prod.yml exec worker \
+//     node /tmp/reembed.mjs
 
-import postgres from 'postgres'
+import { PrismaClient } from '@prisma/client'
 
-const DATABASE_URL = process.env.DATABASE_URL
 const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY
 const VOYAGE_MODEL = process.env.VOYAGE_MODEL || 'voyage-multilingual-2'
 
-if (!DATABASE_URL || !VOYAGE_API_KEY) {
-  console.error('DATABASE_URL or VOYAGE_API_KEY missing')
+if (!VOYAGE_API_KEY) {
+  console.error('VOYAGE_API_KEY missing')
   process.exit(1)
 }
 
-const sql = postgres(DATABASE_URL, { max: 4 })
+const prisma = new PrismaClient()
 const BATCH_SIZE = 100
 const CONCURRENCY = 4
 const FORCE = process.argv.includes('--force')
 
-// Add resume marker column (no-op on subsequent runs)
-await sql`
+// Resume marker columns (no-op on subsequent runs)
+await prisma.$executeRawUnsafe(`
   ALTER TABLE "LibraryChunk"
   ADD COLUMN IF NOT EXISTS "embeddingModel" TEXT,
   ADD COLUMN IF NOT EXISTS "embeddedAt" TIMESTAMPTZ
-`
+`)
 
 async function fetchBatch(after) {
+  // Skip already-migrated rows on resume (unless --force)
   if (FORCE) {
-    return sql`
-      SELECT id, content FROM "LibraryChunk"
-      WHERE id > ${after} ORDER BY id LIMIT ${BATCH_SIZE}
-    `
+    return prisma.$queryRawUnsafe(
+      `SELECT id, content FROM "LibraryChunk"
+       WHERE id > $1 ORDER BY id LIMIT $2`,
+      after,
+      BATCH_SIZE,
+    )
   }
-  return sql`
-    SELECT id, content FROM "LibraryChunk"
-    WHERE id > ${after}
-      AND ("embeddingModel" IS NULL OR "embeddingModel" != ${VOYAGE_MODEL})
-    ORDER BY id LIMIT ${BATCH_SIZE}
-  `
+  return prisma.$queryRawUnsafe(
+    `SELECT id, content FROM "LibraryChunk"
+     WHERE id > $1
+       AND ("embeddingModel" IS NULL OR "embeddingModel" != $2)
+     ORDER BY id LIMIT $3`,
+    after,
+    VOYAGE_MODEL,
+    BATCH_SIZE,
+  )
 }
 
 async function embedViaVoyage(texts) {
   const res = await fetch('https://api.voyageai.com/v1/embeddings', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${VOYAGE_API_KEY}`,
+      Authorization: `Bearer ${VOYAGE_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -72,27 +78,36 @@ async function embedViaVoyage(texts) {
 
 async function processBatch(rows) {
   const { embeddings, tokens } = await embedViaVoyage(rows.map((r) => r.content))
-  // Bulk UPDATE via VALUES (avoids 100 round-trips)
-  const values = rows.map((r, i) => [r.id, `[${embeddings[i].join(',')}]`])
-  await sql`
-    UPDATE "LibraryChunk" SET
-      embedding = u.embedding::vector(1024),
-      "embeddingModel" = ${VOYAGE_MODEL},
-      "embeddedAt" = NOW()
-    FROM (VALUES ${sql(values)}) AS u(id, embedding)
-    WHERE "LibraryChunk".id = u.id
-  `
+  // Per-row UPDATE — Prisma doesn't have a nice VALUES bulk helper for
+  // vector types, but 100 sequential UPDATEs on a local DB take <500ms
+  // total so we don't bother batching. The Voyage call itself dominates.
+  await prisma.$transaction(
+    rows.map((r, i) =>
+      prisma.$executeRawUnsafe(
+        `UPDATE "LibraryChunk" SET
+           embedding = $1::vector(1024),
+           "embeddingModel" = $2,
+           "embeddedAt" = NOW()
+         WHERE id = $3`,
+        `[${embeddings[i].join(',')}]`,
+        VOYAGE_MODEL,
+        r.id,
+      ),
+    ),
+  )
   return tokens
 }
 
 async function main() {
-  const totalRow = await sql`SELECT COUNT(*)::int n FROM "LibraryChunk"`
-  const total = totalRow[0].n
-  const doneRow = await sql`
-    SELECT COUNT(*)::int n FROM "LibraryChunk"
-    WHERE "embeddingModel" = ${VOYAGE_MODEL}
-  `
-  const alreadyDone = doneRow[0].n
+  const totalRow = await prisma.$queryRawUnsafe(
+    `SELECT COUNT(*)::int as n FROM "LibraryChunk"`,
+  )
+  const total = Number(totalRow[0].n)
+  const doneRow = await prisma.$queryRawUnsafe(
+    `SELECT COUNT(*)::int as n FROM "LibraryChunk" WHERE "embeddingModel" = $1`,
+    VOYAGE_MODEL,
+  )
+  const alreadyDone = Number(doneRow[0].n)
   console.log(`Total chunks: ${total.toLocaleString()}`)
   console.log(`Already on ${VOYAGE_MODEL}: ${alreadyDone.toLocaleString()}`)
   console.log(`To re-embed: ${(total - alreadyDone).toLocaleString()}`)
@@ -138,7 +153,7 @@ async function main() {
   console.log(`DONE — ${processed.toLocaleString()} chunks (model: ${VOYAGE_MODEL})`)
   console.log(`Total cost: $${((totalTokens / 1e6) * 0.05).toFixed(2)}`)
   console.log(`Time: ${((Date.now() - t0) / 60_000).toFixed(1)} min`)
-  await sql.end()
+  await prisma.$disconnect()
 }
 
 await main()
