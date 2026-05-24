@@ -104,36 +104,27 @@ _OCR_MIN_COVERAGE = float(os.environ.get("OCR_MIN_COVERAGE", "0.30"))
 _EXPECTED_CHARS_PER_PAGE = float(os.environ.get("OCR_EXPECTED_CHARS_PER_PAGE", "800"))
 # Tesseract OSD script names we route to Surya instead of Tesseract.
 _HARD_SCRIPTS = {"Arabic", "Hebrew", "Thaana", "Syriac"}
-# Heavy-scan routing thresholds — once a book's OCR work crosses
-# these, Surya GPU beats CPU Tesseract on both wall-clock AND quality
-# enough that we skip Tesseract entirely instead of doing it then
-# escalating. Net cost: ~$0.05-0.30/book on Modal GPU; net saving:
-# 10-20 min of CPU time + the python-service stays responsive for
-# other uploads. Both gated behind SURYA_OCR_URL.
-_HEAVY_SCAN_PAGES = int(os.environ.get("OCR_HEAVY_PAGES", "120"))
-_HEAVY_SCAN_MB = float(os.environ.get("OCR_HEAVY_MB", "25"))
+# All-Modal OCR routing — when SURYA_OCR_URL is configured, every scan
+# goes to Modal GPU. Tesseract stays as emergency fallback (Modal down
+# / network blip). Rationale: at N-user scale, ANY scan on CPU is a
+# bottleneck — a single 50-page scan ties up a Tesseract worker for
+# 2-3 min. Modal autoscales 0→N GPUs on demand, $0 idle, per-second
+# billing. Even at 1000 books/mo total Modal cost is ~$50, way under
+# the cost of provisioning enough CPU to handle the same load.
+#
+# Old thresholds (OCR_HEAVY_PAGES / OCR_HEAVY_MB) deprecated — kept
+# the env names for backwards-compat but unused. The Tesseract path
+# below kicks in only when Surya is unconfigured (dev) or returns an
+# error (transient failure).
 
 
 def _is_heavy_scan(file_path: str, pages_to_ocr: list[int]) -> bool:
-    """True when the document is big enough that Surya GPU clearly
-    beats CPU Tesseract. Two signals (either triggers):
-      * pages_to_ocr count > _HEAVY_SCAN_PAGES
-      * file size > _HEAVY_SCAN_MB MB AND >= 60 pages-to-OCR
-    The second signal catches dense academic scans (e.g. Vâsıf
-    Tarihi: 27 MB, 200+ scanned pages) where Tesseract would take
-    15-20 min vs Surya's 1-3 min."""
+    """True whenever any OCR work exists AND Surya is configured —
+    we route every scan to Modal GPU at production scale. Returns
+    False only when SURYA_OCR_URL is unset (dev / fallback)."""
     if not _SURYA_OCR_URL:
         return False
-    n = len(pages_to_ocr)
-    if n > _HEAVY_SCAN_PAGES:
-        return True
-    try:
-        size_mb = os.path.getsize(file_path) / 1_048_576
-        if size_mb > _HEAVY_SCAN_MB and n >= 60:
-            return True
-    except OSError:
-        pass
-    return False
+    return len(pages_to_ocr) > 0
 # OSD script → Tesseract -l string. Anything not listed falls back to
 # the comprehensive _OCR_LANGS default; hard scripts skip Tesseract.
 # Latin uses CORE here — extended set is reserved for the per-page
@@ -605,23 +596,24 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
                 hard = script in _HARD_SCRIPTS
                 heavy = _is_heavy_scan(file_path, pages_to_ocr)
                 surya_text: dict[int, str] | None = None
-                # Proactive Surya routing: hard scripts (Tesseract can't
-                # read them at all) AND heavy scans (where Tesseract
-                # would take 15-20 min on CPU vs Surya's 1-3 min on
-                # GPU). Tesseract stays the default for normal-size
-                # Latin/Cyrillic/Greek scans where CPU is fine.
+                # All-Modal routing: every scan goes to Surya GPU when
+                # SURYA_OCR_URL is configured. Tesseract is now the
+                # disaster-recovery fallback (Modal down / network
+                # blip). At N-user scale, CPU OCR is a queue-killing
+                # bottleneck; Modal autoscales 0→N GPUs per request.
                 if hard or heavy:
-                    if heavy and not hard:
-                        try:
-                            size_mb = os.path.getsize(file_path) / 1_048_576
-                        except OSError:
-                            size_mb = 0
-                        print(
-                            f"[pdf_extractor] heavy scan "
-                            f"({len(pages_to_ocr)} OCR pages, "
-                            f"{size_mb:.0f} MB) → Surya GPU"
-                        )
+                    try:
+                        size_mb = os.path.getsize(file_path) / 1_048_576
+                    except OSError:
+                        size_mb = 0
+                    print(
+                        f"[pdf_extractor] scan → Surya GPU "
+                        f"({len(pages_to_ocr)} pages, {size_mb:.0f} MB"
+                        f"{', hard script' if hard else ''})"
+                    )
                     surya_text = _ocr_via_surya(file_path)
+                    if surya_text is None:
+                        print("[pdf_extractor] Surya failed → falling back to Tesseract")
 
                 if surya_text is not None:
                     ocr_texts = {p: surya_text.get(p, "") for p in pages_to_ocr}
