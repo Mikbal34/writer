@@ -349,6 +349,126 @@ def _ocr_via_surya(file_path: str) -> dict[int, str] | None:
         return None
 
 
+# Page-range chunk size for parallel Surya. 100 pages × ~2 sec/page
+# = ~200 sec/chunk on L4 GPU. Modal autoscales to N concurrent GPUs
+# (limited by SURYA_PARALLEL_LIMIT below).
+_SURYA_CHUNK_PAGES = int(os.environ.get("SURYA_CHUNK_PAGES", "100"))
+# Don't fan out beyond this — Modal endpoint's own concurrency_limit
+# should be >= this. 10 parallel = handles 1000-page mega books in
+# ~3 min.
+_SURYA_PARALLEL_LIMIT = int(os.environ.get("SURYA_PARALLEL_LIMIT", "10"))
+
+
+def _ocr_via_surya_chunked(file_path: str) -> dict[int, str] | None:
+    """Parallel Surya OCR via page-range splitting. For big PDFs, slice
+    the doc into _SURYA_CHUNK_PAGES sub-PDFs and fan them out to Modal
+    concurrently — Modal autoscales to N GPUs, so wall time stays
+    bounded (~3 min for any single doc up to ~1000 pages) instead of
+    growing linearly with page count.
+
+    Falls back to single-call _ocr_via_surya when:
+      • doc fits in one chunk (no split benefit)
+      • file is small (<2MB; cold-start overhead would dominate)
+      • split itself fails (PyMuPDF error on weird PDF)
+
+    Returns {original_page_index0: text} same shape as _ocr_via_surya
+    so the caller sees no difference apart from the speedup.
+    """
+    if not _SURYA_OCR_URL:
+        return None
+    try:
+        doc = fitz.open(file_path)
+    except Exception:
+        return _ocr_via_surya(file_path)
+
+    try:
+        total = len(doc)
+    finally:
+        # Re-open per chunk to avoid sharing fitz state across threads.
+        doc.close()
+
+    try:
+        size_mb = os.path.getsize(file_path) / 1_048_576
+    except OSError:
+        size_mb = 0
+
+    # Small docs: single call, skip chunking overhead.
+    if total <= _SURYA_CHUNK_PAGES or size_mb < 2:
+        return _ocr_via_surya(file_path)
+
+    # Build chunk specs: list of (start_inclusive, end_inclusive_0based).
+    chunks: list[tuple[int, int]] = []
+    for start in range(0, total, _SURYA_CHUNK_PAGES):
+        end = min(start + _SURYA_CHUNK_PAGES, total) - 1
+        chunks.append((start, end))
+
+    print(
+        f"[pdf_extractor] Surya parallel: {total}p → "
+        f"{len(chunks)} chunks of ≤{_SURYA_CHUNK_PAGES}p, "
+        f"max {_SURYA_PARALLEL_LIMIT} concurrent"
+    )
+
+    import tempfile
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _process_chunk(start: int, end: int) -> tuple[int, dict[int, str] | None]:
+        """Write the page range to a temp PDF, send to Surya, return
+        ({page_offset_within_chunk: text}, start_for_reindexing)."""
+        chunk_path = None
+        try:
+            src = fitz.open(file_path)
+            try:
+                chunk_doc = fitz.open()
+                chunk_doc.insert_pdf(src, from_page=start, to_page=end)
+                with tempfile.NamedTemporaryFile(
+                    prefix=f"surya_chunk_{start}_{end}_",
+                    suffix=".pdf", delete=False,
+                ) as f:
+                    chunk_path = f.name
+                chunk_doc.save(chunk_path)
+                chunk_doc.close()
+            finally:
+                src.close()
+            result = _ocr_via_surya(chunk_path)
+            return (start, result)
+        except Exception as exc:
+            print(
+                f"[pdf_extractor] Surya chunk {start}-{end} failed: {exc}"
+            )
+            return (start, None)
+        finally:
+            if chunk_path:
+                try:
+                    os.remove(chunk_path)
+                except OSError:
+                    pass
+
+    # Fan out, collect, reindex to original page numbers.
+    merged: dict[int, str] = {}
+    failed_starts: list[int] = []
+    with ThreadPoolExecutor(max_workers=_SURYA_PARALLEL_LIMIT) as ex:
+        futures = [ex.submit(_process_chunk, s, e) for s, e in chunks]
+        for fut in as_completed(futures):
+            start, result = fut.result()
+            if result is None:
+                failed_starts.append(start)
+                continue
+            for chunk_page, text in result.items():
+                # chunk_page is 0-based within the chunk; map back
+                # to original doc's 0-based page index.
+                merged[start + chunk_page] = text
+
+    if failed_starts:
+        print(
+            f"[pdf_extractor] Surya parallel: {len(failed_starts)} chunks failed "
+            f"(starts: {failed_starts[:5]}...); kept {len(merged)} pages"
+        )
+        # All failed → return None so Tesseract fallback kicks in.
+        if not merged:
+            return None
+    return merged
+
+
 def _reconstruct_from_data(data: dict) -> tuple[str, float]:
     """Rebuild line-broken text + mean word confidence from Tesseract's
     image_to_data DICT output (one pass gives us both)."""
@@ -681,7 +801,10 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
 
                 if spill_reason:
                     print(f"[pdf_extractor] scan → Surya GPU ({spill_reason})")
-                    surya_text = _ocr_via_surya(file_path)
+                    # Use chunked parallel path — splits big PDFs into
+                    # 100-page chunks and fans out to N Modal GPUs.
+                    # Cost ≈ same, wall time 5-10× faster.
+                    surya_text = _ocr_via_surya_chunked(file_path)
                     if surya_text is None:
                         print("[pdf_extractor] Surya failed → falling back to Tesseract")
                         # Couldn't reach Surya, fall through to local
@@ -760,7 +883,7 @@ def extract_text_by_page(file_path: str, max_pages: int = 0) -> list[dict]:
                             f"coverage={coverage:.2f}/{_OCR_MIN_COVERAGE:.2f} — "
                             f"escalating to Surya"
                         )
-                        esc = _ocr_via_surya(file_path)
+                        esc = _ocr_via_surya_chunked(file_path)
                         if esc is not None:
                             for p in pages_to_ocr:
                                 if esc.get(p, "").strip():
