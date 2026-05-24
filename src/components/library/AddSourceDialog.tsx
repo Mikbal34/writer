@@ -605,11 +605,47 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
         const pf = fileById.get(fid); if (!pf) return
         const volNumber = parseInt(g.volumeNumbers[fid] ?? '1', 10)
         const label = g.labels[fid]?.trim()
-        const fd = new FormData()
-        fd.append('file', pf.file); fd.append('volumeNumber', String(volNumber))
-        if (label) fd.append('label', label)
-        const volRes = await fetch(`/api/library/${parent.id}/volumes`, { method: 'POST', body: fd })
-        if (!volRes.ok) throw new Error(`${pf.file.name} (cilt ${volNumber}): ${volRes.status}`)
+
+        // Step 1: presign — creates volume row + returns signed URL
+        const presignRes = await fetch(`/api/library/${parent.id}/presign-volume`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: pf.file.name,
+            size: pf.file.size,
+            volumeNumber: volNumber,
+            label,
+          }),
+        })
+        if (!presignRes.ok) {
+          throw new Error(`${pf.file.name} (cilt ${volNumber}): presign ${presignRes.status}`)
+        }
+        const { volumeId, uploadUrl, contentType } = await presignRes.json() as {
+          volumeId: string; uploadUrl: string; contentType: string
+        }
+
+        // Step 2: PUT bytes directly to R2 (XHR for progress events)
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.open('PUT', uploadUrl)
+          xhr.setRequestHeader('Content-Type', contentType)
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve()
+            else reject(new Error(`R2 ${xhr.status}`))
+          }
+          xhr.onerror = () => reject(new Error('network error during R2 upload'))
+          xhr.send(pf.file)
+        })
+
+        // Step 3: confirm with server (enqueue worker)
+        const confirmRes = await fetch(`/api/library/${parent.id}/confirm-volume`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ volumeId }),
+        })
+        if (!confirmRes.ok) {
+          throw new Error(`${pf.file.name} (cilt ${volNumber}): confirm ${confirmRes.status}`)
+        }
       }))
     })
 
