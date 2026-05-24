@@ -25,7 +25,11 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 4 })
 const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter })
 const BATCH_SIZE = 100
-const CONCURRENCY = 4
+// Voyage TPM cap: 3M tokens/min for voyage-multilingual-2.
+// Our avg chunk ≈ 600 tokens, batch=100 → ~60k tokens per call,
+// 2 calls in flight → 120k tokens per round. Round takes ~5-10s so
+// throughput ≈ 1-1.5M tokens/min — safely under cap.
+const CONCURRENCY = 2
 const FORCE = process.argv.includes('--force')
 
 // Resume marker columns (no-op on subsequent runs)
@@ -56,7 +60,7 @@ async function fetchBatch(after) {
   )
 }
 
-async function embedViaVoyage(texts) {
+async function embedViaVoyage(texts, attempt = 1) {
   const res = await fetch('https://api.voyageai.com/v1/embeddings', {
     method: 'POST',
     headers: {
@@ -69,6 +73,13 @@ async function embedViaVoyage(texts) {
       input_type: 'document',
     }),
   })
+  if (res.status === 429 && attempt <= 5) {
+    // Rate limit — exponential backoff (10s, 20s, 40s, 80s, 160s)
+    const wait = 10_000 * 2 ** (attempt - 1)
+    console.log(`  rate-limited, sleeping ${wait / 1000}s (attempt ${attempt}/5)`)
+    await new Promise((r) => setTimeout(r, wait))
+    return embedViaVoyage(texts, attempt + 1)
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Voyage HTTP ${res.status}: ${body.slice(0, 200)}`)
