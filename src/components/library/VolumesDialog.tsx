@@ -102,15 +102,13 @@ export default function VolumesDialog({
       toast.error("Sadece PDF / EPUB / DOCX kabul edilir");
       return;
     }
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error("50MB sınırını aşıyor");
+    if (file.size > 150 * 1024 * 1024) {
+      toast.error("150 MB sınırını aşıyor");
       return;
     }
 
-    // Manual cilt-number wins; empty falls back to backend's
-    // next-free (max+1). Catches the gap case where the user has
-    // cilts 1+8+30 and wants to add cilt 2.
     const volNumRaw = volumeNumberInput.trim();
+    let volumeNumberForUpload: number | null = null;
     if (volNumRaw) {
       const parsed = parseInt(volNumRaw, 10);
       if (!Number.isFinite(parsed) || parsed < 1) {
@@ -121,23 +119,59 @@ export default function VolumesDialog({
         toast.error(`Cilt ${parsed} zaten var`);
         return;
       }
+      volumeNumberForUpload = parsed;
+    } else {
+      // Backend default = max(existing)+1; compute the same client-side
+      // so presign-volume gets a deterministic number.
+      const maxExisting = volumes.reduce((m, v) => Math.max(m, v.volumeNumber), 0);
+      volumeNumberForUpload = maxExisting + 1;
     }
-
-    const fd = new FormData();
-    fd.append("file", file);
-    if (label.trim()) fd.append("label", label.trim());
-    if (volNumRaw) fd.append("volumeNumber", volNumRaw);
 
     setUploading(true);
     try {
-      const res = await fetch(`/api/library/${entryId}/volumes`, {
+      // Direct-to-R2 — same 3-step flow as AddSourceDialog volume path.
+      const presignRes = await fetch(`/api/library/${entryId}/presign-volume`, {
         method: "POST",
-        body: fd,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          size: file.size,
+          volumeNumber: volumeNumberForUpload,
+          label: label.trim() || undefined,
+        }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
+      if (!presignRes.ok) {
+        const err = await presignRes.json().catch(() => ({}));
+        throw new Error(err.error || `presign ${presignRes.status}`);
       }
+      const { volumeId, uploadUrl, contentType } = await presignRes.json() as {
+        volumeId: string; uploadUrl: string; contentType: string;
+      };
+
+      // Step 2: PUT bytes directly to R2 (no server RAM hit).
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", contentType);
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve();
+          else reject(new Error(`R2 ${xhr.status}`));
+        };
+        xhr.onerror = () => reject(new Error("network error during R2 upload"));
+        xhr.send(file);
+      });
+
+      // Step 3: confirm — server verifies + enqueues worker.
+      const confirmRes = await fetch(`/api/library/${entryId}/confirm-volume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ volumeId }),
+      });
+      if (!confirmRes.ok) {
+        const err = await confirmRes.json().catch(() => ({}));
+        throw new Error(err.error || `confirm ${confirmRes.status}`);
+      }
+
       toast.success("Cilt eklendi, metin çıkarılıyor…");
       setLabel("");
       setVolumeNumberInput("");
