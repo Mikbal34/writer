@@ -23,7 +23,7 @@ import {
 } from "react";
 import {
   Plus, Folder, MoreHorizontal, Trash2, Pencil, X,
-  ChevronUp, ChevronDown, Library,
+  ChevronUp, ChevronDown, ChevronRight, Library, FolderPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -63,10 +63,13 @@ export default function LibraryFolderColumn({
 
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [createDraft, setCreateDraft] = useState<string | null>(null);
+  // createDraft: { parentId: string|null, name: string } — null = closed
+  const [createDraft, setCreateDraft] = useState<{ parentId: string | null; name: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState("");
   const [hoverDropId, setHoverDropId] = useState<string | null>(null);
+  // Expanded parent ids — controls child visibility
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const createInputRef = useRef<HTMLInputElement>(null);
 
   const fetchCollections = useCallback(async () => {
@@ -94,22 +97,37 @@ export default function LibraryFolderColumn({
     [collections],
   );
 
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, Collection[]>();
+    for (const c of collections) {
+      if (!c.parentId) continue;
+      const arr = map.get(c.parentId) ?? [];
+      arr.push(c);
+      map.set(c.parentId, arr);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+    }
+    return map;
+  }, [collections]);
+
   // ── Mutations ─────────────────────────────────────────────────────
-  async function createCollection(name: string) {
+  async function createCollection(name: string, parentId: string | null) {
     const trimmed = name.trim();
     if (!trimmed) return;
     try {
       const res = await fetch("/api/library/collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, parentId }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error ?? "Oluşturulamadı");
       }
-      toast.success("Klasör oluşturuldu");
+      toast.success(parentId ? "Alt klasör oluşturuldu" : "Klasör oluşturuldu");
       setCreateDraft(null);
+      if (parentId) setExpandedIds((p) => new Set(p).add(parentId));
       await fetchCollections();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Oluşturulamadı");
@@ -236,7 +254,7 @@ export default function LibraryFolderColumn({
             <span className="text-[11px] text-ink-muted tabular-nums">{totalEntries}</span>
           </button>
 
-          {/* Klasör listesi */}
+          {/* Klasör listesi (rekürsif) */}
           {loading ? (
             <div className="text-[11.5px] text-ink-muted italic px-2 py-3">Yükleniyor...</div>
           ) : topLevel.length === 0 && createDraft === null ? (
@@ -244,114 +262,47 @@ export default function LibraryFolderColumn({
               Henüz klasör yok. Aşağıdan yeni klasör oluştur.
             </div>
           ) : (
-            topLevel.map((c) => {
-              const isActive =
-                selection.kind === "collection" && selection.collectionId === c.id;
-              const isHoverDrop = hoverDropId === c.id;
-              const isEditing = editingId === c.id;
-              return (
-                <div
-                  key={c.id}
-                  onDragOver={(e) => onDragOver(c.id, e)}
-                  onDragLeave={() => setHoverDropId((id) => (id === c.id ? null : id))}
-                  onDrop={(e) => onDrop(c.id, e)}
-                  onClick={() => {
-                    if (!isEditing) onSelectionChange({ kind: "collection", collectionId: c.id });
-                  }}
-                  className={[
-                    "group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[12.5px] transition-colors cursor-pointer",
-                    isActive
-                      ? "bg-forest/10 text-ink font-semibold"
-                      : "text-ink-light hover:bg-forest/5",
-                    isHoverDrop ? "ring-2 ring-gold bg-gold/10" : "",
-                  ].join(" ")}
-                >
-                  <Folder
-                    className={[
-                      "h-3.5 w-3.5 flex-shrink-0",
-                      isActive ? "text-forest" : "text-gold-dark/70",
-                    ].join(" ")}
-                  />
-                  {c.color && (
-                    <span
-                      className="h-1.5 w-1.5 rounded-full flex-shrink-0"
-                      style={{ background: c.color }}
-                    />
-                  )}
-                  {isEditing ? (
-                    <input
-                      value={editingDraft}
-                      autoFocus
-                      onChange={(e) => setEditingDraft(e.target.value)}
-                      onBlur={() => renameCollection(c.id, editingDraft, c.name)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") renameCollection(c.id, editingDraft, c.name);
-                        else if (e.key === "Escape") setEditingId(null);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex-1 bg-elevated border border-forest/30 rounded px-1.5 py-0.5 text-[12px] outline-none focus:border-forest"
-                    />
-                  ) : (
-                    <>
-                      <span className="flex-1 truncate">{c.name}</span>
-                      <span className="text-[11px] text-ink-muted tabular-nums">
-                        {c.entryCount}
-                      </span>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <button
-                              type="button"
-                              onClick={(e) => e.stopPropagation()}
-                              className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-ink/10 transition-opacity"
-                              aria-label="Klasör menüsü"
-                            >
-                              <MoreHorizontal className="h-3.5 w-3.5 text-ink-muted" />
-                            </button>
-                          }
-                        />
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setEditingId(c.id);
-                              setEditingDraft(c.name);
-                            }}
-                          >
-                            <Pencil className="h-3.5 w-3.5 mr-2" />
-                            Yeniden adlandır
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={() => deleteCollection(c)}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-2" />
-                            Sil
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </>
-                  )}
-                </div>
-              );
-            })
+            <FolderTree
+              folders={topLevel}
+              childrenByParent={childrenByParent}
+              depth={0}
+              selection={selection}
+              onSelectionChange={onSelectionChange}
+              expandedIds={expandedIds}
+              setExpandedIds={setExpandedIds}
+              editingId={editingId}
+              setEditingId={setEditingId}
+              editingDraft={editingDraft}
+              setEditingDraft={setEditingDraft}
+              renameCollection={renameCollection}
+              deleteCollection={deleteCollection}
+              hoverDropId={hoverDropId}
+              setHoverDropId={setHoverDropId}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
+              onCreateChild={(parentId) => setCreateDraft({ parentId, name: "" })}
+              createDraft={createDraft}
+              setCreateDraft={setCreateDraft}
+              createCollection={createCollection}
+            />
           )}
 
-          {/* Yeni klasör oluşturma */}
-          {createDraft !== null ? (
+          {/* Yeni TOP-LEVEL klasör oluşturma (root için) */}
+          {createDraft !== null && createDraft.parentId === null ? (
             <div className="flex items-center gap-1.5 px-2 py-1.5 mt-1">
               <Folder className="h-3.5 w-3.5 text-gold-dark/50 flex-shrink-0" />
               <input
                 ref={createInputRef}
-                value={createDraft}
+                value={createDraft.name}
                 autoFocus
                 placeholder="Klasör adı..."
-                onChange={(e) => setCreateDraft(e.target.value)}
+                onChange={(e) => setCreateDraft({ parentId: null, name: e.target.value })}
                 onBlur={() => {
-                  if (createDraft.trim()) createCollection(createDraft);
+                  if (createDraft.name.trim()) createCollection(createDraft.name, null);
                   else setCreateDraft(null);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") createCollection(createDraft);
+                  if (e.key === "Enter") createCollection(createDraft.name, null);
                   else if (e.key === "Escape") setCreateDraft(null);
                 }}
                 className="flex-1 bg-elevated border border-forest/30 rounded px-1.5 py-0.5 text-[12px] outline-none focus:border-forest"
@@ -365,14 +316,16 @@ export default function LibraryFolderColumn({
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setCreateDraft("")}
-              className="w-full flex items-center gap-2 px-2 py-1.5 mt-1 rounded-md text-[12px] text-ink-muted hover:text-ink hover:bg-forest/5 transition-colors text-left"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Yeni klasör
-            </button>
+            createDraft === null && (
+              <button
+                type="button"
+                onClick={() => setCreateDraft({ parentId: null, name: "" })}
+                className="w-full flex items-center gap-2 px-2 py-1.5 mt-1 rounded-md text-[12px] text-ink-muted hover:text-ink hover:bg-forest/5 transition-colors text-left"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Yeni klasör
+              </button>
+            )
           )}
         </div>
       )}
@@ -383,7 +336,7 @@ export default function LibraryFolderColumn({
           type="button"
           onClick={() => {
             setOpen(true);
-            setCreateDraft("");
+            setCreateDraft({ parentId: null, name: "" });
           }}
           className="mt-2 mx-auto p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-forest/5 transition-colors"
           title="Yeni klasör"
@@ -392,5 +345,210 @@ export default function LibraryFolderColumn({
         </button>
       )}
     </aside>
+  );
+}
+
+// ── Recursive folder tree ────────────────────────────────────────────
+interface FolderTreeProps {
+  folders: Collection[];
+  childrenByParent: Map<string, Collection[]>;
+  depth: number;
+  selection: LibrarySelection;
+  onSelectionChange: (s: LibrarySelection) => void;
+  expandedIds: Set<string>;
+  setExpandedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  editingId: string | null;
+  setEditingId: React.Dispatch<React.SetStateAction<string | null>>;
+  editingDraft: string;
+  setEditingDraft: React.Dispatch<React.SetStateAction<string>>;
+  renameCollection: (id: string, name: string, original: string) => Promise<void>;
+  deleteCollection: (c: Collection) => Promise<void>;
+  hoverDropId: string | null;
+  setHoverDropId: React.Dispatch<React.SetStateAction<string | null>>;
+  onDragOver: (id: string, ev: React.DragEvent) => void;
+  onDrop: (id: string, ev: React.DragEvent) => Promise<void>;
+  onCreateChild: (parentId: string) => void;
+  createDraft: { parentId: string | null; name: string } | null;
+  setCreateDraft: React.Dispatch<React.SetStateAction<{ parentId: string | null; name: string } | null>>;
+  createCollection: (name: string, parentId: string | null) => Promise<void>;
+}
+
+function FolderTree(p: FolderTreeProps) {
+  return (
+    <>
+      {p.folders.map((c) => {
+        const isActive =
+          p.selection.kind === "collection" && p.selection.collectionId === c.id;
+        const isHoverDrop = p.hoverDropId === c.id;
+        const isEditing = p.editingId === c.id;
+        const children = p.childrenByParent.get(c.id) ?? [];
+        const hasChildren = children.length > 0;
+        const isExpanded = p.expandedIds.has(c.id);
+        const showCreateChildInput =
+          p.createDraft !== null && p.createDraft.parentId === c.id;
+
+        return (
+          <div key={c.id}>
+            <div
+              onDragOver={(e) => p.onDragOver(c.id, e)}
+              onDragLeave={() => p.setHoverDropId((id) => (id === c.id ? null : id))}
+              onDrop={(e) => p.onDrop(c.id, e)}
+              onClick={() => {
+                if (!isEditing) p.onSelectionChange({ kind: "collection", collectionId: c.id });
+              }}
+              style={{ paddingLeft: 8 + p.depth * 14 }}
+              className={[
+                "group flex items-center gap-1 pr-2 py-1.5 rounded-md text-[12.5px] transition-colors cursor-pointer",
+                isActive
+                  ? "bg-forest/10 text-ink font-semibold"
+                  : "text-ink-light hover:bg-forest/5",
+                isHoverDrop ? "ring-2 ring-gold bg-gold/10" : "",
+              ].join(" ")}
+            >
+              {/* Expand/collapse chevron — sadece çocuğu varsa görünür */}
+              {hasChildren ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    p.setExpandedIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(c.id)) next.delete(c.id);
+                      else next.add(c.id);
+                      return next;
+                    });
+                  }}
+                  className="p-0.5 -ml-1 text-ink-muted hover:text-ink"
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="h-3 w-3" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3" />
+                  )}
+                </button>
+              ) : (
+                <span className="w-3 -ml-1" />
+              )}
+
+              <Folder
+                className={[
+                  "h-3.5 w-3.5 flex-shrink-0",
+                  isActive ? "text-forest" : "text-gold-dark/70",
+                ].join(" ")}
+              />
+              {c.color && (
+                <span
+                  className="h-1.5 w-1.5 rounded-full flex-shrink-0"
+                  style={{ background: c.color }}
+                />
+              )}
+              {isEditing ? (
+                <input
+                  value={p.editingDraft}
+                  autoFocus
+                  onChange={(e) => p.setEditingDraft(e.target.value)}
+                  onBlur={() => p.renameCollection(c.id, p.editingDraft, c.name)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") p.renameCollection(c.id, p.editingDraft, c.name);
+                    else if (e.key === "Escape") p.setEditingId(null);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex-1 bg-elevated border border-forest/30 rounded px-1.5 py-0.5 text-[12px] outline-none focus:border-forest"
+                />
+              ) : (
+                <>
+                  <span className="flex-1 truncate ml-1">{c.name}</span>
+                  <span className="text-[11px] text-ink-muted tabular-nums">
+                    {c.entryCount}
+                  </span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <button
+                          type="button"
+                          onClick={(e) => e.stopPropagation()}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-ink/10 transition-opacity"
+                          aria-label="Klasör menüsü"
+                        >
+                          <MoreHorizontal className="h-3.5 w-3.5 text-ink-muted" />
+                        </button>
+                      }
+                    />
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          p.onCreateChild(c.id);
+                          p.setExpandedIds((prev) => new Set(prev).add(c.id));
+                        }}
+                      >
+                        <FolderPlus className="h-3.5 w-3.5 mr-2" />
+                        Alt klasör ekle
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          p.setEditingId(c.id);
+                          p.setEditingDraft(c.name);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5 mr-2" />
+                        Yeniden adlandır
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => p.deleteCollection(c)}
+                        className="text-red-600"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-2" />
+                        Sil
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              )}
+            </div>
+
+            {/* Inline alt klasör input — bu klasörün altına */}
+            {showCreateChildInput && p.createDraft && (
+              <div
+                style={{ paddingLeft: 8 + (p.depth + 1) * 14 + 12 }}
+                className="flex items-center gap-1.5 py-1.5 mt-0.5 pr-2"
+              >
+                <Folder className="h-3.5 w-3.5 text-gold-dark/50 flex-shrink-0" />
+                <input
+                  value={p.createDraft.name}
+                  autoFocus
+                  placeholder="Alt klasör adı..."
+                  onChange={(e) =>
+                    p.setCreateDraft({ parentId: c.id, name: e.target.value })
+                  }
+                  onBlur={() => {
+                    if (p.createDraft?.name.trim())
+                      p.createCollection(p.createDraft.name, c.id);
+                    else p.setCreateDraft(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && p.createDraft)
+                      p.createCollection(p.createDraft.name, c.id);
+                    else if (e.key === "Escape") p.setCreateDraft(null);
+                  }}
+                  className="flex-1 bg-elevated border border-forest/30 rounded px-1.5 py-0.5 text-[12px] outline-none focus:border-forest"
+                />
+                <button
+                  type="button"
+                  onClick={() => p.setCreateDraft(null)}
+                  className="p-0.5 rounded hover:bg-ink/10"
+                >
+                  <X className="h-3 w-3 text-ink-muted" />
+                </button>
+              </div>
+            )}
+
+            {/* Çocuk klasörler (rekürsif) */}
+            {hasChildren && isExpanded && (
+              <FolderTree {...p} folders={children} depth={p.depth + 1} />
+            )}
+          </div>
+        );
+      })}
+    </>
   );
 }

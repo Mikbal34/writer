@@ -22,6 +22,8 @@ import {
   Copy,
   Trash2,
   Quote,
+  FolderPlus,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -316,6 +318,7 @@ export default function BookHero({
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
+        <CollectionPickerButton entryId={entry.id} />
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -461,5 +464,112 @@ function StatCard({
       </span>
       <span className="font-ui text-[11px] text-ink-muted">{label}</span>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// CollectionPickerButton — bu kitabı tek tıkla bir klasöre ekler.
+// Dropdown'da tüm üst-düzey klasörler listelenir; yanlarında check
+// işareti varsa kitap zaten o klasörde olduğunu gösterir.
+// ─────────────────────────────────────────────────────────────────────
+interface PickerCollection {
+  id: string;
+  name: string;
+  color: string | null;
+  parentId: string | null;
+  entryCount: number;
+}
+
+function CollectionPickerButton({ entryId }: { entryId: string }) {
+  const [collections, setCollections] = useState<PickerCollection[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [opened, setOpened] = useState(false);
+
+  useEffect(() => {
+    if (!opened) return;
+    let cancelled = false;
+    setLoading(true);
+    fetch("/api/library/collections")
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setCollections(data.collections ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Klasörler yüklenemedi");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [opened]);
+
+  async function addToCollection(c: PickerCollection) {
+    try {
+      const res = await fetch(`/api/library/collections/${c.id}/entries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryIds: [entryId] }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (data.added > 0) toast.success(`${c.name} klasörüne eklendi`);
+      else toast.info(`Zaten ${c.name} klasöründe`);
+      setOpened(false);
+    } catch {
+      toast.error("Eklenemedi");
+    }
+  }
+
+  return (
+    <DropdownMenu open={opened} onOpenChange={setOpened}>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-sandy text-ink-light hover:bg-panel"
+            title="Klasöre ekle"
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+          </button>
+        }
+      />
+      <DropdownMenuContent align="end" className="min-w-[220px] max-h-[320px] overflow-y-auto">
+        {loading ? (
+          <div className="px-3 py-2 text-[12px] text-ink-muted italic">
+            Yükleniyor...
+          </div>
+        ) : collections.length === 0 ? (
+          <div className="px-3 py-2 text-[12px] text-ink-muted italic leading-tight">
+            Henüz klasör yok. Sol kolondaki <strong>+ Yeni klasör</strong> ile oluştur.
+          </div>
+        ) : (
+          collections.map((c) => (
+            <DropdownMenuItem
+              key={c.id}
+              onSelect={(e) => {
+                e.preventDefault();
+                addToCollection(c);
+              }}
+            >
+              {c.color ? (
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: c.color }}
+                />
+              ) : (
+                <FolderPlus className="h-3 w-3 text-gold-dark/60" />
+              )}
+              <span className="truncate">{c.name}</span>
+              <span className="ml-auto text-[10.5px] text-ink-muted tabular-nums">
+                {c.entryCount}
+              </span>
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
