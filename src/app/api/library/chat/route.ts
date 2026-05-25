@@ -15,6 +15,7 @@ import { AuthError, resolveUserIdForEval } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { streamChatWithUsage } from '@/lib/claude'
 import { rerankChunks } from '@/lib/rerank'
+import { embedQuery } from '@/lib/library-pipeline'
 import { isGenericBookQuery } from '@/lib/book-summary'
 import { ftsChunks, ftsNotes, rrfMerge, rrfMergeMany } from '@/lib/hybrid-retrieval'
 import { rewriteQuery } from '@/lib/query-rewrite'
@@ -26,7 +27,6 @@ import { checkCredits, deductCredits } from '@/lib/credits'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
 // Split the retrieval budget between PDF chunks (raw source text) and
 // user-authored notes (curated, often higher-signal commentary). 8 + 4
 // stays under the same token budget as the previous 8-chunk-only setup
@@ -74,20 +74,6 @@ interface RetrievedChunk {
   noteTitle: string | null
 }
 
-async function embedQueryText(text: string): Promise<number[] | null> {
-  try {
-    const res = await fetch(`${PYTHON_SERVICE_URL}/embed`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texts: [text] }),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { embeddings: number[][] }
-    return data.embeddings?.[0] ?? null
-  } catch {
-    return null
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -202,7 +188,7 @@ export async function POST(req: NextRequest) {
     // from any variant reaches the reranker. variants[0] is always
     // the original, so this only adds recall.
     const variants = await expandQuery(retrievalQuery)
-    const variantVecs = await Promise.all(variants.map(embedQueryText))
+    const variantVecs = await Promise.all(variants.map(embedQuery))
 
     let retrievedChunks: RetrievedChunk[] = []
     let retrievedNotes: RetrievedChunk[] = []

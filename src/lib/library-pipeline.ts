@@ -503,6 +503,48 @@ async function embedBatch(texts: string[]): Promise<number[][] | null> {
   }
 }
 
+/**
+ * Tek bir kullanıcı sorusu için embed üret (input_type='query').
+ * Chat retrieval bunu kullanır — Voyage doküman/sorgu için ayrı optimize eder.
+ */
+export async function embedQuery(text: string): Promise<number[] | null> {
+  if (!text.trim()) return null
+  if (VOYAGE_API_KEY) {
+    try {
+      const res = await undiciFetch(VOYAGE_EMBED_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${VOYAGE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: VOYAGE_MODEL,
+          input: [text],
+          input_type: 'query',
+        }),
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        console.error(
+          `[embedQuery] Voyage HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`,
+        )
+        return null
+      }
+      const data = (await res.json()) as {
+        data: Array<{ embedding: number[] }>
+      }
+      return data.data?.[0]?.embedding ?? null
+    } catch (err) {
+      console.error('[embedQuery] Voyage failed:', err)
+      return null
+    }
+  }
+  // Fallback Python /embed — şu an python service'inde endpoint yok,
+  // VOYAGE_API_KEY tanımlı olduğu sürece buraya düşmez.
+  return null
+}
+
 async function persistChunks(
   entryId: string,
   chunks: ProcessResponse['chunks'],
