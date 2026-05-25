@@ -49,6 +49,7 @@ import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import { AddSourceDialog } from "@/components/library/AddSourceDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
 import { type LibrarySelection } from "@/components/library/FolderChips";
+import LibraryFolderColumn from "@/components/library/LibraryFolderColumn";
 import DecadeShelfList from "@/components/library/DecadeShelfList";
 import EntryDetailPanel from "@/components/library/EntryDetailPanel";
 import type { LibraryEntryRow } from "@/components/library/LibraryEntryTable";
@@ -380,6 +381,16 @@ export default function LibraryPage() {
           </section>
 
 
+          {/* === Hero altı: sol kolon (klasörler) + sağ kolon (toolbar + raflar) === */}
+          <div className="flex min-h-0">
+            <LibraryFolderColumn
+              selection={selection}
+              onSelectionChange={setSelection}
+              refreshKey={sidebarKey}
+              totalEntries={total}
+            />
+            <div className="flex-1 min-w-0">
+
           {/* === Toolbar: search + folder chips + sort === */}
           <div className="flex items-center gap-2.5 px-9 py-3 border-b border-sandy/60 bg-panel flex-wrap">
             <div className="relative flex-1 min-w-[280px] max-w-[460px]">
@@ -519,6 +530,8 @@ export default function LibraryPage() {
               </div>
             )}
           </div>
+            </div>{/* end sağ kolon flex-1 */}
+          </div>{/* end hero altı flex */}
         </div>
 
         {/* === RIGHT — Detail panel === */}
