@@ -38,11 +38,11 @@ export function AddSourceDialog({ open, onOpenChange, onAdded }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="max-w-[1100px] w-[92vw] max-h-[92vh] p-0 gap-0 overflow-hidden border-0 bg-parchment"
+        className="max-w-[1100px] sm:max-w-[1100px] w-[92vw] max-h-[88vh] p-0 gap-0 overflow-hidden border-0 bg-parchment flex flex-col"
       >
-        {/* Dark olive hero header */}
+        {/* Dark olive hero header — sabit, kaymaz */}
         <div
-          className="px-6 pt-5 text-gold-soft relative overflow-hidden"
+          className="px-6 pt-5 pb-5 text-gold-soft relative overflow-hidden flex-shrink-0"
           style={{ background: 'linear-gradient(135deg, #2a3d28 0%, #1a2818 100%)' }}
         >
           {/* Watermark */}
@@ -71,8 +71,8 @@ export function AddSourceDialog({ open, onOpenChange, onAdded }: Props) {
 
         </div>
 
-        {/* Body */}
-        <div className="flex-1 px-6 pt-[22px] pb-1 max-h-[65vh] overflow-auto">
+        {/* Body — kalan alanı doldur, taşarsa kendi içinde kaydır */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-[22px] pb-1">
           <FileTab onClose={() => onOpenChange(false)} onAdded={onAdded} />
         </div>
       </DialogContent>
