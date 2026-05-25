@@ -11,7 +11,7 @@
  *           data: [DONE]
  */
 import { NextRequest } from 'next/server'
-import { requireAuth, AuthError } from '@/lib/auth'
+import { AuthError, resolveUserIdForEval } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { streamChatWithUsage } from '@/lib/claude'
 import { rerankChunks } from '@/lib/rerank'
@@ -91,7 +91,7 @@ async function embedQueryText(text: string): Promise<number[] | null> {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireAuth()
+    const userId = await resolveUserIdForEval(req.headers)
     const body = (await req.json().catch(() => ({}))) as {
       sessionId?: string
       message?: string
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
       }
       const resolved = await prisma.libraryEntry.findMany({
         where: {
-          userId: session.user.id,
+          userId: userId,
           OR: filters,
         },
         select: { id: true },
@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Credits gate.
-    const credits = await checkCredits(session.user.id, 'library_chat')
+    const credits = await checkCredits(userId, 'library_chat')
     if (!credits.allowed) {
       return new Response(
         JSON.stringify({
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
     // Load existing thread, oldest → newest, and compress to keep
     // prompt size sane.
     const priorMessages = await prisma.libraryChatMessage.findMany({
-      where: { userId: session.user.id, sessionId },
+      where: { userId: userId, sessionId },
       orderBy: { createdAt: 'asc' },
       select: { role: true, content: true },
       take: 200,
@@ -224,7 +224,7 @@ export async function POST(req: NextRequest) {
                      lc.content AS content, NULL AS "noteTitle"
               FROM "LibraryChunk" lc
               JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
-              WHERE le."userId" = ${session.user.id} AND lc.embedding IS NOT NULL
+              WHERE le."userId" = ${userId} AND lc.embedding IS NOT NULL
               ORDER BY lc.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_CHUNKS}
             `
@@ -236,13 +236,13 @@ export async function POST(req: NextRequest) {
                      lc.content AS content, NULL AS "noteTitle"
               FROM "LibraryChunk" lc
               JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
-              WHERE le."userId" = ${session.user.id}
+              WHERE le."userId" = ${userId}
                 AND le.id = ANY(${entryIds}::text[]) AND lc.embedding IS NOT NULL
               ORDER BY lc.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_CHUNKS}
             `,
         ftsChunks(
-          session.user.id,
+          userId,
           qText,
           scope === 'all' ? null : entryIds,
           RETRIEVAL_POOL_CHUNKS,
@@ -279,7 +279,7 @@ export async function POST(req: NextRequest) {
                      ln."contentText" AS content, ln.title AS "noteTitle"
               FROM "LibraryNote" ln
               JOIN "LibraryEntry" le ON ln."libraryEntryId" = le.id
-              WHERE ln."userId" = ${session.user.id} AND ln.embedding IS NOT NULL
+              WHERE ln."userId" = ${userId} AND ln.embedding IS NOT NULL
               ORDER BY ln.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_NOTES}
             `
@@ -291,13 +291,13 @@ export async function POST(req: NextRequest) {
                      ln."contentText" AS content, ln.title AS "noteTitle"
               FROM "LibraryNote" ln
               JOIN "LibraryEntry" le ON ln."libraryEntryId" = le.id
-              WHERE ln."userId" = ${session.user.id}
+              WHERE ln."userId" = ${userId}
                 AND le.id = ANY(${entryIds}::text[]) AND ln.embedding IS NOT NULL
               ORDER BY ln.embedding <=> ${vecLiteral}::vector
               LIMIT ${RETRIEVAL_POOL_NOTES}
             `,
         ftsNotes(
-          session.user.id,
+          userId,
           retrievalQuery,
           scope === 'all' ? null : entryIds,
           RETRIEVAL_POOL_NOTES,
@@ -401,7 +401,7 @@ export async function POST(req: NextRequest) {
       isGenericBookQuery(message)
     ) {
       const summaryEntry = await prisma.libraryEntry.findFirst({
-        where: { id: entryIds[0], userId: session.user.id },
+        where: { id: entryIds[0], userId: userId },
         select: { title: true, summary: true },
       })
       if (summaryEntry?.summary) {
@@ -459,7 +459,7 @@ export async function POST(req: NextRequest) {
     // doesn't lose the prompt.
     await prisma.libraryChatMessage.create({
       data: {
-        userId: session.user.id,
+        userId: userId,
         sessionId,
         role: 'user',
         content: message,
@@ -520,7 +520,7 @@ export async function POST(req: NextRequest) {
 
           await prisma.libraryChatMessage.create({
             data: {
-              userId: session.user.id,
+              userId: userId,
               sessionId,
               role: 'assistant',
               content: fullText,
@@ -529,7 +529,7 @@ export async function POST(req: NextRequest) {
           })
 
           await deductCredits(
-            session.user.id,
+            userId,
             'library_chat',
             result.inputTokens,
             result.outputTokens,

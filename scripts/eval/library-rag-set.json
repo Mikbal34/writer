@@ -1,0 +1,297 @@
+{
+  "name": "Quilpen Library RAG Eval Set v1",
+  "createdAt": "2026-05-26",
+  "userId": "cmn1ulqtk00030purt66j5ow6",
+  "userEmail": "beratok2312@gmail.com",
+  "notes": "30 referans soru. Her soru için beklenen entry'ler (authorSurname + kısa title parçası). Kategori: spesifik (S), tematik (T), karşılaştırmalı (K).",
+  "questions": [
+    {
+      "id": "Q01",
+      "category": "S",
+      "question": "Wolfson Kalam atomism'inde Leukippos ve Demokritos etkisi nedir?",
+      "expectedEntries": [
+        { "authorSurname": "Wolfson", "titleHint": "Philosophy of the Kalam" }
+      ]
+    },
+    {
+      "id": "Q02",
+      "category": "S",
+      "question": "Mâtürîdî'nin tevhid argümanı nasıl temellendirilir?",
+      "expectedEntries": [
+        { "authorSurname": "Mâtürîdî", "titleHint": "Tevhîd" }
+      ]
+    },
+    {
+      "id": "Q03",
+      "category": "S",
+      "question": "Bâkıllânî'nin Mu'tezile'ye yönelik temel eleştirisi nedir?",
+      "expectedEntries": [
+        { "authorSurname": "Bâkıllânî", "titleHint": "Temhîd" }
+      ]
+    },
+    {
+      "id": "Q04",
+      "category": "S",
+      "question": "Râzî Mefâtîhu'l-Gayb'da Esmâ-i Hüsnâ yorumu nasıldır?",
+      "expectedEntries": [
+        { "authorSurname": "Fahreddîn er-Râzî", "titleHint": "Mefâtîh" },
+        { "authorSurname": "Fahreddîn er-Râzî", "titleHint": "Levâmiu" }
+      ]
+    },
+    {
+      "id": "Q05",
+      "category": "S",
+      "question": "Cüveynî İrşâd'da akıl-nakil ilişkisi nasıl ele alınır?",
+      "expectedEntries": [
+        { "authorSurname": "Cüveynî", "titleHint": "İrşâd" }
+      ]
+    },
+    {
+      "id": "Q06",
+      "category": "S",
+      "question": "İbnü'l-Arabî Fusûs'ta a'yân-ı sâbite kavramı ne anlama gelir?",
+      "expectedEntries": [
+        { "authorSurname": "Muhyiddîn İbnü'l-Arabî", "titleHint": "Fusûs" }
+      ]
+    },
+    {
+      "id": "Q07",
+      "category": "S",
+      "question": "Gazzâlî el-Münkız'da kuşku metodunu nasıl uygular?",
+      "expectedEntries": [
+        { "authorSurname": "Gazzâlî", "titleHint": "Münkız" }
+      ]
+    },
+    {
+      "id": "Q08",
+      "category": "S",
+      "question": "Kâdî Abdülcebbâr Şerhu'l-Usûli'l-Hamse'de adalet (adl) ilkesi nasıl tanımlanır?",
+      "expectedEntries": [
+        { "authorSurname": "Kādî Abdülcebbâr b. Ahmed el-Hemedânî", "titleHint": "Şerhu'l-Usûli'l-Hamse" }
+      ]
+    },
+    {
+      "id": "Q09",
+      "category": "S",
+      "question": "Hammoudi A Season in Mecca'da hac deneyiminin fenomenolojik analizi nasıldır?",
+      "expectedEntries": [
+        { "authorSurname": "Hammoudi", "titleHint": "Season in Mecca" }
+      ]
+    },
+    {
+      "id": "Q10",
+      "category": "S",
+      "question": "Durkheim'ın kutsal/profan ayrımı dinin temel formlarında nasıl işler?",
+      "expectedEntries": [
+        { "authorSurname": "Durkheim", "titleHint": "Elementary Forms" },
+        { "authorSurname": "Durkheim", "titleHint": "Dini Hayatın" }
+      ]
+    },
+    {
+      "id": "Q11",
+      "category": "S",
+      "question": "Victor Turner'ın 'liminality' kavramı ritüel teorisinde nasıl konumlanır?",
+      "expectedEntries": [
+        { "authorSurname": "Turner", "titleHint": "Ritual Process" }
+      ]
+    },
+    {
+      "id": "Q12",
+      "category": "S",
+      "question": "Eliade'ın 'hierofani' kavramı ne anlama gelir?",
+      "expectedEntries": [
+        { "authorSurname": "Eliade", "titleHint": "Sacred and the Profane" },
+        { "authorSurname": "Eliade", "titleHint": "Kutsal" }
+      ]
+    },
+    {
+      "id": "Q13",
+      "category": "S",
+      "question": "Al-Ajarma'ya göre 'After Hajj' kavramı nedir, hacılar dönüşte kendilerini nasıl yeniden kurar?",
+      "expectedEntries": [
+        { "authorSurname": "Al-Ajarma", "titleHint": "After Hajj" }
+      ]
+    },
+    {
+      "id": "Q14",
+      "category": "S",
+      "question": "Hallaq'ın 'Impossible State' tezi modern İslam siyaset düşüncesini nasıl ele alır?",
+      "expectedEntries": [
+        { "authorSurname": "Hallaq", "titleHint": "Impossible State" },
+        { "authorSurname": "Hallaq", "titleHint": "İmkânsız Devlet" }
+      ]
+    },
+    {
+      "id": "Q15",
+      "category": "S",
+      "question": "Fazlur Rahman'ın 'double movement' yöntemi nedir?",
+      "expectedEntries": [
+        { "authorSurname": "Rahman", "titleHint": "Islam and Modernity" }
+      ]
+    },
+    {
+      "id": "Q16",
+      "category": "T",
+      "question": "Klasik kelâm geleneğinde Allah'ın sıfatları nasıl ele alınır?",
+      "expectedEntries": [
+        { "authorSurname": "Mâtürîdî", "titleHint": "Tevhîd" },
+        { "authorSurname": "Bâkıllânî", "titleHint": "Temhîd" },
+        { "authorSurname": "Cüveynî", "titleHint": "İrşâd" },
+        { "authorSurname": "Seyyid Şerîf el-Curcânî", "titleHint": "Mevâkıf" },
+        { "authorSurname": "Sa'düddîn et-Teftâzânî", "titleHint": "Şerhu'l-Akāid" }
+      ]
+    },
+    {
+      "id": "Q17",
+      "category": "T",
+      "question": "Hac ibadetinin antropolojik incelemeleri nelerdir?",
+      "expectedEntries": [
+        { "authorSurname": "Hammoudi", "titleHint": "Season in Mecca" },
+        { "authorSurname": "Bianchi", "titleHint": "Guests of God" },
+        { "authorSurname": "Eickelman", "titleHint": "Muslim Travellers" },
+        { "authorSurname": "Al-Ajarma", "titleHint": "After Hajj" },
+        { "authorSurname": "Kynn", "titleHint": "Encounters" },
+        { "authorSurname": "Tagliacozzo", "titleHint": "Longest Journey" }
+      ]
+    },
+    {
+      "id": "Q18",
+      "category": "T",
+      "question": "Tasavvuf geleneğinde nefs terbiyesi ve seyr-i sülûk nasıl ele alınır?",
+      "expectedEntries": [
+        { "authorSurname": "Gazzâlî", "titleHint": "İhyâ" },
+        { "authorSurname": "Kuşeyrî", "titleHint": "Risâle" },
+        { "authorSurname": "Hâris el-Muhâsibî", "titleHint": "Riâye" },
+        { "authorSurname": "Muhyiddîn İbnü'l-Arabî", "titleHint": "Fütûhât" }
+      ]
+    },
+    {
+      "id": "Q19",
+      "category": "T",
+      "question": "Erken İslam tarihinde Mekke'nin dini hayatı ve cahiliye dönemi panteonu",
+      "expectedEntries": [
+        { "authorSurname": "İbn Sa'd", "titleHint": "Tabakāt" },
+        { "authorSurname": "İbn Hişâm", "titleHint": "Sîre" },
+        { "authorSurname": "Vâkıdî", "titleHint": "Megāzî" },
+        { "authorSurname": "Ezrakî", "titleHint": "Ahbâru Mekke" },
+        { "authorSurname": "Hawting", "titleHint": "Idolatry" },
+        { "authorSurname": "İbnü'l-Kelbî", "titleHint": "Asnâm" }
+      ]
+    },
+    {
+      "id": "Q20",
+      "category": "T",
+      "question": "Ritüel teorisinde performans yaklaşımları (performance approaches)",
+      "expectedEntries": [
+        { "authorSurname": "Bell", "titleHint": "Ritual Theory" },
+        { "authorSurname": "Bell", "titleHint": "Perspectives" },
+        { "authorSurname": "Turner", "titleHint": "Ritual Process" },
+        { "authorSurname": "Turner", "titleHint": "Ritüeller" },
+        { "authorSurname": "Smith", "titleHint": "To Take Place" }
+      ]
+    },
+    {
+      "id": "Q21",
+      "category": "T",
+      "question": "İslam felsefesinde Aristoteles etkisi",
+      "expectedEntries": [
+        { "authorSurname": "Wolfson", "titleHint": "Philosophy of the Kalam" },
+        { "authorSurname": "Frank", "titleHint": "Al-Ghaz" },
+        { "authorSurname": "Griffel", "titleHint": "Al-Ghaz" },
+        { "authorSurname": "Wisnovsky", "titleHint": "Avicenna" }
+      ]
+    },
+    {
+      "id": "Q22",
+      "category": "T",
+      "question": "Klasik tefsir geleneğinde Esbabü'n-Nüzul kullanımı",
+      "expectedEntries": [
+        { "authorSurname": "Vâhidî", "titleHint": "Esbâb" },
+        { "authorSurname": "Suyûtî", "titleHint": "İtkān" },
+        { "authorSurname": "Taberî", "titleHint": "Câmi" }
+      ]
+    },
+    {
+      "id": "Q23",
+      "category": "T",
+      "question": "Modern Türkiye'de hac literatürü ve manaskler",
+      "expectedEntries": [
+        { "authorSurname": "Demircan", "titleHint": "Hac" },
+        { "authorSurname": "Diyanet", "titleHint": "Hac" },
+        { "authorSurname": "Kotan", "titleHint": "Hac" },
+        { "authorSurname": "İslamoğlu", "titleHint": "Hacc" }
+      ]
+    },
+    {
+      "id": "Q24",
+      "category": "T",
+      "question": "Kur'an'ın semantik analizi (semantic analysis)",
+      "expectedEntries": [
+        { "authorSurname": "Izutsu", "titleHint": "Kur" },
+        { "authorSurname": "İzutsu", "titleHint": "God and Man" },
+        { "authorSurname": "İzutsu", "titleHint": "Ethico" }
+      ]
+    },
+    {
+      "id": "Q25",
+      "category": "T",
+      "question": "Mâtürîdî kelâm geleneği ve Semerkant okulu",
+      "expectedEntries": [
+        { "authorSurname": "Mâtürîdî", "titleHint": "Tevhîd" },
+        { "authorSurname": "Mâtürîdî", "titleHint": "Te'vîlât" },
+        { "authorSurname": "Ebu'l-Muîn en-Nesefî", "titleHint": "Tebsıra" },
+        { "authorSurname": "Nûreddîn es-Sâbûnî", "titleHint": "Bidâye" },
+        { "authorSurname": "Rudolph", "titleHint": "Maturidi" },
+        { "authorSurname": "Harvey", "titleHint": "Transcendent" }
+      ]
+    },
+    {
+      "id": "Q26",
+      "category": "K",
+      "question": "Wolfson ve Frank'ın Eş'arî kelâm yorumları arasındaki temel fark nedir?",
+      "expectedEntries": [
+        { "authorSurname": "Wolfson", "titleHint": "Philosophy of the Kalam" },
+        { "authorSurname": "Frank", "titleHint": "Ash'arite" }
+      ]
+    },
+    {
+      "id": "Q27",
+      "category": "K",
+      "question": "Durkheim ve Eliade'ın 'kutsal' anlayışları nasıl ayrılır?",
+      "expectedEntries": [
+        { "authorSurname": "Durkheim", "titleHint": "Elementary Forms" },
+        { "authorSurname": "Eliade", "titleHint": "Sacred and the Profane" }
+      ]
+    },
+    {
+      "id": "Q28",
+      "category": "K",
+      "question": "Hammoudi ve Bianchi'nin hac antropolojisi yaklaşımları arasındaki fark",
+      "expectedEntries": [
+        { "authorSurname": "Hammoudi", "titleHint": "Season in Mecca" },
+        { "authorSurname": "Bianchi", "titleHint": "Guests of God" }
+      ]
+    },
+    {
+      "id": "Q29",
+      "category": "K",
+      "question": "Mâtürîdî ve Eş'arî kelâm gelenekleri arasındaki temel farklar",
+      "expectedEntries": [
+        { "authorSurname": "Mâtürîdî", "titleHint": "Tevhîd" },
+        { "authorSurname": "Bâkıllânî", "titleHint": "Temhîd" },
+        { "authorSurname": "Cüveynî", "titleHint": "İrşâd" },
+        { "authorSurname": "Rudolph", "titleHint": "Maturidi" }
+      ]
+    },
+    {
+      "id": "Q30",
+      "category": "K",
+      "question": "Turner'ın 'communitas' ile Douglas'ın 'purity' yaklaşımları ritüel analizinde nasıl etkileşir?",
+      "expectedEntries": [
+        { "authorSurname": "Turner", "titleHint": "Ritual Process" },
+        { "authorSurname": "Douglas", "titleHint": "Saflık" },
+        { "authorSurname": "Belton", "titleHint": "Douglas" }
+      ]
+    }
+  ]
+}

@@ -193,3 +193,21 @@ export async function requireAuth(): Promise<AuthenticatedSession> {
   }
   return session as AuthenticatedSession
 }
+
+/**
+ * Eval/test mode bypass: chat endpoint'lerinden çağrıldığında, geçerli
+ * X-Eval-Token + X-Eval-User-Id header'larıyla session auth'unu atlatır.
+ * Sadece RAG eval runner için (offline kalibrasyon). Token env'da gizli.
+ */
+export async function resolveUserIdForEval(
+  headers: Headers,
+): Promise<string> {
+  const evalToken = headers.get('x-eval-token')
+  const evalUserId = headers.get('x-eval-user-id')
+  const expected = process.env.EVAL_TOKEN
+  if (expected && evalToken && evalToken === expected && evalUserId) {
+    return evalUserId
+  }
+  const session = await requireAuth()
+  return session.user.id
+}
