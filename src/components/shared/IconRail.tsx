@@ -22,6 +22,7 @@ import {
   Menu,
   X,
   Zap,
+  MessageCircle,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -46,8 +47,14 @@ const NAV: NavItem[] = [
     href: "/library",
     icon: <LibraryIcon className="w-[18px] h-[18px]" />,
     label: "Kütüphane",
-    // /library/literature-search gets its own nav slot below.
+    // /library/chat ve /library/literature-search kendi nav slot'larına
+    // sahip — Kütüphane sadece raf sayfası için aktif olsun.
     exact: true,
+  },
+  {
+    href: "/library/chat",
+    icon: <MessageCircle className="w-[18px] h-[18px]" />,
+    label: "Kütüphane Sohbeti",
   },
   {
     href: "/library/literature-search",
