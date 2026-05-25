@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { getDescendantCollectionIds } from '@/lib/collection-tree'
 
 export async function GET(req: NextRequest) {
   try {
@@ -58,7 +59,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (collectionId) {
-      where.collections = { some: { collectionId } }
+      // "Klasik Eserler" gibi üst klasör seçildiğinde alt klasörlerdeki
+      // entry'ler de gelsin.
+      const ids = await getDescendantCollectionIds(userId, collectionId)
+      where.collections = { some: { collectionId: { in: ids } } }
     }
 
     const [entries, total] = await Promise.all([

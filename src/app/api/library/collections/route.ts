@@ -32,6 +32,29 @@ export async function GET() {
       },
     })
 
+    // entryCount = direct + tüm descendants (alt-klasörlerin entry'leri de
+    // sayılır). "Klasik Eserler 42" yazsın, "Klasik Eserler 0" değil.
+    const childrenByParent = new Map<string, string[]>()
+    const directCount = new Map<string, number>()
+    for (const c of collections) {
+      directCount.set(c.id, c._count.entries)
+      if (c.parentId) {
+        const arr = childrenByParent.get(c.parentId) ?? []
+        arr.push(c.id)
+        childrenByParent.set(c.parentId, arr)
+      }
+    }
+    const totalCount = new Map<string, number>()
+    function dfs(id: string): number {
+      const cached = totalCount.get(id)
+      if (cached !== undefined) return cached
+      let sum = directCount.get(id) ?? 0
+      for (const child of childrenByParent.get(id) ?? []) sum += dfs(child)
+      totalCount.set(id, sum)
+      return sum
+    }
+    for (const c of collections) dfs(c.id)
+
     return NextResponse.json({
       collections: collections.map((c) => ({
         id: c.id,
@@ -39,7 +62,8 @@ export async function GET() {
         name: c.name,
         color: c.color,
         sortOrder: c.sortOrder,
-        entryCount: c._count.entries,
+        entryCount: totalCount.get(c.id) ?? 0,
+        directEntryCount: c._count.entries,
         childCount: c._count.children,
         createdAt: c.createdAt,
       })),
