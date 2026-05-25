@@ -145,15 +145,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       volumeNumber = (tail?.volumeNumber ?? 0) + 1
     }
 
-    const hint = (entry.metadata as Prisma.JsonObject | null)?.volumeHint as
-      | { volumeLabel?: string | null }
-      | undefined
     const label =
       (typeof body.label === 'string' && body.label.trim())
         ? body.label.trim()
-        : (typeof hint?.volumeLabel === 'string' && hint.volumeLabel.trim())
-          ? hint.volumeLabel.trim()
-          : null
+        : null
 
     // 1. Create the volume row with no filePath yet (we'll set it after
     //    the file move so we don't end up with a dangling reference).

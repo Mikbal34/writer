@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { parseFilenameForMetadata } from '@/lib/filename-meta'
 
 type Tab = 'isbn' | 'file'
 
@@ -365,14 +366,17 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   const [uploading, setUploading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Optional inline metadata — applies to the entry/group being created.
-  // Empty values fall through to worker auto-extraction (the banner says
-  // so, and isPlaceholderField in enrich won't overwrite anything the
-  // user actually typed).
+  // REQUIRED inline metadata — the worker no longer auto-enriches, so
+  // every upload must carry author surname + title at submit time. For
+  // single-file uploads the form below is the source. For multi-file
+  // uploads we auto-derive per-file metadata from the filename (no LLM)
+  // and the user reviews via the library edit dialog afterward.
   const [form, setForm] = useState({
     authorSurname: '', authorName: '', title: '',
     year: '', publisher: '', publishPlace: '',
+    doi: '',
   })
+  const [biblioLookupBusy, setBiblioLookupBusy] = useState(false)
 
   // Group-form overlay state.
   const [groupFormOpen, setGroupFormOpen] = useState(false)
@@ -394,7 +398,23 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
       .filter((f) => /\.(pdf|epub|docx)$/i.test(f.name) && f.size > 0 && f.size <= 150 * 1024 * 1024)
       .map((file) => ({ id: newId(), file }))
     if (fresh.length === 0) return
-    setFiles((prev) => [...prev, ...fresh])
+    setFiles((prev) => {
+      const next = [...prev, ...fresh]
+      // Single-file pre-fill from filename so the user only has to
+      // confirm/edit instead of re-typing data already in the filename.
+      // Runs only when we're going from 0 → 1 file and the form is
+      // empty (don't clobber edits in progress).
+      if (next.length === 1 && prev.length === 0) {
+        const hint = parseFilenameForMetadata(fresh[0].file.name)
+        setForm((s) => ({
+          ...s,
+          authorSurname: s.authorSurname || hint.authorSurname || '',
+          title: s.title || hint.title || '',
+          year: s.year || hint.year || '',
+        }))
+      }
+      return next
+    })
   }
 
   const removeFile = (id: string) => {
@@ -412,19 +432,27 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
     const ids = ungrouped.filter((f) => selectedIds.has(f.id)).map((f) => f.id)
     if (ids.length < 2) { toast.error('Grup için en az 2 dosya seç'); return }
     setEditingGroupId(null)
-    // Preserve the main form's metadata as the group's starting values —
-    // user already filled (or skipped) it once. Blank means worker will
-    // enrich the parent from the first volume's text.
+    // Pre-fill the group's parent metadata from either the main form
+    // (if user filled it) OR the first selected file's filename hint.
+    // Deterministic — no LLM.
+    const firstFile = files.find((f) => f.id === ids[0])
+    const hint = firstFile ? parseFilenameForMetadata(firstFile.file.name) : null
     setGForm({
-      authorSurname: form.authorSurname,
-      authorName: form.authorName,
-      title: form.title,
-      year: form.year,
-      publisher: form.publisher,
+      authorSurname: form.authorSurname || hint?.authorSurname || '',
+      authorName: form.authorName || '',
+      title: form.title || hint?.title || '',
+      year: form.year || hint?.year || '',
+      publisher: form.publisher || '',
     })
     setGFileIds(ids)
+    // Pre-fill each cilt's volumeNumber from the filename's _c\d+ marker
+    // when present; otherwise sequentially 1, 2, 3...
     const vols: Record<string, string> = {}
-    ids.forEach((fid, idx) => { vols[fid] = String(idx + 1) })
+    ids.forEach((fid, idx) => {
+      const f = files.find((x) => x.id === fid)
+      const fh = f ? parseFilenameForMetadata(f.file.name) : null
+      vols[fid] = String(fh?.volumeNumber ?? idx + 1)
+    })
     setGVolumes(vols); setGLabels({}); setGroupFormOpen(true)
   }
 
@@ -436,8 +464,11 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   }
 
   const commitGroup = () => {
-    // Parent metadata is OPTIONAL — left blank, the worker enriches the
-    // parent from the first volume's text after upload.
+    // Çok-ciltli eserin parent künyesi de zorunlu — yazar soyadı + başlık.
+    if (!gForm.authorSurname.trim() || !gForm.title.trim()) {
+      toast.error('Çok-ciltli eser için yazar soyadı + başlık zorunlu')
+      return
+    }
     const seen = new Set<number>()
     for (const fid of gFileIds) {
       const n = parseInt(gVolumes[fid] ?? '', 10)
@@ -468,15 +499,27 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   //                                      form, standalone files auto
   const hasFormMin = form.authorSurname.trim() && form.title.trim()
   const standaloneCount = ungrouped.length
-  const useFormForStandalone = standaloneCount === 1  // only meaningful for the single-entry case
+  const useFormForStandalone = standaloneCount === 1  // form applies only when exactly one standalone file
   const showFormSection = files.length <= 1 && groups.length === 0  // hide once we're in bulk territory
+  // Künye form is REQUIRED for: pure-manual (no file), and single-file
+  // upload. Multi-file uploads derive per-file metadata from filenames
+  // (parseFilenameForMetadata) — the user reviews via library edit
+  // dialog afterward. Group form has its own required-field guard.
+  const formRequired = (files.length === 0 || (files.length === 1 && groups.length === 0))
 
   const handleUpload = async () => {
     if (groupFormOpen) { toast.error('Önce grubu kaydet veya iptal et'); return }
 
+    // Künye zorunluluğu: tek-dosya veya sıfır-dosya (manuel) durumunda
+    // yazar soyadı + başlık şart. Çoklu dosya yüklemesinde her dosya
+    // adı zaten otomatik parse edilir (parseFilenameForMetadata).
+    if (formRequired && !hasFormMin) {
+      toast.error('Yazar soyadı ve başlık zorunlu')
+      return
+    }
+
     // No files at all → pure metadata entry (the old Manuel use case).
     if (files.length === 0) {
-      if (!hasFormMin) { toast.error('Yazar soyadı ve başlık gerekli'); return }
       setUploading(true)
       try {
         const res = await fetch('/api/library', {
@@ -518,12 +561,21 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
       // /api/library/presign-upload + /api/library/confirm-upload.
       const meta: Record<string, string> = {}
       if (useFormForStandalone) {
+        // Single-file: user-filled form (REQUIRED — gated above).
         if (form.authorSurname.trim()) meta.authorSurname = form.authorSurname.trim()
         if (form.authorName.trim()) meta.authorName = form.authorName.trim()
         if (form.title.trim()) meta.title = form.title.trim()
         if (form.year.trim()) meta.year = form.year.trim()
         if (form.publisher.trim()) meta.publisher = form.publisher.trim()
         if (form.publishPlace.trim()) meta.publishPlace = form.publishPlace.trim()
+      } else {
+        // Multi-file: derive per-file metadata from the filename
+        // (deterministic, no LLM). User reviews via library edit
+        // dialog after upload finishes.
+        const hint = parseFilenameForMetadata(pf.file.name)
+        if (hint.authorSurname) meta.authorSurname = hint.authorSurname
+        if (hint.title) meta.title = hint.title
+        if (hint.year) meta.year = hint.year
       }
 
       // Step 1: get signed upload URL
@@ -586,15 +638,15 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
     })
 
     const groupPromises = groups.map(async (g) => {
-      // Parent entry — group's own form fields. Empty author/title get
-      // placeholders the worker can spot + overwrite from the first
-      // volume's text once it's processed.
+      // Parent entry — group's own form fields. commitGroup gates
+      // author/title as required so these are always populated by
+      // the time we get here (no more placeholders / worker enrich).
       const parentRes = await fetch('/api/library', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          authorSurname: g.form.authorSurname.trim() || `(Yükleme ${newId().slice(0, 8)})`,
+          authorSurname: g.form.authorSurname.trim(),
           authorName: g.form.authorName.trim() || undefined,
-          title: g.form.title.trim() || 'Adlandırılmamış',
+          title: g.form.title.trim(),
           year: g.form.year.trim() || undefined,
           publisher: g.form.publisher.trim() || undefined,
           importSource: 'multi-volume',
@@ -794,9 +846,60 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
           we let the worker auto-fill each instead. */}
       {showFormSection && (
         <div className="mt-4">
-          <Eyebrow>{files.length === 0 ? 'Künye (PDF eklemeden kaydet)' : 'Künye (opsiyonel)'}</Eyebrow>
+          <Eyebrow>
+            {files.length === 0 ? 'Künye (PDF eklemeden kaydet)' : 'Künye'}
+            {formRequired && <span className="text-red-600 ml-1">*</span>}
+          </Eyebrow>
+
+          {/* DOI/ISBN ile getirme — deterministik (Crossref/OpenLibrary), AI değil */}
+          <div className="mt-1 mb-3 flex gap-2">
+            <Input
+              value={form.doi}
+              onChange={(e) => setForm((s) => ({ ...s, doi: e.target.value }))}
+              placeholder="DOI veya ISBN yapıştır (örn. 10.1093/acprof:oso/9780199733378.001.0001 veya 978-3110201611)"
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={biblioLookupBusy || !form.doi.trim()}
+              onClick={async () => {
+                const q = form.doi.trim()
+                if (!q) return
+                setBiblioLookupBusy(true)
+                try {
+                  const res = await fetch(`/api/library/biblio-lookup?q=${encodeURIComponent(q)}`)
+                  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                  const data = await res.json() as { found?: boolean; hit?: BiblioHit }
+                  if (!data.found || !data.hit) {
+                    toast.error('Bulunamadı — manuel doldur')
+                    return
+                  }
+                  const h = data.hit
+                  setForm((s) => ({
+                    ...s,
+                    authorSurname: s.authorSurname || h.authorSurname || '',
+                    authorName: s.authorName || h.authorName || '',
+                    title: s.title || h.title || '',
+                    year: s.year || (h.year ? String(h.year) : ''),
+                    publisher: s.publisher || h.publisher || '',
+                    publishPlace: s.publishPlace || h.publishPlace || '',
+                  }))
+                  toast.success(`${h.source.toUpperCase()}'tan dolduruldu`)
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : 'Aranamadı')
+                } finally {
+                  setBiblioLookupBusy(false)
+                }
+              }}
+            >
+              {biblioLookupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Getir'}
+            </Button>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Yazar soyadı" required={files.length === 0}>
+            <Field label="Yazar soyadı" required={formRequired}>
               <Input value={form.authorSurname} onChange={(e) => setForm((s) => ({ ...s, authorSurname: e.target.value }))} placeholder="örn. Wolfson" />
             </Field>
             <Field label="Yazar adı">
@@ -804,7 +907,7 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
             </Field>
           </div>
           <div className="h-3" />
-          <Field label="Başlık" required={files.length === 0}>
+          <Field label="Başlık" required={formRequired}>
             <Input value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} placeholder="Eserin tam başlığı" />
           </Field>
           <div className="h-3" />
@@ -824,7 +927,9 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
 
       {!showFormSection && files.length > 1 && groups.length === 0 && (
         <div className="mt-3 text-[11.5px] text-ink-muted italic">
-          Birden fazla bağımsız dosya yüklüyorsun — künye her biri için ayrı ayrı worker tarafından otomatik çıkarılacak.
+          Çoklu dosya — her birinin künyesi dosya adından otomatik çıkarılır
+          (örn. <code className="font-mono not-italic">EN_Donner_MuhammadAndBelievers.pdf</code>
+          → Yazar: Donner, Başlık: Muhammad and Believers). Kütüphanede tek tek düzenleyebilirsin.
         </div>
       )}
 
@@ -832,7 +937,9 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
         hint={
           files.length === 0
             ? (hasFormMin ? 'Sadece künye eklenecek (PDF yok)' : 'Yazar + başlık doldur veya dosya seç')
-            : `${ungrouped.length} tek · ${groups.length} grup`
+            : formRequired && !hasFormMin
+              ? 'Yazar soyadı + başlık zorunlu'
+              : `${ungrouped.length} tek · ${groups.length} grup`
         }
         primary={handleUpload}
         primaryLabel={
@@ -841,7 +948,7 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
           : 'Yükle ve ekle'
         }
         onCancel={onClose}
-        loading={uploading || (files.length === 0 && !hasFormMin)}
+        loading={uploading || (formRequired && !hasFormMin)}
       />
     </div>
   )

@@ -99,15 +99,8 @@ export interface LibraryEntryRow {
    createdAt?: string;
    volumeNumber?: number;
  }>;
- /** Multi-volume hint from Haiku enrichment + dismissal flag.
-  *  uploadSizeBytes drives the inline ETA estimate. */
+ /** uploadSizeBytes drives the inline ETA estimate. */
  metadata?: {
-  volumeHint?: {
-   volumeNumber: number;
-   parentWork: string;
-   volumeLabel?: string | null;
-  };
-  volumeHintDismissed?: boolean;
   uploadSizeBytes?: number;
  } | null;
  createdAt?: string;

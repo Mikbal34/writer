@@ -21,8 +21,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { prisma } from '@/lib/db'
 import { findPdf } from '@/lib/pdf-finder'
-import { generateJSONWithUsage, HAIKU, SONNET } from '@/lib/claude'
-import { lookupByText, type BiblioHit } from '@/lib/biblio-lookup'
 import { presignDownloadUrl } from '@/lib/r2-storage'
 import { Agent, fetch as undiciFetch } from 'undici'
 
@@ -165,12 +163,9 @@ export interface PdfMetadataExtraction {
   volumeLabel: string | null
 }
 
-// extractMetadataFromText removed — its only caller was the
-// /api/library/extract-metadata preview route, which is gone now that
-// the add-source modal does not need a sync preview. All enrichment
-// runs through the worker queue (enrichLibraryEntryFromPdfText).
-
-// ── Metadata enrichment helpers ─────────────────────────────────────
+// All auto-metadata-enrichment has been removed. Künye fields are now
+// filled at upload time via the AddSourceDialog form; the worker only
+// does text extraction + chunk embedding.
 
 /**
  * Scan front pages for the metadata-rich one (cover/copyright/edition)
@@ -216,275 +211,6 @@ function pickCoverWindow(text: string, maxChars = 16000): string {
   return out
 }
 
-/**
- * Treat upload placeholders as empty so the extractor can overwrite
- * them. The upload routes seed authorSurname with "(Yükleme abc12345)"
- * / "(test ...)" and title with "Adlandırılmamış" — those should never
- * survive a successful Haiku/DOI pass even on non-pdf-upload sources.
- */
-function isPlaceholderField(key: string, value: unknown): boolean {
-  if (value == null) return true
-  const s = String(value).trim()
-  if (!s) return true
-  if (key === 'authorSurname' && /^\((?:Yükleme|test|faz)/i.test(s)) return true
-  if (key === 'title' && (s === 'Adlandırılmamış' || /^__FAZ\d/.test(s))) return true
-  return false
-}
-
-const _PROMPT_RULES_HEADER = `Look for these terms when extracting the publisher / place / year (multilingual hints):
-  • English: Publisher, Published by, First published, Edition, Copyright
-  • Turkish: Yayınevi, Yayın Yeri, Baskı, Tüm hakları saklıdır
-  • German:  Verlag, Erste Auflage, Auflage, Erstausgabe
-  • Arabic:  دار النشر، الطبعة، مكان النشر
-  • French:  Éditeur, Première édition, Maison d'édition
-  • Russian: Издательство, Первое издание`
-
-function buildEnrichPrompt(coverText: string): string {
-  return `Analyze the text from the front pages (cover / title / copyright) of the following document and return bibliography metadata plus an abstract as JSON.
-
-Front pages:
----
-${coverText}
----
-
-${_PROMPT_RULES_HEADER}
-
-Return in this JSON format:
-{
-  "entryType": "kitap" | "makale" | "nesir" | "ceviri" | "tez" | "ansiklopedi" | "web",
-  "authorSurname": "Author's surname",
-  "authorName": "Author's first name or null",
-  "title": "Full title of the work",
-  "editor": "Editor or null",
-  "translator": "Translator or null",
-  "publisher": "Publisher or null",
-  "publishPlace": "Place of publication or null",
-  "year": "Publication year or null",
-  "volume": "Volume or null",
-  "edition": "Edition or null",
-  "journalName": "Journal name or null",
-  "journalVolume": "Journal volume or null",
-  "journalIssue": "Journal issue or null",
-  "pageRange": "Page range or null",
-  "doi": "DOI or null",
-  "url": "URL or null",
-  "abstract": "Concise abstract / summary (150-300 words) in the document's original language. Use the formal abstract verbatim when present; otherwise summarize the first pages.",
-  "keywords": ["up to 6 subject keywords derived from the text"] or null,
-  "volumeNumber": integer (1, 2, 3, ...) IF this PDF is one volume of a multi-volume work — look for explicit markers like "Cilt 2", "Volume II", "الجزء الثاني", "Tome 2", "Bd. 3"; otherwise null,
-  "parentWork": "Title of the parent multi-volume work ONLY when volumeNumber is also set; otherwise null",
-  "volumeLabel": "Subtitle of this specific volume ONLY when volumeNumber is also set; otherwise null"
-}
-
-CRITICAL RULES — strict accuracy over completeness:
-- NULL > GUESS. If a field is not clearly present in the text, return null. Never invent a publisher, year, or place from "looks plausible".
-- TRANSCRIPTION: copy text VERBATIM with original diacritics (İ ğ ş ç ı ö ü, ä ö ü ß, é è ê, ş й ı). Do not anglicize "İbn" → "Ibn" or "Topaloğlu" → "Topaloglu". OCR sometimes drops diacritics — if you see the bare-Latin form but the surrounding Turkish/Arabic context implies the full diacritic, prefer the diacritic form.
-- TRANSLATIONS: when the book is a translation (look for "Türkçesi", "Çeviren", "Translated by", "Aus dem Englischen", "ترجمة"), the year MUST be the publication year of THIS edition (Turkish/German/etc), not the original. The original year, if mentioned, goes in null or the abstract.
-- PUBLISHER: look for it on the cover, copyright page (©), AND back cover. Many editions print it as a logo + small text — extract the text near the logo. Do not guess from translator name or context.
-- entryType from document style: academic article → "makale", book → "kitap", thesis → "tez", encyclopedia article → "ansiklopedi".
-- Author: surname goes in authorSurname; given names in authorName. If unsure of split, put the full name in authorSurname.
-- volumeNumber/parentWork: ONLY when explicit markers ("Cilt 2", "الجزء الثاني"). A "Volume 2 Issue 3" of a journal is journalVolume, not parentWork.
-- Abstract must be in the document's original language.
-- Return ONLY the JSON, no commentary.`
-}
-
-/**
- * Ask Haiku to pull bibliography metadata + abstract out of the extracted
- * PDF text, and then update the LibraryEntry *only for fields the entry
- * doesn't already have*. Literature-search entries already carry rich
- * metadata — we don't want to overwrite it with a weaker PDF-derived guess.
- */
-export async function enrichLibraryEntryFromPdfText(
-  entryId: string,
-  extractedText: string
-): Promise<void> {
-  const text = (extractedText ?? '').trim()
-  if (text.length < 200) return
-
-  const entry = await prisma.libraryEntry.findUnique({
-    where: { id: entryId },
-    select: {
-      userId: true,
-      entryType: true,
-      authorSurname: true,
-      authorName: true,
-      title: true,
-      editor: true,
-      translator: true,
-      publisher: true,
-      publishPlace: true,
-      year: true,
-      volume: true,
-      edition: true,
-      journalName: true,
-      journalVolume: true,
-      journalIssue: true,
-      pageRange: true,
-      doi: true,
-      url: true,
-      abstract: true,
-      keywords: true,
-      importSource: true,
-      metadata: true,
-    },
-  })
-  if (!entry) return
-
-  // Source tier:
-  //   FRESH (pdf-upload / admin-ingest / e2e tests) → fields are
-  //     placeholders, overwrite anything we extract.
-  //   non-fresh (lit-search / Zotero / BibTeX) → existing data is
-  //     canonical; only overwrite if the current value LOOKS like a
-  //     placeholder (e.g. "(Yükleme ...)" surname from a fallback path).
-  const FRESH_SOURCES = new Set(['pdf-upload', 'admin-ingest', 'faz2-test', 'faz4-e2e'])
-  const isFresh = FRESH_SOURCES.has(entry.importSource ?? '')
-
-  type EnrichSource = 'doi' | 'isbn' | 'haiku' | 'haiku+sonnet' | null
-  let source: EnrichSource = null
-  let enrichError: string | null = null
-
-  // ── 1. Deterministic lookup (DOI → Crossref / ISBN → OpenLibrary) ──
-  let biblio: BiblioHit | null = null
-  try {
-    biblio = await lookupByText(text)
-    if (biblio) source = biblio.source
-  } catch (err) {
-    console.warn('[library-pipeline] biblio lookup failed:', err)
-  }
-
-  // ── 2. Haiku on the SMART cover window when biblio missed critical
-  //    fields. Sonnet escalates if Haiku still can't fill them. ──
-  let llm: PdfMetadataExtraction | null = null
-  // Sonnet (not Haiku) for metadata extraction. Empirical: Sonnet
-  // preserves diacritics (İbn, ğ, ş), extracts ISBN/publisher/place
-  // that Haiku misses, and doesn't hallucinate typos (Haiku produced
-  // "Felsefeleeri" / "Kitaabevi" / "Eğora" on the same covers Sonnet
-  // got right). Cost: ~$0.01/book vs ~$0.001 for Haiku — at 1000
-  // books/mo, $9/mo extra for dramatically better metadata. Sonnet is
-  // the right tool here, Haiku is now reserved for cheap classification
-  // tasks where the 10× quality gap isn't worth it.
-  const llmNeeded = !biblio?.title || !biblio?.authorSurname
-  if (llmNeeded) {
-    try {
-      const cover = pickCoverWindow(text, 16000)
-      const sonnetRes = await generateJSONWithUsage<PdfMetadataExtraction>(
-        buildEnrichPrompt(cover),
-        'You are a bibliography + abstract extraction assistant. Respond with valid JSON only.',
-        { model: SONNET },
-      )
-      deductCredits(
-        entry.userId, 'source_upload_extract',
-        sonnetRes.inputTokens, sonnetRes.outputTokens, 'sonnet',
-        { libraryEntryId: entryId },
-      ).catch((e) => console.error('[library-pipeline] credit deduction failed:', e))
-      llm = sonnetRes.data
-      source = source ?? 'sonnet'
-    } catch (err) {
-      enrichError = err instanceof Error ? err.message : String(err)
-      console.warn('[library-pipeline] Sonnet enrich failed:', err)
-    }
-  }
-
-  // ── 3. Merge biblio (canonical) over llm (fallback) ──
-  const merged = {
-    entryType: biblio?.entryType ?? llm?.entryType ?? null,
-    authorSurname: biblio?.authorSurname ?? llm?.authorSurname ?? null,
-    authorName: biblio?.authorName ?? llm?.authorName ?? null,
-    title: biblio?.title ?? llm?.title ?? null,
-    editor: llm?.editor ?? null,
-    translator: llm?.translator ?? null,
-    publisher: biblio?.publisher ?? llm?.publisher ?? null,
-    publishPlace: biblio?.publishPlace ?? llm?.publishPlace ?? null,
-    year: biblio?.year ?? llm?.year ?? null,
-    volume: llm?.volume ?? null,
-    edition: llm?.edition ?? null,
-    journalName: biblio?.journalName ?? llm?.journalName ?? null,
-    journalVolume: biblio?.journalVolume ?? llm?.journalVolume ?? null,
-    journalIssue: biblio?.journalIssue ?? llm?.journalIssue ?? null,
-    pageRange: biblio?.pageRange ?? llm?.pageRange ?? null,
-    doi: biblio?.doi ?? llm?.doi ?? null,
-    url: biblio?.url ?? llm?.url ?? null,
-    abstract: biblio?.abstract ?? llm?.abstract ?? null,
-    keywords: llm?.keywords ?? null,
-    volumeNumber: llm?.volumeNumber ?? null,
-    parentWork: llm?.parentWork ?? null,
-    volumeLabel: llm?.volumeLabel ?? null,
-  }
-
-  // ── 4. Apply: write if FRESH source OR existing value looks like a
-  //    placeholder. Never overwrite canonical lit-search/Zotero data. ──
-  const data: Record<string, unknown> = {}
-  const apply = <K extends keyof typeof entry>(key: K, candidate: string | null | undefined) => {
-    if (!candidate || candidate === 'null' || candidate === 'Unknown') return
-    const existing = entry[key]
-    const writable = isFresh || isPlaceholderField(String(key), existing)
-    if (!writable && existing && String(existing).trim().length > 0) return
-    data[key as string] = candidate
-  }
-  apply('authorSurname', merged.authorSurname)
-  apply('authorName', merged.authorName)
-  apply('title', merged.title)
-  apply('editor', merged.editor)
-  apply('translator', merged.translator)
-  apply('publisher', merged.publisher)
-  apply('publishPlace', merged.publishPlace)
-  apply('year', merged.year)
-  apply('volume', merged.volume)
-  apply('edition', merged.edition)
-  apply('journalName', merged.journalName)
-  apply('journalVolume', merged.journalVolume)
-  apply('journalIssue', merged.journalIssue)
-  apply('pageRange', merged.pageRange)
-  apply('doi', merged.doi)
-  apply('url', merged.url)
-  apply('abstract', merged.abstract)
-
-  if (
-    (isFresh || !entry.keywords || entry.keywords.length === 0) &&
-    Array.isArray(merged.keywords)
-  ) {
-    const clean = merged.keywords.filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
-    if (clean.length > 0) data.keywords = clean.slice(0, 6)
-  }
-
-  if (merged.entryType && VALID_ENTRY_TYPES.has(merged.entryType as EntryType)) {
-    if (entry.entryType === 'kitap' || !entry.entryType) {
-      data.entryType = merged.entryType
-    }
-  }
-
-  // ── 5. metadata: volume hint + enrich state for the UI ──
-  // UI reads `metadata.enrich.status / source / error` to render a
-  // "✓ DOI'den çekildi" / "⚠ otomatik künye başarısız — manuel doldur"
-  // badge, plus the volume-hint banner for multi-volume works.
-  const existingMeta =
-    entry.metadata && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata)
-      ? (entry.metadata as Record<string, unknown>)
-      : {}
-  const newMeta: Record<string, unknown> = { ...existingMeta }
-  if (
-    merged.volumeNumber && typeof merged.volumeNumber === 'number' &&
-    merged.volumeNumber > 0 && merged.parentWork && String(merged.parentWork).trim()
-  ) {
-    newMeta.volumeHint = {
-      volumeNumber: Math.floor(merged.volumeNumber),
-      parentWork: String(merged.parentWork).trim(),
-      volumeLabel: merged.volumeLabel ? String(merged.volumeLabel).trim() : null,
-    }
-  }
-  newMeta.enrich = {
-    status: enrichError ? 'failed' : source ? 'ok' : 'empty',
-    source,
-    error: enrichError,
-    completedAt: new Date().toISOString(),
-  }
-  data.metadata = newMeta as Prisma.InputJsonValue
-
-  try {
-    await prisma.libraryEntry.update({ where: { id: entryId }, data })
-  } catch (err) {
-    console.warn('[library-pipeline] entry update after enrich failed:', err)
-  }
-}
 
 /**
  * Normalize a PMC article page URL to its direct PDF URL.
@@ -580,8 +306,8 @@ interface NativeDocMetadata {
  * forever); for other entries we only fill blank fields so manual
  * bibliography edits aren't clobbered.
  *
- * Mirrors the `isUpload` carve-out in enrichLibraryEntryFromPdfText
- * so both code paths behave consistently.
+ * Only fills fields the entry hasn't already had filled by the
+ * user (upload form) or a previous run.
  */
 async function applyNativeMetadata(
   entryId: string,
@@ -1130,7 +856,6 @@ export async function processLibraryPdfFromUrl(entryId: string, pdfUrl: string):
         where: { id: entryId },
         data: { openAccessUrl: url, fileType: 'pdf' },
       })
-      await enrichLibraryEntryFromPdfText(entryId, data.extractedText)
       await persistChunks(entryId, data.chunks)
       await embedPendingChunks(entryId)
       await setStatus(entryId, 'ready')
@@ -1231,7 +956,6 @@ export async function processLibraryPdfFromBytes(
       }
     }
 
-    await enrichLibraryEntryFromPdfText(entryId, data.extractedText)
     await persistChunks(entryId, data.chunks)
     await embedPendingChunks(entryId)
     await setStatus(entryId, 'ready')
@@ -1324,25 +1048,6 @@ export async function processLibraryVolumePdfFromBytes(
     // still placeholder (user uploaded the group without typing
     // author/title), use THIS volume's extracted text to enrich the
     // parent. The first volume to finish wins; enrich's own
-    // isPlaceholderField guard means later volumes won't overwrite.
-    try {
-      const parent = await prisma.libraryEntry.findUnique({
-        where: { id: entryId },
-        select: { authorSurname: true, title: true },
-      })
-      if (
-        parent && data.extractedText && data.extractedText.length >= 200 &&
-        (
-          /^\((?:Yükleme|test|faz)/i.test(parent.authorSurname ?? '') ||
-          parent.title === 'Adlandırılmamış' ||
-          !parent.title
-        )
-      ) {
-        await enrichLibraryEntryFromPdfText(entryId, data.extractedText)
-      }
-    } catch (err) {
-      console.warn(`[library-pipeline] parent enrich after volume failed (non-fatal):`, err)
-    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[library-pipeline] volume processFromBytes failed for ${volumeId}:`, err)
@@ -1384,17 +1089,6 @@ export async function ingestExtractedTextForEntry(
     if (chunks.length === 0) {
       await setStatus(entryId, 'failed', { pdfError: 'No text extracted (OCR)' })
       return
-    }
-    if (opts.enrich) {
-      const frontMatter = pages
-        .slice(0, BIB_PAGES)
-        .map((p) => `[Page ${p.pageNumber}]\n${p.text}`)
-        .join('\n\n---\n\n')
-      try {
-        await enrichLibraryEntryFromPdfText(entryId, frontMatter)
-      } catch (err) {
-        console.warn(`[library-pipeline] OCR enrich failed for ${entryId}:`, err)
-      }
     }
     await persistChunks(entryId, chunks)
     await embedPendingChunks(entryId)

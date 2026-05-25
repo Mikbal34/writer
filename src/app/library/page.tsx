@@ -50,7 +50,6 @@ import LibraryEntryForm from "@/components/library/LibraryEntryForm";
 import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import { AddSourceDialog } from "@/components/library/AddSourceDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
-import VolumeHintBanner from "@/components/library/VolumeHintBanner";
 import FolderChips, {
   type LibrarySelection,
 } from "@/components/library/FolderChips";
@@ -505,10 +504,6 @@ export default function LibraryPage() {
 
           {/* === Body: shelf list === */}
           <div className="px-9 pt-4 pb-9">
-            <div className="mt-1">
-              <VolumeHintBanner entries={entries} onChanged={fetchEntries} />
-            </div>
-
             {/* Decade shelves */}
             <div className="mt-4">
             {isLoading ? (

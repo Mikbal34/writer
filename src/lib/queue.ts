@@ -14,10 +14,6 @@ export const INGEST_QUEUE = 'library-ingest'
 export type IngestJob =
   | { kind: 'entry'; entryId: string; filename?: string }
   | { kind: 'volume'; entryId: string; volumeId: string; filename?: string }
-  // Metadata-only re-run: re-extract front pages from the stored R2
-  // file and re-run the enrich pipeline (DOI/ISBN → Haiku → Sonnet).
-  // Chunks/embeddings are untouched.
-  | { kind: 'enrich'; entryId: string }
 
 function redisUrl(): string {
   const url = process.env.REDIS_URL
@@ -76,9 +72,7 @@ export async function enqueueIngest(
   opts: JobsOptions & { batch?: boolean } = {},
 ) {
   const jobId =
-    job.kind === 'volume' ? `vol_${job.volumeId}`
-    : job.kind === 'enrich' ? `enrich_${job.entryId}`
-    : `entry_${job.entryId}`
+    job.kind === 'volume' ? `vol_${job.volumeId}` : `entry_${job.entryId}`
   const { batch, priority, ...rest } = opts
   return ingestQueue().add(job.kind, job, {
     jobId,

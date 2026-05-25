@@ -18,8 +18,6 @@ import {
   processLibraryPdfFromUrl,
   processLibraryVolumePdfFromBytes,
   embedPendingChunks,
-  enrichLibraryEntryFromPdfText,
-  extractPdfLocalAsProcessResponse,
 } from '@/lib/library-pipeline'
 import type { IngestJob } from '@/lib/queue'
 
@@ -37,29 +35,6 @@ async function chunkCounts(column: 'libraryEntryId' | 'volumeId', id: string): P
 }
 
 export async function runIngestJob(job: IngestJob): Promise<Record<string, unknown>> {
-  // ── metadata-only re-run ────────────────────────────────────────
-  // Re-extracts the front pages from the stored R2 file via local
-  // pdfjs (fast, no Python round-trip) and re-runs the enrich pipeline.
-  // Chunks/embeddings are untouched.
-  if (job.kind === 'enrich') {
-    const ent = await prisma.libraryEntry.findUnique({
-      where: { id: job.entryId },
-      select: { id: true, filePath: true, title: true },
-    })
-    if (!ent) throw new Error(`entry ${job.entryId} not found`)
-    if (!ent.filePath) throw new Error(`entry ${ent.id} has no filePath`)
-    const bytes = await getBytesFromFilePath(ent.filePath)
-    const data = await extractPdfLocalAsProcessResponse(bytes, ent.id)
-    if (!data || !data.extractedText || data.extractedText.length < 200) {
-      // Scanned PDF without a text layer — pdfjs can't help; the full
-      // pipeline (Tesseract/Surya) would, but that's a `kind:'entry'`
-      // re-run, not a metadata-only refresh.
-      throw new Error('no extractable text for enrich (likely scanned — re-run ingest instead)')
-    }
-    await enrichLibraryEntryFromPdfText(ent.id, data.extractedText)
-    return { kind: 'enrich', entryId: ent.id }
-  }
-
   if (job.kind === 'entry') {
     const entry = await prisma.libraryEntry.findUnique({
       where: { id: job.entryId },
