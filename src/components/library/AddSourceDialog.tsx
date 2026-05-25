@@ -63,7 +63,7 @@ export function AddSourceDialog({ open, onOpenChange, defaultTab = 'file', onAdd
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="max-w-[640px] p-0 gap-0 overflow-hidden border-0 bg-parchment"
+        className="max-w-[860px] w-[90vw] max-h-[90vh] p-0 gap-0 overflow-hidden border-0 bg-parchment"
       >
         {/* Dark olive hero header */}
         <div
@@ -347,7 +347,19 @@ function Divider() {
 // the group lands on a list. "Yükle ve ekle" fires standalone
 // uploads (POST /upload-pdf) and group uploads (parent POST /library
 // + N × POST /[id]/volumes) in parallel.
-type PendingFile = { id: string; file: File }
+type FileMeta = {
+  authorSurname: string
+  authorName: string
+  title: string
+  year: string
+  publisher: string
+  publishPlace: string
+}
+const emptyFileMeta = (): FileMeta => ({
+  authorSurname: '', authorName: '', title: '',
+  year: '', publisher: '', publishPlace: '',
+})
+type PendingFile = { id: string; file: File; meta: FileMeta }
 type Group = {
   id: string
   form: { authorSurname: string; authorName: string; title: string; year: string; publisher: string }
@@ -396,21 +408,34 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   const addFiles = (incoming: FileList | File[]) => {
     const fresh: PendingFile[] = Array.from(incoming)
       .filter((f) => /\.(pdf|epub|docx)$/i.test(f.name) && f.size > 0 && f.size <= 150 * 1024 * 1024)
-      .map((file) => ({ id: newId(), file }))
+      .map((file) => {
+        // Each file gets its own metadata pre-filled from its filename.
+        // Deterministic — user reviews/edits inline before submit.
+        const hint = parseFilenameForMetadata(file.name)
+        return {
+          id: newId(),
+          file,
+          meta: {
+            ...emptyFileMeta(),
+            authorSurname: hint.authorSurname ?? '',
+            title: hint.title ?? '',
+            year: hint.year ?? '',
+          },
+        }
+      })
     if (fresh.length === 0) return
     setFiles((prev) => {
       const next = [...prev, ...fresh]
-      // Single-file pre-fill from filename so the user only has to
-      // confirm/edit instead of re-typing data already in the filename.
-      // Runs only when we're going from 0 → 1 file and the form is
-      // empty (don't clobber edits in progress).
+      // Mirror the first file's metadata into the shared form when we
+      // go from 0 → 1 (so the user sees the form filled in even before
+      // they expand the inline row).
       if (next.length === 1 && prev.length === 0) {
-        const hint = parseFilenameForMetadata(fresh[0].file.name)
+        const m = fresh[0].meta
         setForm((s) => ({
           ...s,
-          authorSurname: s.authorSurname || hint.authorSurname || '',
-          title: s.title || hint.title || '',
-          year: s.year || hint.year || '',
+          authorSurname: s.authorSurname || m.authorSurname,
+          title: s.title || m.title,
+          year: s.year || m.year,
         }))
       }
       return next
@@ -510,12 +535,22 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   const handleUpload = async () => {
     if (groupFormOpen) { toast.error('Önce grubu kaydet veya iptal et'); return }
 
-    // Künye zorunluluğu: tek-dosya veya sıfır-dosya (manuel) durumunda
-    // yazar soyadı + başlık şart. Çoklu dosya yüklemesinde her dosya
-    // adı zaten otomatik parse edilir (parseFilenameForMetadata).
+    // Künye zorunluluğu:
+    //   - 0 dosya (pure manual): üstteki form zorunlu
+    //   - 1 dosya: üstteki form zorunlu
+    //   - 2+ dosya / gruplar var: her dosyanın inline künyesi zorunlu
     if (formRequired && !hasFormMin) {
       toast.error('Yazar soyadı ve başlık zorunlu')
       return
+    }
+    if (!formRequired && ungrouped.length > 0) {
+      const missing = ungrouped.filter((pf) =>
+        !pf.meta.authorSurname.trim() || !pf.meta.title.trim()
+      )
+      if (missing.length > 0) {
+        toast.error(`${missing.length} dosyada yazar/başlık eksik — "Künye" ile aç ve doldur`)
+        return
+      }
     }
 
     // No files at all → pure metadata entry (the old Manuel use case).
@@ -569,13 +604,15 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
         if (form.publisher.trim()) meta.publisher = form.publisher.trim()
         if (form.publishPlace.trim()) meta.publishPlace = form.publishPlace.trim()
       } else {
-        // Multi-file: derive per-file metadata from the filename
-        // (deterministic, no LLM). User reviews via library edit
-        // dialog after upload finishes.
-        const hint = parseFilenameForMetadata(pf.file.name)
-        if (hint.authorSurname) meta.authorSurname = hint.authorSurname
-        if (hint.title) meta.title = hint.title
-        if (hint.year) meta.year = hint.year
+        // Multi-file: per-file metadata from the inline editor (which
+        // was pre-filled from filename when the file was added, and the
+        // user could expand+edit before submitting).
+        if (pf.meta.authorSurname.trim()) meta.authorSurname = pf.meta.authorSurname.trim()
+        if (pf.meta.authorName.trim()) meta.authorName = pf.meta.authorName.trim()
+        if (pf.meta.title.trim()) meta.title = pf.meta.title.trim()
+        if (pf.meta.year.trim()) meta.year = pf.meta.year.trim()
+        if (pf.meta.publisher.trim()) meta.publisher = pf.meta.publisher.trim()
+        if (pf.meta.publishPlace.trim()) meta.publishPlace = pf.meta.publishPlace.trim()
       }
 
       // Step 1: get signed upload URL
@@ -836,6 +873,8 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
               selected={selectedIds.has(pf.id)}
               onToggle={() => toggleSelect(pf.id)}
               onRemove={() => removeFile(pf.id)}
+              onMetaChange={(next) => setFiles((p) => p.map((f) => f.id === pf.id ? { ...f, meta: { ...f.meta, ...next } } : f))}
+              showMetaEditor={files.length > 1 || groups.length > 0}
             />
           ))}
         </div>
@@ -927,9 +966,10 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
 
       {!showFormSection && files.length > 1 && groups.length === 0 && (
         <div className="mt-3 text-[11.5px] text-ink-muted italic">
-          Çoklu dosya — her birinin künyesi dosya adından otomatik çıkarılır
-          (örn. <code className="font-mono not-italic">EN_Donner_MuhammadAndBelievers.pdf</code>
-          → Yazar: Donner, Başlık: Muhammad and Believers). Kütüphanede tek tek düzenleyebilirsin.
+          Çoklu dosya — her dosyanın yanındaki <strong>Künye</strong> butonuna basıp
+          yazar/başlık/yıl bilgisini gözden geçir. Dosya adından
+          (örn. <code className="font-mono not-italic">EN_Donner_MuhammadAndBelievers.pdf</code>)
+          ön doldurma yapıldı; eksikleri tamamla.
         </div>
       )}
 
@@ -970,34 +1010,105 @@ function estimateProcessing(file: File): { label: string; suspect: boolean } {
   return { label: '~15-30 dk · taranmış kitap', suspect: true }
 }
 
-function FileRow({ pf, selected, onToggle, onRemove }: {
-  pf: PendingFile; selected: boolean; onToggle: () => void; onRemove: () => void
+function FileRow({ pf, selected, onToggle, onRemove, onMetaChange, showMetaEditor }: {
+  pf: PendingFile
+  selected: boolean
+  onToggle: () => void
+  onRemove: () => void
+  onMetaChange: (next: Partial<FileMeta>) => void
+  showMetaEditor: boolean
 }) {
+  const [expanded, setExpanded] = useState(false)
   const sizeMB = (pf.file.size / 1024 / 1024).toFixed(1)
   const ext = pf.file.name.split('.').pop()?.toUpperCase().slice(0, 4) ?? 'FILE'
   const est = estimateProcessing(pf.file)
+  const hasMin = pf.meta.authorSurname.trim() && pf.meta.title.trim()
   return (
-    <label className={[
-      'flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1.5 border cursor-pointer transition',
+    <div className={[
+      'rounded-lg mb-1.5 border transition overflow-hidden',
       selected ? 'bg-forest/8 border-forest/40' : 'bg-parchment-dark/40 border-ink-muted/15',
     ].join(' ')}>
-      <input type="checkbox" checked={selected} onChange={onToggle}
-        className="w-4 h-4 accent-forest cursor-pointer" />
-      <div className="w-8 h-10 rounded-sm flex items-end justify-center pb-1 text-white text-[9px] font-bold tracking-wider flex-shrink-0"
-        style={{ background: '#8a6a3d' }}>{ext}</div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold text-ink truncate">{pf.file.name}</div>
-        <div className="text-[11px] text-ink-muted mt-0.5 flex items-center gap-2">
-          <span>{sizeMB} MB</span>
-          <span className="text-ink-muted/60">·</span>
-          <span className={est.suspect ? 'text-gold-dark font-medium' : 'text-ink-muted'}>
-            {est.label}
-          </span>
+      <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer">
+        <input type="checkbox" checked={selected} onChange={onToggle}
+          className="w-4 h-4 accent-forest cursor-pointer" />
+        <div className="w-8 h-10 rounded-sm flex items-end justify-center pb-1 text-white text-[9px] font-bold tracking-wider flex-shrink-0"
+          style={{ background: '#8a6a3d' }}>{ext}</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-semibold text-ink truncate">{pf.file.name}</div>
+          <div className="text-[11px] text-ink-muted mt-0.5 flex items-center gap-2 flex-wrap">
+            <span>{sizeMB} MB</span>
+            <span className="text-ink-muted/60">·</span>
+            <span className={est.suspect ? 'text-gold-dark font-medium' : 'text-ink-muted'}>
+              {est.label}
+            </span>
+            {showMetaEditor && (
+              <>
+                <span className="text-ink-muted/60">·</span>
+                {hasMin ? (
+                  <span className="text-forest font-medium">
+                    {pf.meta.authorSurname} — {pf.meta.title.slice(0, 30)}{pf.meta.title.length > 30 ? '…' : ''}
+                  </span>
+                ) : (
+                  <span className="text-red-600">künye eksik</span>
+                )}
+              </>
+            )}
+          </div>
         </div>
-      </div>
-      <button onClick={(e) => { e.preventDefault(); onRemove() }}
-        className="p-1 text-ink-muted hover:text-ink" aria-label="Çıkar"><X size={12} /></button>
-    </label>
+        {showMetaEditor && (
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); setExpanded((v) => !v) }}
+            className="text-[11px] px-2 py-1 rounded border border-ink-muted/30 hover:bg-forest/10"
+          >
+            {expanded ? 'Kapat' : 'Künye'}
+          </button>
+        )}
+        <button onClick={(e) => { e.preventDefault(); onRemove() }}
+          className="p-1 text-ink-muted hover:text-ink" aria-label="Çıkar"><X size={12} /></button>
+      </label>
+
+      {showMetaEditor && expanded && (
+        <div className="px-3 pb-3 pt-1 border-t border-ink-muted/15 bg-parchment/60">
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <Field label="Yazar soyadı *">
+              <Input
+                value={pf.meta.authorSurname}
+                onChange={(e) => onMetaChange({ authorSurname: e.target.value })}
+                placeholder="örn. Wolfson"
+              />
+            </Field>
+            <Field label="Yazar adı">
+              <Input
+                value={pf.meta.authorName}
+                onChange={(e) => onMetaChange({ authorName: e.target.value })}
+                placeholder="örn. Harry Austryn"
+              />
+            </Field>
+          </div>
+          <div className="h-2" />
+          <Field label="Başlık *">
+            <Input
+              value={pf.meta.title}
+              onChange={(e) => onMetaChange({ title: e.target.value })}
+              placeholder="Eserin tam başlığı"
+            />
+          </Field>
+          <div className="h-2" />
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="Yayıncı">
+              <Input value={pf.meta.publisher} onChange={(e) => onMetaChange({ publisher: e.target.value })} />
+            </Field>
+            <Field label="Yer">
+              <Input value={pf.meta.publishPlace} onChange={(e) => onMetaChange({ publishPlace: e.target.value })} />
+            </Field>
+            <Field label="Yıl">
+              <Input value={pf.meta.year} onChange={(e) => onMetaChange({ year: e.target.value })} placeholder="1976" className="font-mono" />
+            </Field>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
