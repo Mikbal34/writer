@@ -38,7 +38,7 @@ export function AddSourceDialog({ open, onOpenChange, onAdded }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="max-w-[1100px] sm:max-w-[1100px] w-[92vw] max-h-[88vh] p-0 gap-0 overflow-hidden border-0 bg-parchment flex flex-col"
+        className="max-w-[820px] sm:max-w-[820px] w-[88vw] max-h-[86vh] p-0 gap-0 overflow-hidden border-0 bg-parchment flex flex-col"
       >
         {/* Dark olive hero header — sabit, kaymaz */}
         <div
@@ -363,31 +363,30 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   //                                      form, standalone files auto
   const hasFormMin = form.authorSurname.trim() && form.title.trim()
   const standaloneCount = ungrouped.length
-  const useFormForStandalone = standaloneCount === 1  // form applies only when exactly one standalone file
-  const showFormSection = files.length <= 1 && groups.length === 0  // hide once we're in bulk territory
-  // Künye form is REQUIRED for: pure-manual (no file), and single-file
-  // upload. Multi-file uploads derive per-file metadata from filenames
-  // (parseFilenameForMetadata) — the user reviews via library edit
-  // dialog afterward. Group form has its own required-field guard.
-  const formRequired = (files.length === 0 || (files.length === 1 && groups.length === 0))
+  const useFormForStandalone = false  // no shared form — every standalone file uses its own per-row inline meta
+  const showFormSection = files.length === 0  // shared form ONLY for pure-manual (no file) entry
+  // Künye REQUIRED for pure-manual entry (the shared form below).
+  // For ANY file upload (single or multi), per-row inline editors are
+  // the source of truth; their per-file requirement is enforced
+  // separately in handleUpload below.
+  const formRequired = files.length === 0
 
   const handleUpload = async () => {
     if (groupFormOpen) { toast.error('Önce grubu kaydet veya iptal et'); return }
 
     // Künye zorunluluğu:
-    //   - 0 dosya (pure manual): üstteki form zorunlu
-    //   - 1 dosya: üstteki form zorunlu
-    //   - 2+ dosya / gruplar var: her dosyanın inline künyesi zorunlu
-    if (formRequired && !hasFormMin) {
+    //   - 0 dosya (pure manual): üstteki ortak form zorunlu
+    //   - 1+ dosya: her dosyanın kendi inline künyesi zorunlu
+    if (files.length === 0 && !hasFormMin) {
       toast.error('Yazar soyadı ve başlık zorunlu')
       return
     }
-    if (!formRequired && ungrouped.length > 0) {
+    if (ungrouped.length > 0) {
       const missing = ungrouped.filter((pf) =>
         !pf.meta.authorSurname.trim() || !pf.meta.title.trim()
       )
       if (missing.length > 0) {
-        toast.error(`${missing.length} dosyada yazar/başlık eksik — "Künye" ile aç ve doldur`)
+        toast.error(`${missing.length} dosyada yazar/başlık eksik — satıra tıklayıp doldur`)
         return
       }
     }
@@ -689,7 +688,7 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
               onToggle={() => toggleSelect(pf.id)}
               onRemove={() => removeFile(pf.id)}
               onMetaChange={(next) => setFiles((p) => p.map((f) => f.id === pf.id ? { ...f, meta: { ...f.meta, ...next } } : f))}
-              showMetaEditor={files.length > 1 || groups.length > 0}
+              showMetaEditor={true}
             />
           ))}
         </div>
@@ -771,9 +770,15 @@ function FileRow({ pf, selected, onToggle, onRemove, onMetaChange, showMetaEdito
     <div className={[
       'rounded-lg mb-1.5 border transition overflow-hidden',
       selected ? 'bg-forest/8 border-forest/40' : 'bg-parchment-dark/40 border-ink-muted/15',
+      expanded ? 'ring-1 ring-forest/30' : '',
     ].join(' ')}>
-      <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer">
-        <input type="checkbox" checked={selected} onChange={onToggle}
+      <div
+        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-forest/4"
+        onClick={() => showMetaEditor && setExpanded((v) => !v)}
+      >
+        <input type="checkbox" checked={selected}
+          onChange={onToggle}
+          onClick={(e) => e.stopPropagation()}
           className="w-4 h-4 accent-forest cursor-pointer" />
         <div className="w-8 h-10 rounded-sm flex items-end justify-center pb-1 text-white text-[9px] font-bold tracking-wider flex-shrink-0"
           style={{ background: '#8a6a3d' }}>{ext}</div>
@@ -790,27 +795,24 @@ function FileRow({ pf, selected, onToggle, onRemove, onMetaChange, showMetaEdito
                 <span className="text-ink-muted/60">·</span>
                 {hasMin ? (
                   <span className="text-forest font-medium">
-                    {pf.meta.authorSurname} — {pf.meta.title.slice(0, 30)}{pf.meta.title.length > 30 ? '…' : ''}
+                    {pf.meta.authorSurname} — {pf.meta.title.slice(0, 40)}{pf.meta.title.length > 40 ? '…' : ''}
                   </span>
                 ) : (
-                  <span className="text-red-600">künye eksik</span>
+                  <span className="text-red-600 font-medium">künye eksik — tıkla doldur</span>
                 )}
               </>
             )}
           </div>
         </div>
         {showMetaEditor && (
-          <button
-            type="button"
-            onClick={(e) => { e.preventDefault(); setExpanded((v) => !v) }}
-            className="text-[11px] px-2 py-1 rounded border border-ink-muted/30 hover:bg-forest/10"
-          >
-            {expanded ? 'Kapat' : 'Künye'}
-          </button>
+          <span className="text-[11px] text-ink-muted px-2">
+            {expanded ? '▲' : '▼'}
+          </span>
         )}
-        <button onClick={(e) => { e.preventDefault(); onRemove() }}
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove() }}
           className="p-1 text-ink-muted hover:text-ink" aria-label="Çıkar"><X size={12} /></button>
-      </label>
+      </div>
 
       {showMetaEditor && expanded && (
         <div className="px-3 pb-3 pt-1 border-t border-ink-muted/15 bg-parchment/60">
