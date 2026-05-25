@@ -174,13 +174,7 @@ export default function CollectionsSidebar({
   // ── Render ────────────────────────────────────────────────────────
   return (
     <aside className="w-[240px] flex-shrink-0 border-r border-sandy/60 bg-page flex flex-col overflow-hidden">
-      <div className="px-3 pt-4 pb-2">
-        <div className="text-[10.5px] tracking-[0.14em] uppercase font-semibold text-forest mb-2 px-1">
-          Koleksiyonlar
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-2 pt-4 pb-3 space-y-0.5">
         {/* "Tümü" sabit satırı */}
         <button
           type="button"
