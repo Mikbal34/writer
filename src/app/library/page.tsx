@@ -50,6 +50,7 @@ import { AddSourceDialog } from "@/components/library/AddSourceDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
 import { type LibrarySelection } from "@/components/library/FolderChips";
 import LibraryFolderColumn from "@/components/library/LibraryFolderColumn";
+import AddFromLibraryDialog from "@/components/library/AddFromLibraryDialog";
 import DecadeShelfList from "@/components/library/DecadeShelfList";
 import EntryDetailPanel from "@/components/library/EntryDetailPanel";
 import type { LibraryEntryRow } from "@/components/library/LibraryEntryTable";
@@ -104,6 +105,7 @@ export default function LibraryPage() {
   const [editingEntry, setEditingEntry] = useState<LibraryEntryRow | null>(null);
   const [showBibtexDialog, setShowBibtexDialog] = useState(false);
   const [showZoteroPanel, setShowZoteroPanel] = useState(false);
+  const [showAddFromLibrary, setShowAddFromLibrary] = useState(false);
 
   const fetchEntries = useCallback(
     async (opts: { silent?: boolean } = {}) => {
@@ -403,8 +405,18 @@ export default function LibraryPage() {
                 className="w-full pl-9 pr-3 py-2 rounded-lg border border-sandy bg-elevated font-body text-[13px] text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold transition-colors"
               />
             </div>
-            {/* Klasör listesi artık sol kenarda (CollectionsSidebar). */}
+            {/* Klasör listesi artık sol kolonda. */}
             <span className="flex-1" />
+            {selection.kind === "collection" && (
+              <button
+                type="button"
+                onClick={() => setShowAddFromLibrary(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-forest text-white font-ui text-xs font-semibold hover:bg-forest/90 transition-colors"
+                title="Kütüphaneden bu klasöre kitap ekle"
+              >
+                + Kütüphaneden ekle
+              </button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -485,13 +497,33 @@ export default function LibraryPage() {
               </div>
             ) : entries.length === 0 ? (
               <div className="rounded-sm border border-dashed border-sandy bg-page/40 px-6 py-12 text-center">
-                <p className="font-body text-sm text-ink-light mb-2">
+                <p className="font-body text-sm text-ink-light mb-3">
                   Bu kapsamda henüz kaynak yok.
                 </p>
-                <p className="font-ui text-xs text-ink-muted">
-                  Üstteki <strong>+ Kaynak ekle</strong> ile başla, ya da PDF
-                  sürükle.
-                </p>
+                {selection.kind === "collection" ? (
+                  <div className="flex items-center justify-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddFromLibrary(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-forest text-white font-ui text-xs font-semibold hover:bg-forest/90 transition-colors"
+                    >
+                      Kütüphaneden ekle
+                    </button>
+                    <span className="text-[11px] text-ink-muted">veya</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddSource(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-sandy bg-elevated text-ink-light font-ui text-xs hover:bg-panel transition-colors"
+                    >
+                      Yeni kaynak yükle
+                    </button>
+                  </div>
+                ) : (
+                  <p className="font-ui text-xs text-ink-muted">
+                    Üstteki <strong>+ Kaynak ekle</strong> ile başla, ya da PDF
+                    sürükle.
+                  </p>
+                )}
               </div>
             ) : (
               <DecadeShelfList
@@ -607,6 +639,20 @@ export default function LibraryPage() {
         onOpenChange={setShowZoteroPanel}
         onSynced={fetchEntries}
       />
+
+      {/* Kütüphaneden ekle picker — sadece bir koleksiyon aktifken */}
+      {selection.kind === "collection" && (
+        <AddFromLibraryDialog
+          open={showAddFromLibrary}
+          onOpenChange={setShowAddFromLibrary}
+          collectionId={selection.collectionId}
+          collectionName={collectionLabelById[selection.collectionId] ?? "Klasör"}
+          onAdded={() => {
+            fetchEntries();
+            setSidebarKey((k) => k + 1);
+          }}
+        />
+      )}
     </WorkspaceShell>
   );
 }
