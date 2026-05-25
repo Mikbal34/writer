@@ -13,9 +13,9 @@
  * already match the design tokens 1:1, so no new theme is needed.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
-  Plus, X, Search, Sparkles, Upload, BookCopy, Loader2,
+  Plus, X, Sparkles, Upload, BookCopy, Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
@@ -26,44 +26,19 @@ import {
 } from '@/components/ui/select'
 import { parseFilenameForMetadata } from '@/lib/filename-meta'
 
-type Tab = 'isbn' | 'file'
-
 interface Props {
   open: boolean
   onOpenChange: (v: boolean) => void
-  defaultTab?: Tab
   onAdded?: (entryId: string) => void
 }
 
-interface BiblioHit {
-  source: 'doi' | 'isbn'
-  entryType?: string
-  authorSurname?: string | null
-  authorName?: string | null
-  title?: string | null
-  publisher?: string | null
-  publishPlace?: string | null
-  year?: string | null
-  journalName?: string | null
-  journalVolume?: string | null
-  journalIssue?: string | null
-  pageRange?: string | null
-  doi?: string | null
-  isbn?: string | null
-  coverUrl?: string | null
-  url?: string | null
-  abstract?: string | null
-}
-
-export function AddSourceDialog({ open, onOpenChange, defaultTab = 'file', onAdded }: Props) {
-  const [tab, setTab] = useState<Tab>(defaultTab)
-  useEffect(() => { if (open) setTab(defaultTab) }, [open, defaultTab])
+export function AddSourceDialog({ open, onOpenChange, onAdded }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="max-w-[860px] w-[90vw] max-h-[90vh] p-0 gap-0 overflow-hidden border-0 bg-parchment"
+        className="max-w-[1100px] w-[92vw] max-h-[92vh] p-0 gap-0 overflow-hidden border-0 bg-parchment"
       >
         {/* Dark olive hero header */}
         <div
@@ -94,53 +69,17 @@ export function AddSourceDialog({ open, onOpenChange, defaultTab = 'file', onAdd
             </button>
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-1 mt-[18px]">
-            <ModalTab id="file" icon={Upload} label="Dosya & Künye" detail="yükle veya manuel"
-              active={tab === 'file'} onClick={() => setTab('file')} />
-            <ModalTab id="isbn" icon={Search} label="ISBN / DOI" detail="otomatik doldur"
-              active={tab === 'isbn'} onClick={() => setTab('isbn')} />
-          </div>
         </div>
 
         {/* Body */}
-        <div className="flex-1 px-6 pt-[22px] pb-1 max-h-[60vh] overflow-auto">
-          {tab === 'isbn' && <IsbnTab onClose={() => onOpenChange(false)} onAdded={onAdded} />}
-          {tab === 'file' && <FileTab onClose={() => onOpenChange(false)} onAdded={onAdded} />}
+        <div className="flex-1 px-6 pt-[22px] pb-1 max-h-[65vh] overflow-auto">
+          <FileTab onClose={() => onOpenChange(false)} onAdded={onAdded} />
         </div>
       </DialogContent>
     </Dialog>
   )
 }
 
-// ── tab chip ─────────────────────────────────────────────────────────
-function ModalTab({
-  icon: Icon, label, detail, active, onClick,
-}: {
-  id: string; icon: typeof Search; label: string; detail: string;
-  active: boolean; onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        'flex-1 px-3.5 pt-2.5 pb-3.5 rounded-t-[10px] text-left transition relative',
-        active ? 'bg-parchment text-ink' : 'bg-white/[0.06] text-white hover:bg-white/[0.10]',
-      ].join(' ')}
-    >
-      <div className={['flex items-center gap-[7px] text-[13px] font-semibold',
-        active ? 'text-ink' : 'text-white'].join(' ')}>
-        <Icon size={14} className={active ? 'text-forest' : 'text-gold-soft'} />
-        {label}
-      </div>
-      <div className={['mt-[3px] text-[11px] font-serif italic',
-        active ? 'text-ink-muted' : 'text-gold-soft/60'].join(' ')}>{detail}</div>
-      {active && (
-        <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-gold rounded-[1px]" />
-      )}
-    </button>
-  )
-}
 
 // ── shared bits ───────────────────────────────────────────────────────
 function Eyebrow({ children }: { children: React.ReactNode }) {
@@ -175,150 +114,6 @@ function FooterBar({
 }
 
 // ═══════════════════════════ TAB 1 — ISBN / DOI ═══════════════════════
-function IsbnTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: string) => void }) {
-  const [q, setQ] = useState('')
-  const [searching, setSearching] = useState(false)
-  const [hit, setHit] = useState<BiblioHit | null>(null)
-  const [searched, setSearched] = useState(false)
-  const [saving, setSaving] = useState(false)
-
-  const search = async () => {
-    if (!q.trim()) return
-    setSearching(true); setSearched(false); setHit(null)
-    try {
-      const res = await fetch(`/api/library/biblio-lookup?q=${encodeURIComponent(q.trim())}`)
-      const data = await res.json()
-      setHit(data.found ? data.hit : null)
-      setSearched(true)
-    } catch (err) {
-      console.error(err)
-      toast.error('Tarama başarısız')
-    } finally {
-      setSearching(false)
-    }
-  }
-
-  const commit = async () => {
-    if (!hit) return
-    setSaving(true)
-    try {
-      const res = await fetch('/api/library', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entryType: hit.entryType ?? 'kitap',
-          authorSurname: hit.authorSurname || 'Unknown',
-          authorName: hit.authorName ?? null,
-          title: hit.title ?? '',
-          publisher: hit.publisher ?? null,
-          publishPlace: hit.publishPlace ?? null,
-          year: hit.year ?? null,
-          journalName: hit.journalName ?? null,
-          journalVolume: hit.journalVolume ?? null,
-          journalIssue: hit.journalIssue ?? null,
-          pageRange: hit.pageRange ?? null,
-          doi: hit.doi ?? null,
-          url: hit.url ?? null,
-          importSource: hit.source, // 'doi' or 'isbn'
-        }),
-      })
-      if (!res.ok) throw new Error(`POST failed: ${res.status}`)
-      const entry = await res.json()
-      toast.success('Kütüphaneye eklendi')
-      onAdded?.(entry.id)
-      onClose()
-    } catch (err) {
-      console.error(err)
-      toast.error('Kaydedilemedi')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div>
-      <Eyebrow>ISBN veya DOI</Eyebrow>
-      <p className="text-[12.5px] font-serif italic text-ink-light mb-3 mt-0">
-        Kitabın ISBN'ini veya makalenin DOI'sini yapıştır — künye bilgileri 3 saniye içinde otomatik dolar.
-      </p>
-
-      <div className="relative flex items-center gap-2 bg-parchment-dark rounded-[10px] pr-1 pl-3.5 py-1"
-        style={{ border: '1.5px solid color-mix(in oklch, var(--color-forest) 50%, transparent)', boxShadow: '0 0 0 4px rgba(58,82,56,0.08)' }}
-      >
-        <Search size={16} className="text-forest" />
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="978-0-691-02021-8  veya  10.1007/s11023-..."
-          className="border-0 outline-0 bg-transparent font-mono text-[14.5px] focus-visible:ring-0 px-1 py-2.5 shadow-none"
-          onKeyDown={(e) => { if (e.key === 'Enter') search() }}
-        />
-        <Button size="sm" onClick={search} disabled={!q.trim() || searching}
-          className="bg-forest hover:bg-forest/90 text-white px-3.5 py-[7px]">
-          {searching ? <Loader2 className="animate-spin" size={12} /> : <Sparkles size={12} />} Tara
-        </Button>
-      </div>
-
-      {/* Result */}
-      {searched && !hit && (
-        <div className="mt-4 p-3 rounded-lg bg-parchment-dark text-[12.5px] text-ink-light">
-          Eşleşme bulunamadı. ISBN/DOI'yi kontrol et veya <button
-            className="text-forest underline font-semibold"
-            onClick={() => { /* parent switches tab */ }}
-          >Manuel</button> sekmesinden ekle.
-        </div>
-      )}
-      {hit && (
-        <div className="mt-4">
-          <div className="inline-flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.14em] font-semibold text-forest mb-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#5ab070]" />
-            Eşleşme bulundu · {hit.source === 'isbn' ? 'OpenLibrary' : 'Crossref'}
-          </div>
-          <div className="bg-parchment-dark rounded-[12px] p-4 flex gap-3.5 border border-ink-muted/15">
-            {hit.coverUrl ? (
-              <img src={hit.coverUrl} alt="cover" className="w-[72px] h-[100px] object-cover rounded-sm shadow"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-            ) : (
-              <div className="w-[72px] h-[100px] rounded-sm flex-shrink-0 flex items-center justify-center text-white text-[11px] text-center font-serif italic font-semibold p-2 leading-tight"
-                style={{ background: 'linear-gradient(135deg, #6a4a2a, #3a2812)' }}>
-                {hit.title?.slice(0, 22) ?? 'Kapak'}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <h3 className="font-serif text-[17px] font-semibold leading-tight m-0">{hit.title}</h3>
-              <div className="mt-1.5 text-[12.5px] font-serif italic text-ink-light">
-                {[hit.authorSurname, hit.authorName].filter(Boolean).join(', ') || '—'}
-              </div>
-              <div className="mt-1 text-[11.5px] text-ink-muted">
-                {[hit.publisher, hit.year].filter(Boolean).join(' · ')}
-                {hit.journalName ? ` · ${hit.journalName}` : ''}
-              </div>
-              <div className="mt-2.5 flex gap-1 flex-wrap">
-                <Chip>{(hit.entryType || 'kaynak').toUpperCase()}</Chip>
-                {hit.source === 'doi' && <Chip variant="olive">DOI</Chip>}
-                {hit.source === 'isbn' && <Chip variant="olive">ISBN</Chip>}
-              </div>
-            </div>
-          </div>
-          <div className="mt-3 p-2.5 px-3.5 bg-parchment-dark/50 rounded-lg text-[12px] text-ink-light flex items-start gap-2.5">
-            <Sparkles size={14} className="text-gold flex-shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold text-ink">Yanlış mı?</span> ISBN'i tekrar gir veya Manuel sekmesine geç.
-            </div>
-          </div>
-        </div>
-      )}
-
-      <FooterBar
-        hint={hit ? 'Crossref + OpenLibrary doğrulaması yapıldı' : 'OpenLibrary + Crossref tarar'}
-        primary={hit ? commit : search}
-        primaryLabel={hit ? 'Bul ve ekle' : 'Tara'}
-        onCancel={onClose}
-        loading={searching || saving}
-      />
-    </div>
-  )
-}
 
 function Chip({ children, variant }: { children: React.ReactNode; variant?: 'olive' }) {
   const base = 'inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded'
@@ -347,18 +142,67 @@ function Divider() {
 // the group lands on a list. "Yükle ve ekle" fires standalone
 // uploads (POST /upload-pdf) and group uploads (parent POST /library
 // + N × POST /[id]/volumes) in parallel.
+type EntryType = 'kitap' | 'makale' | 'nesir' | 'ceviri' | 'tez' | 'ansiklopedi' | 'web'
 type FileMeta = {
+  entryType: EntryType
   authorSurname: string
   authorName: string
   title: string
-  year: string
+  shortTitle: string
+  editor: string
+  translator: string
   publisher: string
   publishPlace: string
+  year: string
+  volume: string
+  edition: string
+  journalName: string
+  journalVolume: string
+  journalIssue: string
+  pageRange: string
+  doi: string
+  url: string
 }
 const emptyFileMeta = (): FileMeta => ({
-  authorSurname: '', authorName: '', title: '',
-  year: '', publisher: '', publishPlace: '',
+  entryType: 'kitap',
+  authorSurname: '', authorName: '', title: '', shortTitle: '',
+  editor: '', translator: '',
+  publisher: '', publishPlace: '', year: '',
+  volume: '', edition: '',
+  journalName: '', journalVolume: '', journalIssue: '', pageRange: '',
+  doi: '', url: '',
 })
+
+const ENTRY_TYPE_OPTIONS: { value: EntryType; label: string }[] = [
+  { value: 'kitap', label: 'Kitap' },
+  { value: 'makale', label: 'Makale' },
+  { value: 'nesir', label: 'Nesir / Klasik Metin' },
+  { value: 'ceviri', label: 'Çeviri' },
+  { value: 'tez', label: 'Tez' },
+  { value: 'ansiklopedi', label: 'Ansiklopedi Maddesi' },
+  { value: 'web', label: 'Web Kaynağı' },
+]
+
+const FILE_META_FIELDS: (keyof FileMeta)[] = [
+  'authorSurname', 'authorName', 'title', 'shortTitle', 'editor', 'translator',
+  'publisher', 'publishPlace', 'year', 'volume', 'edition',
+  'journalName', 'journalVolume', 'journalIssue', 'pageRange', 'doi', 'url',
+]
+
+/** Strip empty strings → undefined; pass entryType through always. */
+function metaToPayload(m: FileMeta): Record<string, string> {
+  const out: Record<string, string> = { entryType: m.entryType }
+  for (const k of FILE_META_FIELDS) {
+    const v = m[k]?.trim()
+    if (v) out[k] = v
+  }
+  return out
+}
+
+/** Same payload + importSource for the /api/library POST (manual entry). */
+function formToPayload(m: FileMeta, importSource: string): Record<string, string> {
+  return { ...metaToPayload(m), importSource }
+}
 type PendingFile = { id: string; file: File; meta: FileMeta }
 type Group = {
   id: string
@@ -383,12 +227,7 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
   // single-file uploads the form below is the source. For multi-file
   // uploads we auto-derive per-file metadata from the filename (no LLM)
   // and the user reviews via the library edit dialog afterward.
-  const [form, setForm] = useState({
-    authorSurname: '', authorName: '', title: '',
-    year: '', publisher: '', publishPlace: '',
-    doi: '',
-  })
-  const [biblioLookupBusy, setBiblioLookupBusy] = useState(false)
+  const [form, setForm] = useState<FileMeta>(emptyFileMeta())
 
   // Group-form overlay state.
   const [groupFormOpen, setGroupFormOpen] = useState(false)
@@ -559,15 +398,7 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
       try {
         const res = await fetch('/api/library', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            authorSurname: form.authorSurname.trim(),
-            authorName: form.authorName.trim() || undefined,
-            title: form.title.trim(),
-            year: form.year.trim() || undefined,
-            publisher: form.publisher.trim() || undefined,
-            publishPlace: form.publishPlace.trim() || undefined,
-            importSource: 'manual',
-          }),
+          body: JSON.stringify(formToPayload(form, 'manual')),
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const entry = await res.json()
@@ -594,26 +425,10 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
       // 2-step direct-to-R2 upload — file bytes never touch our server,
       // so neither RAM nor request-body limits apply. See
       // /api/library/presign-upload + /api/library/confirm-upload.
-      const meta: Record<string, string> = {}
-      if (useFormForStandalone) {
-        // Single-file: user-filled form (REQUIRED — gated above).
-        if (form.authorSurname.trim()) meta.authorSurname = form.authorSurname.trim()
-        if (form.authorName.trim()) meta.authorName = form.authorName.trim()
-        if (form.title.trim()) meta.title = form.title.trim()
-        if (form.year.trim()) meta.year = form.year.trim()
-        if (form.publisher.trim()) meta.publisher = form.publisher.trim()
-        if (form.publishPlace.trim()) meta.publishPlace = form.publishPlace.trim()
-      } else {
-        // Multi-file: per-file metadata from the inline editor (which
-        // was pre-filled from filename when the file was added, and the
-        // user could expand+edit before submitting).
-        if (pf.meta.authorSurname.trim()) meta.authorSurname = pf.meta.authorSurname.trim()
-        if (pf.meta.authorName.trim()) meta.authorName = pf.meta.authorName.trim()
-        if (pf.meta.title.trim()) meta.title = pf.meta.title.trim()
-        if (pf.meta.year.trim()) meta.year = pf.meta.year.trim()
-        if (pf.meta.publisher.trim()) meta.publisher = pf.meta.publisher.trim()
-        if (pf.meta.publishPlace.trim()) meta.publishPlace = pf.meta.publishPlace.trim()
-      }
+      // Single-file → shared form (REQUIRED — gated above).
+      // Multi-file → per-file inline editor (also pre-validated above).
+      const source: FileMeta = useFormForStandalone ? form : pf.meta
+      const meta = metaToPayload(source)
 
       // Step 1: get signed upload URL
       const presignRes = await fetch('/api/library/presign-upload', {
@@ -880,9 +695,8 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
         </div>
       )}
 
-      {/* Optional inline metadata. Hidden once we're in bulk territory
-          (2+ standalone or any groups) — there it'd be ambiguous, so
-          we let the worker auto-fill each instead. */}
+      {/* Single-file (and 0-file manual) shared form. Multi-file uses
+          the per-row inline form on each FileRow. */}
       {showFormSection && (
         <div className="mt-4">
           <Eyebrow>
@@ -890,77 +704,7 @@ function FileTab({ onClose, onAdded }: { onClose: () => void; onAdded?: (id: str
             {formRequired && <span className="text-red-600 ml-1">*</span>}
           </Eyebrow>
 
-          {/* DOI/ISBN ile getirme — deterministik (Crossref/OpenLibrary), AI değil */}
-          <div className="mt-1 mb-3 flex gap-2">
-            <Input
-              value={form.doi}
-              onChange={(e) => setForm((s) => ({ ...s, doi: e.target.value }))}
-              placeholder="DOI veya ISBN yapıştır (örn. 10.1093/acprof:oso/9780199733378.001.0001 veya 978-3110201611)"
-              className="flex-1"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={biblioLookupBusy || !form.doi.trim()}
-              onClick={async () => {
-                const q = form.doi.trim()
-                if (!q) return
-                setBiblioLookupBusy(true)
-                try {
-                  const res = await fetch(`/api/library/biblio-lookup?q=${encodeURIComponent(q)}`)
-                  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-                  const data = await res.json() as { found?: boolean; hit?: BiblioHit }
-                  if (!data.found || !data.hit) {
-                    toast.error('Bulunamadı — manuel doldur')
-                    return
-                  }
-                  const h = data.hit
-                  setForm((s) => ({
-                    ...s,
-                    authorSurname: s.authorSurname || h.authorSurname || '',
-                    authorName: s.authorName || h.authorName || '',
-                    title: s.title || h.title || '',
-                    year: s.year || (h.year ? String(h.year) : ''),
-                    publisher: s.publisher || h.publisher || '',
-                    publishPlace: s.publishPlace || h.publishPlace || '',
-                  }))
-                  toast.success(`${h.source.toUpperCase()}'tan dolduruldu`)
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : 'Aranamadı')
-                } finally {
-                  setBiblioLookupBusy(false)
-                }
-              }}
-            >
-              {biblioLookupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Getir'}
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Yazar soyadı" required={formRequired}>
-              <Input value={form.authorSurname} onChange={(e) => setForm((s) => ({ ...s, authorSurname: e.target.value }))} placeholder="örn. Wolfson" />
-            </Field>
-            <Field label="Yazar adı">
-              <Input value={form.authorName} onChange={(e) => setForm((s) => ({ ...s, authorName: e.target.value }))} placeholder="örn. Harry Austryn" />
-            </Field>
-          </div>
-          <div className="h-3" />
-          <Field label="Başlık" required={formRequired}>
-            <Input value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} placeholder="Eserin tam başlığı" />
-          </Field>
-          <div className="h-3" />
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Yayıncı">
-              <Input value={form.publisher} onChange={(e) => setForm((s) => ({ ...s, publisher: e.target.value }))} />
-            </Field>
-            <Field label="Yer">
-              <Input value={form.publishPlace} onChange={(e) => setForm((s) => ({ ...s, publishPlace: e.target.value }))} />
-            </Field>
-            <Field label="Yıl">
-              <Input value={form.year} onChange={(e) => setForm((s) => ({ ...s, year: e.target.value }))} placeholder="1976" className="font-mono" />
-            </Field>
-          </div>
+          <FullKunyeForm value={form} onChange={setForm} required={formRequired} />
         </div>
       )}
 
@@ -1070,45 +814,145 @@ function FileRow({ pf, selected, onToggle, onRemove, onMetaChange, showMetaEdito
 
       {showMetaEditor && expanded && (
         <div className="px-3 pb-3 pt-1 border-t border-ink-muted/15 bg-parchment/60">
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            <Field label="Yazar soyadı *">
-              <Input
-                value={pf.meta.authorSurname}
-                onChange={(e) => onMetaChange({ authorSurname: e.target.value })}
-                placeholder="örn. Wolfson"
-              />
-            </Field>
-            <Field label="Yazar adı">
-              <Input
-                value={pf.meta.authorName}
-                onChange={(e) => onMetaChange({ authorName: e.target.value })}
-                placeholder="örn. Harry Austryn"
-              />
-            </Field>
-          </div>
-          <div className="h-2" />
-          <Field label="Başlık *">
-            <Input
-              value={pf.meta.title}
-              onChange={(e) => onMetaChange({ title: e.target.value })}
-              placeholder="Eserin tam başlığı"
-            />
-          </Field>
-          <div className="h-2" />
-          <div className="grid grid-cols-3 gap-2">
-            <Field label="Yayıncı">
-              <Input value={pf.meta.publisher} onChange={(e) => onMetaChange({ publisher: e.target.value })} />
-            </Field>
-            <Field label="Yer">
-              <Input value={pf.meta.publishPlace} onChange={(e) => onMetaChange({ publishPlace: e.target.value })} />
-            </Field>
-            <Field label="Yıl">
-              <Input value={pf.meta.year} onChange={(e) => onMetaChange({ year: e.target.value })} placeholder="1976" className="font-mono" />
-            </Field>
-          </div>
+          <FullKunyeForm
+            value={pf.meta}
+            onChange={(next) => onMetaChange(typeof next === 'function' ? next(pf.meta) : next)}
+            required
+            compact
+          />
         </div>
       )}
     </div>
+  )
+}
+
+/** Full bibliographic form with sections (Yazarlar / Başlık / Yayın /
+ *  Cilt-Baskı / Dergi / Bağlantı). Used by both the single-file shared
+ *  form AND the per-file inline editor; compact mode tightens spacing
+ *  for the inline case. */
+function FullKunyeForm({
+  value, onChange, required, compact,
+}: {
+  value: FileMeta
+  onChange: (next: FileMeta | ((prev: FileMeta) => FileMeta)) => void
+  required?: boolean
+  compact?: boolean
+}) {
+  const set = <K extends keyof FileMeta>(k: K, v: FileMeta[K]) => {
+    if (typeof onChange === 'function') {
+      onChange((prev) => ({ ...prev, [k]: v }))
+    }
+  }
+  const gap = compact ? 'gap-2' : 'gap-3'
+  const space = compact ? 'h-2' : 'h-3'
+  const isArticle = value.entryType === 'makale' || value.entryType === 'ansiklopedi'
+
+  return (
+    <>
+      {/* Tür + tam başlık */}
+      <div className={`grid grid-cols-[180px_1fr] ${gap}`}>
+        <Field label="Tür">
+          <Select value={value.entryType} onValueChange={(v) => set('entryType', v as EntryType)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {ENTRY_TYPE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Başlık" required={required}>
+          <Input value={value.title} onChange={(e) => set('title', e.target.value)} placeholder="Eserin tam başlığı" />
+        </Field>
+      </div>
+
+      <div className={space} />
+
+      {/* Yazar / Editör / Mütercim */}
+      <div className={`grid grid-cols-2 ${gap}`}>
+        <Field label="Yazar soyadı" required={required}>
+          <Input value={value.authorSurname} onChange={(e) => set('authorSurname', e.target.value)} placeholder="örn. Wolfson" />
+        </Field>
+        <Field label="Yazar adı">
+          <Input value={value.authorName} onChange={(e) => set('authorName', e.target.value)} placeholder="örn. Harry Austryn" />
+        </Field>
+      </div>
+      <div className={space} />
+      <div className={`grid grid-cols-3 ${gap}`}>
+        <Field label="Editör / Tahkik">
+          <Input value={value.editor} onChange={(e) => set('editor', e.target.value)} placeholder="" />
+        </Field>
+        <Field label="Mütercim">
+          <Input value={value.translator} onChange={(e) => set('translator', e.target.value)} />
+        </Field>
+        <Field label="Kısa başlık">
+          <Input value={value.shortTitle} onChange={(e) => set('shortTitle', e.target.value)} placeholder="atıflarda" />
+        </Field>
+      </div>
+
+      <div className={space} />
+
+      {/* Yayın */}
+      <div className={`grid grid-cols-3 ${gap}`}>
+        <Field label="Yayıncı">
+          <Input value={value.publisher} onChange={(e) => set('publisher', e.target.value)} />
+        </Field>
+        <Field label="Yer">
+          <Input value={value.publishPlace} onChange={(e) => set('publishPlace', e.target.value)} />
+        </Field>
+        <Field label="Yıl">
+          <Input value={value.year} onChange={(e) => set('year', e.target.value)} placeholder="1976" className="font-mono" />
+        </Field>
+      </div>
+
+      <div className={space} />
+
+      {/* Cilt + Baskı */}
+      <div className={`grid grid-cols-2 ${gap}`}>
+        <Field label="Cilt (parent olmayan eserlerde)">
+          <Input value={value.volume} onChange={(e) => set('volume', e.target.value)} placeholder="örn. 3" />
+        </Field>
+        <Field label="Baskı">
+          <Input value={value.edition} onChange={(e) => set('edition', e.target.value)} placeholder="örn. 2. baskı" />
+        </Field>
+      </div>
+
+      {/* Makale/ansiklopedi alanları (sadece ilgili türlerde) */}
+      {isArticle && (
+        <>
+          <div className={space} />
+          <div className={`grid grid-cols-2 ${gap}`}>
+            <Field label="Dergi / Ansiklopedi adı">
+              <Input value={value.journalName} onChange={(e) => set('journalName', e.target.value)} />
+            </Field>
+            <Field label="Sayfa aralığı">
+              <Input value={value.pageRange} onChange={(e) => set('pageRange', e.target.value)} placeholder="125-148" />
+            </Field>
+          </div>
+          <div className={space} />
+          <div className={`grid grid-cols-2 ${gap}`}>
+            <Field label="Cilt (dergi)">
+              <Input value={value.journalVolume} onChange={(e) => set('journalVolume', e.target.value)} />
+            </Field>
+            <Field label="Sayı">
+              <Input value={value.journalIssue} onChange={(e) => set('journalIssue', e.target.value)} />
+            </Field>
+          </div>
+        </>
+      )}
+
+      <div className={space} />
+
+      {/* DOI / URL — referans olarak, otomatik lookup yok */}
+      <div className={`grid grid-cols-2 ${gap}`}>
+        <Field label="DOI">
+          <Input value={value.doi} onChange={(e) => set('doi', e.target.value)} placeholder="10.1234/..." className="font-mono text-[12px]" />
+        </Field>
+        <Field label="URL">
+          <Input value={value.url} onChange={(e) => set('url', e.target.value)} placeholder="https://..." className="font-mono text-[12px]" />
+        </Field>
+      </div>
+    </>
   )
 }
 

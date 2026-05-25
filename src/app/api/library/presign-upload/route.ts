@@ -48,12 +48,24 @@ export async function POST(req: NextRequest) {
     const body = await req.json() as {
       filename?: string
       size?: number
+      entryType?: string
       authorSurname?: string
       authorName?: string
       title?: string
+      shortTitle?: string
+      editor?: string
+      translator?: string
       year?: string
       publisher?: string
       publishPlace?: string
+      volume?: string
+      edition?: string
+      journalName?: string
+      journalVolume?: string
+      journalIssue?: string
+      pageRange?: string
+      doi?: string
+      url?: string
     }
 
     const filename = (body.filename ?? '').trim()
@@ -86,16 +98,31 @@ export async function POST(req: NextRequest) {
     // Create the entry up-front so the worker can find it by id when the
     // browser confirms. fileHash will be set in /confirm-upload after the
     // browser computes it (dedup happens there too).
+    type ET = 'kitap' | 'makale' | 'nesir' | 'ceviri' | 'tez' | 'ansiklopedi' | 'web'
+    const VALID_ET: ET[] = ['kitap', 'makale', 'nesir', 'ceviri', 'tez', 'ansiklopedi', 'web']
+    const entryType: ET = VALID_ET.includes(body.entryType as ET) ? body.entryType as ET : 'kitap'
+
     const entry = await prisma.libraryEntry.create({
       data: {
         userId: session.user.id,
-        entryType: 'kitap',
+        entryType,
         title: userTitle ?? titleFromFilename(filename),
         authorSurname: userAuthorSurname ?? placeholderSurname,
         authorName: body.authorName?.trim() || null,
+        shortTitle: body.shortTitle?.trim() || null,
+        editor: body.editor?.trim() || null,
+        translator: body.translator?.trim() || null,
         year: body.year?.trim() || null,
         publisher: body.publisher?.trim() || null,
         publishPlace: body.publishPlace?.trim() || null,
+        volume: body.volume?.trim() || null,
+        edition: body.edition?.trim() || null,
+        journalName: body.journalName?.trim() || null,
+        journalVolume: body.journalVolume?.trim() || null,
+        journalIssue: body.journalIssue?.trim() || null,
+        pageRange: body.pageRange?.trim() || null,
+        doi: body.doi?.trim() || null,
+        url: body.url?.trim() || null,
         importSource: 'pdf-upload',
         pdfStatus: 'pending', // not "queued" until browser confirms
         fileType,
