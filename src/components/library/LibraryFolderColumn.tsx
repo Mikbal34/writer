@@ -396,15 +396,23 @@ function FolderTree(p: FolderTreeProps) {
               onClick={() => {
                 if (!isEditing) p.onSelectionChange({ kind: "collection", collectionId: c.id });
               }}
-              style={{ paddingLeft: 8 + p.depth * 14 }}
+              style={{ paddingLeft: 6 + p.depth * 18 }}
               className={[
-                "group flex items-center gap-1 pr-2 py-1.5 rounded-md text-[12.5px] transition-colors cursor-pointer",
+                "group flex items-center gap-1 pr-1.5 py-1.5 rounded-md text-[12.5px] transition-colors cursor-pointer relative",
                 isActive
                   ? "bg-forest/10 text-ink font-semibold"
                   : "text-ink-light hover:bg-forest/5",
                 isHoverDrop ? "ring-2 ring-gold bg-gold/10" : "",
               ].join(" ")}
             >
+              {/* Vertical tree line for nested levels */}
+              {p.depth > 0 && (
+                <span
+                  className="absolute top-0 bottom-0 w-px bg-sandy/70 pointer-events-none"
+                  style={{ left: 6 + (p.depth - 1) * 18 + 7 }}
+                />
+              )}
+
               {/* Expand/collapse chevron — sadece çocuğu varsa görünür */}
               {hasChildren ? (
                 <button
@@ -461,16 +469,29 @@ function FolderTree(p: FolderTreeProps) {
                   <span className="text-[11px] text-ink-muted tabular-nums">
                     {c.entryCount}
                   </span>
+                  {/* Hızlı sub-folder ekleme butonu — hep görünür */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      p.onCreateChild(c.id);
+                      p.setExpandedIds((prev) => new Set(prev).add(c.id));
+                    }}
+                    className="p-0.5 rounded text-ink-muted/60 hover:text-forest hover:bg-forest/10 transition-colors"
+                    title="Alt klasör ekle"
+                  >
+                    <FolderPlus className="h-3.5 w-3.5" />
+                  </button>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
                         <button
                           type="button"
                           onClick={(e) => e.stopPropagation()}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-ink/10 transition-opacity"
+                          className="p-0.5 rounded text-ink-muted/60 hover:text-ink hover:bg-ink/10 transition-colors"
                           aria-label="Klasör menüsü"
                         >
-                          <MoreHorizontal className="h-3.5 w-3.5 text-ink-muted" />
+                          <MoreHorizontal className="h-3.5 w-3.5" />
                         </button>
                       }
                     />
