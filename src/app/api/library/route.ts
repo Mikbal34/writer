@@ -21,20 +21,21 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * limit
 
     // Map UI sort keys to Prisma orderBy. Unknown values fall through
-    // to the recency default.
-    const orderBy: Record<string, unknown> = (() => {
+    // to the recency default. Multi-field tiebreakers + NULL handling
+    // so e.g. "Yıl ↓" doesn't dump all null-year entries at the top.
+    const orderBy: Array<Record<string, unknown>> = (() => {
       switch (sort) {
         case 'year_desc':
-          return { year: 'desc' }
+          return [{ year: { sort: 'desc', nulls: 'last' } }, { authorSurname: 'asc' }, { title: 'asc' }]
         case 'year_asc':
-          return { year: 'asc' }
+          return [{ year: { sort: 'asc', nulls: 'last' } }, { authorSurname: 'asc' }, { title: 'asc' }]
         case 'title_asc':
-          return { title: 'asc' }
+          return [{ title: { sort: 'asc', nulls: 'last' } }, { authorSurname: 'asc' }]
         case 'author_asc':
-          return { authorSurname: 'asc' }
+          return [{ authorSurname: { sort: 'asc', nulls: 'last' } }, { title: 'asc' }]
         case 'updated_desc':
         default:
-          return { updatedAt: 'desc' }
+          return [{ updatedAt: 'desc' }]
       }
     })()
 
