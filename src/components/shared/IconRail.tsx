@@ -22,7 +22,6 @@ import {
   Menu,
   X,
   Zap,
-  MessageCircle,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -47,14 +46,8 @@ const NAV: NavItem[] = [
     href: "/library",
     icon: <LibraryIcon className="w-[18px] h-[18px]" />,
     label: "Kütüphane",
-    // Library route should only flag for the shelf page itself; /library/chat
-    // and /library/literature-search get their own nav slots below.
+    // /library/literature-search gets its own nav slot below.
     exact: true,
-  },
-  {
-    href: "/library/chat",
-    icon: <MessageCircle className="w-[18px] h-[18px]" />,
-    label: "Kütüphane Sohbeti",
   },
   {
     href: "/library/literature-search",

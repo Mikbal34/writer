@@ -21,7 +21,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Library,
   Plus,
@@ -30,7 +29,6 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   ArrowDownUp,
 } from "lucide-react";
 import {
@@ -50,16 +48,14 @@ import LibraryEntryForm from "@/components/library/LibraryEntryForm";
 import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import { AddSourceDialog } from "@/components/library/AddSourceDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
-import FolderChips, {
-  type LibrarySelection,
-} from "@/components/library/FolderChips";
+import { type LibrarySelection } from "@/components/library/FolderChips";
+import CollectionsSidebar from "@/components/library/CollectionsSidebar";
 import DecadeShelfList from "@/components/library/DecadeShelfList";
 import EntryDetailPanel from "@/components/library/EntryDetailPanel";
 import type { LibraryEntryRow } from "@/components/library/LibraryEntryTable";
 import WorkspaceShell from "@/components/shared/WorkspaceShell";
 
 export default function LibraryPage() {
-  const router = useRouter();
   const [entries, setEntries] = useState<LibraryEntryRow[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -270,18 +266,6 @@ export default function LibraryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries]);
 
-  // Whole-library ask: routes to /library/chat preserving any active
-  // collection/tag scope so the chat opens already-narrowed.
-  function askEntireScope() {
-    if (selection.kind === "collection") {
-      router.push(`/library/chat?collectionId=${selection.collectionId}`);
-    } else if (selection.kind === "tag") {
-      router.push(`/library/chat?tagId=${selection.tagId}`);
-    } else {
-      router.push("/library/chat");
-    }
-  }
-
   const totalPages = Math.ceil(total / 200);
 
   // Derived: subtitle line under the H1. Tells the user what scope
@@ -298,10 +282,19 @@ export default function LibraryPage() {
 
   return (
     <WorkspaceShell fullHeight bareMain>
-      {/* Inner shelf + detail panel sit directly inside the workspace
-          gutter (no extra padding) so they height-match the rail. The
-          14px gap between them is the only inter-card separation. */}
+      {/* Layout: [Collections sidebar 240px] [Main panel flex-1] [Detail panel optional]
+          14px gaps between cards. */}
       <div className="flex flex-1 min-h-0 gap-3.5">
+        {/* === COLLECTIONS SIDEBAR === */}
+        <div className="flex-shrink-0 rounded-2xl overflow-hidden bg-elevated">
+          <CollectionsSidebar
+            selection={selection}
+            onSelectionChange={setSelection}
+            refreshKey={sidebarKey}
+            totalEntries={total}
+          />
+        </div>
+
         {/* === MAIN SCROLLABLE PANEL === */}
         <div className="flex-1 min-w-0 overflow-y-auto rounded-2xl bg-elevated">
           {/* === Dark forest hero band (v3.3 match) === */}
@@ -400,7 +393,7 @@ export default function LibraryPage() {
           </section>
 
 
-          {/* === Toolbar: search with embedded ask CTA + folder chips + sort === */}
+          {/* === Toolbar: search + folder chips + sort === */}
           <div className="flex items-center gap-2.5 px-9 py-3 border-b border-sandy/60 bg-panel flex-wrap">
             <div className="relative flex-1 min-w-[280px] max-w-[460px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-muted pointer-events-none" />
@@ -409,32 +402,11 @@ export default function LibraryPage() {
                 placeholder="Yazar, başlık veya alıntıda ara..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                className="w-full pl-9 pr-[155px] py-2 rounded-lg border border-sandy bg-elevated font-body text-[13px] text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold transition-colors"
-              />
-              <button
-                type="button"
-                onClick={askEntireScope}
-                className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-forest-deep text-gold-soft font-ui text-[11.5px] font-medium hover:bg-forest transition-colors"
-                title="Bu kapsama sor"
-              >
-                <Sparkles className="h-3 w-3" />
-                {selection.kind === "all"
-                  ? "Kütüphaneye sor"
-                  : "Bu kapsama sor"}
-              </button>
-            </div>
-            <span className="w-px h-4 bg-sandy/70 hidden lg:block" />
-            {/* Folder chips inline. FolderChips renders the active pill +
-                all top-level folder chips + create input — for v3.3 we
-                surface them in the toolbar instead of below the hero. */}
-            <div className="flex-1 min-w-0">
-              <FolderChips
-                selection={selection}
-                onSelectionChange={setSelection}
-                refreshKey={sidebarKey}
-                totalEntries={total}
+                className="w-full pl-9 pr-3 py-2 rounded-lg border border-sandy bg-elevated font-body text-[13px] text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold transition-colors"
               />
             </div>
+            {/* Klasör listesi artık sol kenarda (CollectionsSidebar). */}
+            <span className="flex-1" />
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -630,17 +602,11 @@ export default function LibraryPage() {
       />
 
       {/* Zotero Dialog */}
-      <Dialog open={showZoteroPanel} onOpenChange={setShowZoteroPanel}>
-        <DialogContent className="max-w-sm bg-page border-sandy">
-          <DialogHeader>
-            <DialogTitle className="font-display text-ink">
-              Zotero
-            </DialogTitle>
-          </DialogHeader>
-          <div className="h-px bg-sandy/50 my-3" />
-          <ZoteroSettingsCard onSynced={fetchEntries} />
-        </DialogContent>
-      </Dialog>
+      <ZoteroSettingsCard
+        open={showZoteroPanel}
+        onOpenChange={setShowZoteroPanel}
+        onSynced={fetchEntries}
+      />
     </WorkspaceShell>
   );
 }

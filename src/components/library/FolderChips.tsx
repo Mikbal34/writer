@@ -27,14 +27,12 @@ import {
   useRef,
   useState,
 } from "react";
-import Link from "next/link";
 import {
   Plus,
   Folder,
   MoreHorizontal,
   Trash2,
   Pencil,
-  MessageSquare,
   Library,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -408,16 +406,6 @@ export default function FolderChips({
         />
       )}
 
-      {/* "Ask this folder" affordance — only when a folder is active */}
-      {selection.kind === "collection" && (
-        <Link
-          href={`/library/chat?collectionId=${selection.collectionId}`}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-ui text-xs text-ink-light hover:text-ink hover:bg-page transition-colors ml-auto"
-        >
-          <MessageSquare className="h-3 w-3" />
-          Bu klasöre sor
-        </Link>
-      )}
     </div>
   );
 }
