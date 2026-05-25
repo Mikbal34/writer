@@ -49,7 +49,6 @@ import BibtexImportDialog from "@/components/library/BibtexImportDialog";
 import { AddSourceDialog } from "@/components/library/AddSourceDialog";
 import ZoteroSettingsCard from "@/components/library/ZoteroSettingsCard";
 import { type LibrarySelection } from "@/components/library/FolderChips";
-import CollectionsSidebar from "@/components/library/CollectionsSidebar";
 import DecadeShelfList from "@/components/library/DecadeShelfList";
 import EntryDetailPanel from "@/components/library/EntryDetailPanel";
 import type { LibraryEntryRow } from "@/components/library/LibraryEntryTable";
@@ -282,19 +281,7 @@ export default function LibraryPage() {
 
   return (
     <WorkspaceShell fullHeight bareMain>
-      {/* Layout: [Collections sidebar 240px] [Main panel flex-1] [Detail panel optional]
-          14px gaps between cards. */}
       <div className="flex flex-1 min-h-0 gap-3.5">
-        {/* === COLLECTIONS SIDEBAR === */}
-        <div className="flex-shrink-0 rounded-2xl overflow-hidden bg-elevated">
-          <CollectionsSidebar
-            selection={selection}
-            onSelectionChange={setSelection}
-            refreshKey={sidebarKey}
-            totalEntries={total}
-          />
-        </div>
-
         {/* === MAIN SCROLLABLE PANEL === */}
         <div className="flex-1 min-w-0 overflow-y-auto rounded-2xl bg-elevated">
           {/* === Dark forest hero band (v3.3 match) === */}
