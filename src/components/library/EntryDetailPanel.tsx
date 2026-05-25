@@ -140,12 +140,6 @@ export default function EntryDetailPanel({
           icon={<Highlighter className="h-3 w-3" />}
           label="Highlights"
         />
-        <TabButton
-          active={tab === "pdf"}
-          onClick={() => setTab("pdf")}
-          icon={<BookOpen className="h-3 w-3" />}
-          label="PDF"
-        />
       </div>
 
       {/* Tab content */}
@@ -163,47 +157,6 @@ export default function EntryDetailPanel({
             refreshKey={highlightRefreshKey}
             onJumpToPage={jumpToPdfPage}
           />
-        )}
-        {tab === "pdf" && (
-          <div className="p-3">
-            {(entry.filePath && entry.fileType === "pdf") || hasVolumes ? (
-              <>
-                {hasVolumes && volumes.length > 1 && (
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="font-ui text-[10px] uppercase tracking-widest text-ink-light">
-                      Cilt
-                    </span>
-                    <select
-                      value={activeVolumeId ?? ""}
-                      onChange={(e) =>
-                        setActiveVolumeId(e.target.value || null)
-                      }
-                      className="px-1.5 py-0.5 rounded-sm border border-sandy bg-white font-ui text-xs text-ink"
-                    >
-                      {volumes.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          Cilt {v.volumeNumber}
-                          {v.label ? ` — ${v.label}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                <PdfViewerWithHighlights
-                  entryId={entry.id}
-                  volumeId={hasVolumes ? activeVolumeId : null}
-                  targetPage={pdfTargetPage}
-                  onHighlightsChanged={() =>
-                    setHighlightRefreshKey((k) => k + 1)
-                  }
-                />
-              </>
-            ) : (
-              <div className="py-8 text-center font-body text-sm text-ink-light">
-                Bu kaynak için yüklü bir PDF yok.
-              </div>
-            )}
-          </div>
         )}
       </div>
     </aside>

@@ -16,9 +16,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import {
   Loader2,
   Upload,
@@ -26,6 +25,9 @@ import {
   Trash2,
   CheckCircle2,
   AlertTriangle,
+  X,
+  Sparkles,
+  Plus,
   BookCopy,
   RotateCw,
 } from "lucide-react";
@@ -259,18 +261,45 @@ export default function VolumesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col bg-page border-sandy">
-        <DialogHeader>
-          <DialogTitle className="font-display text-ink flex items-center gap-2">
-            <BookCopy className="h-4 w-4 text-gold" />
-            Ciltler
-          </DialogTitle>
-          <p className="font-body text-xs text-ink-light">{entryTitle}</p>
-        </DialogHeader>
-        <div className="h-px bg-sandy/50" />
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-[760px] sm:max-w-[760px] w-[88vw] max-h-[86vh] p-0 gap-0 overflow-hidden border-0 bg-parchment flex flex-col"
+      >
+        {/* Hero header */}
+        <div
+          className="px-6 pt-5 pb-5 text-gold-soft relative overflow-hidden flex-shrink-0"
+          style={{ background: "linear-gradient(135deg, #2a3d28 0%, #1a2818 100%)" }}
+        >
+          <div
+            className="absolute -top-2 right-5 opacity-[0.14] font-serif italic leading-none pointer-events-none select-none"
+            style={{ fontSize: 110, color: "var(--color-gold-soft)" }}
+          >
+            C
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="inline-flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.14em] font-semibold text-gold-soft/65 mb-1">
+                <BookCopy size={11} /> Ciltler
+              </div>
+              <h2 className="font-serif italic text-2xl font-medium text-white leading-tight m-0 truncate">
+                {entryTitle}
+              </h2>
+            </div>
+            <button
+              onClick={() => onOpenChange(false)}
+              className="w-[30px] h-[30px] rounded-full bg-white/12 border-0 text-gold-soft flex items-center justify-center hover:bg-white/20 transition"
+              aria-label="Kapat"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-[18px] pb-1">
 
         {/* Volume list */}
-        <div className="flex-1 min-h-[140px] overflow-y-auto border border-sandy/40 rounded-sm bg-white">
+        <div className="border border-ink-muted/15 rounded-md overflow-hidden bg-parchment-dark/30">
           {loading ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-4 w-4 animate-spin text-gold" />
@@ -343,9 +372,10 @@ export default function VolumesDialog({
         </div>
 
         {/* Add new volume */}
-        <div className="space-y-2 pt-1">
-          <div className="font-ui text-[11px] uppercase tracking-widest text-ink-light">
+        <div className="space-y-2 mt-4 mb-3">
+          <div className="text-[10.5px] tracking-[0.14em] uppercase font-semibold text-forest mb-2 flex items-center gap-2">
             Yeni cilt
+            <span className="flex-1 h-px bg-forest/20" />
           </div>
           <div className="flex gap-2">
             <input
@@ -355,14 +385,14 @@ export default function VolumesDialog({
               value={volumeNumberInput}
               onChange={(e) => setVolumeNumberInput(e.target.value)}
               title="Boş bırakırsan otomatik sıradaki numara atanır"
-              className="w-20 px-3 py-2 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/60"
+              className="w-24 px-3 py-2 rounded-md border border-ink-muted/25 bg-elevated font-body text-[13px] text-ink placeholder:text-ink-muted focus:outline-none focus:border-forest/60 font-mono"
             />
             <input
               type="text"
               placeholder="Etiket (opsiyonel) — örn: Hicret Öncesi"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              className="flex-1 px-3 py-2 rounded-sm border border-sandy/60 bg-white font-body text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-gold/60"
+              className="flex-1 px-3 py-2 rounded-md border border-ink-muted/25 bg-elevated font-body text-[13px] text-ink placeholder:text-ink-muted focus:outline-none focus:border-forest/60"
             />
           </div>
           <input
@@ -380,24 +410,33 @@ export default function VolumesDialog({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-sm border-2 border-dashed border-gold/50 bg-page/60 text-ink-light font-ui text-sm hover:bg-page disabled:opacity-60"
+            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border-2 border-dashed border-ink-muted/30 bg-parchment-dark/20 text-ink-light font-ui text-[13px] hover:border-forest/60 hover:bg-forest/3 disabled:opacity-60 transition-colors"
           >
             {uploading ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin text-gold" />
+                <Loader2 className="h-4 w-4 animate-spin text-forest" />
                 Yükleniyor…
               </>
             ) : (
               <>
-                <Upload className="h-4 w-4 text-gold" />
+                <Upload className="h-4 w-4 text-forest" />
                 PDF / EPUB / DOCX seç ve yeni cilt olarak ekle
               </>
             )}
           </button>
-          <p className="font-body text-[10px] text-ink-muted">
-            Cilt numarası otomatik atanır. Sayfa sayısı ve metin çıkarma
-            arka planda yapılır.
-          </p>
+        </div>
+        </div>{/* end body */}
+
+        {/* Footer */}
+        <div className="flex items-center gap-2.5 px-6 py-3.5 border-t border-ink-muted/15 bg-parchment-dark/30 flex-shrink-0">
+          <span className="text-[11.5px] text-ink-muted inline-flex items-center gap-1.5">
+            <Sparkles size={11} className="text-gold" />
+            Cilt numarası otomatik atanır. Metin çıkarma arka planda yapılır.
+          </span>
+          <span className="flex-1" />
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            Kapat
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

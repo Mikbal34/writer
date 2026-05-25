@@ -26,6 +26,10 @@ interface DecadeShelfListProps {
   onEdit: (entry: LibraryEntryRow) => void;
   onDelete: (id: string) => void;
   onPdfAttached?: (entryId: string) => void;
+  /** When false, render entries in the order received (no decade
+   *  grouping). Useful for "Yazar A→Z" / "Başlık A→Z" / "Son düzenleme"
+   *  sort modes where decade grouping fights the sort. */
+  groupByDecade?: boolean;
 }
 
 /** Pull a 4-digit year from a free-text `year` field. */
@@ -56,8 +60,14 @@ export default function DecadeShelfList({
   onEdit,
   onDelete,
   onPdfAttached,
+  groupByDecade = true,
 }: DecadeShelfListProps) {
   const buckets = useMemo<Bucket[]>(() => {
+    // Flat mode: single bucket holding the entries in their incoming
+    // order (server-side sort wins).
+    if (!groupByDecade) {
+      return [{ label: "", sortKey: 0, entries: [...entries] }];
+    }
     const map = new Map<string, Bucket>();
     for (const e of entries) {
       const year = extractYear(e.year);
@@ -71,7 +81,7 @@ export default function DecadeShelfList({
       }
     }
     return [...map.values()].sort((a, b) => b.sortKey - a.sortKey);
-  }, [entries]);
+  }, [entries, groupByDecade]);
 
   if (buckets.length === 0) {
     return (
@@ -86,15 +96,17 @@ export default function DecadeShelfList({
   return (
     <div>
       {buckets.map((bucket) => (
-        <section key={bucket.label} className="mt-7 first:mt-0">
-          <header className="flex items-baseline gap-3 mb-3 pb-2 border-b-[1.5px] border-sandy">
-            <h3 className="font-display italic font-medium text-[22px] leading-none text-forest-deep">
-              {bucket.label}
-            </h3>
-            <span className="font-ui text-xs text-ink-muted">
-              {bucket.entries.length} kaynak
-            </span>
-          </header>
+        <section key={bucket.label || "all"} className="mt-7 first:mt-0">
+          {bucket.label && (
+            <header className="flex items-baseline gap-3 mb-3 pb-2 border-b-[1.5px] border-sandy">
+              <h3 className="font-display italic font-medium text-[22px] leading-none text-forest-deep">
+                {bucket.label}
+              </h3>
+              <span className="font-ui text-xs text-ink-muted">
+                {bucket.entries.length} kaynak
+              </span>
+            </header>
+          )}
           <LibraryEntryTable
             entries={bucket.entries}
             onSelect={onSelect}

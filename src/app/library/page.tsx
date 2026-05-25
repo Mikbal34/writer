@@ -59,6 +59,9 @@ import WorkspaceShell from "@/components/shared/WorkspaceShell";
 export default function LibraryPage() {
   const [entries, setEntries] = useState<LibraryEntryRow[]>([]);
   const [total, setTotal] = useState(0);
+  // Tüm kütüphane sayacı — filtre/scope'tan bağımsız, sidebar'daki
+  // "Tüm Kütüphane" satırı için.
+  const [libraryTotal, setLibraryTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -125,6 +128,11 @@ export default function LibraryPage() {
         const data = await res.json();
         setEntries(data.entries ?? []);
         setTotal(data.total ?? 0);
+        // Eğer scope filtre yoksa, bu fetch zaten kütüphanenin tamamı —
+        // libraryTotal'ı da güncelle ki sidebar her zaman doğru gözüksün.
+        if (selection.kind === "all" && !search) {
+          setLibraryTotal(data.total ?? 0);
+        }
       } catch {
         if (!opts.silent) toast.error("Kütüphane yüklenemedi");
       } finally {
@@ -152,6 +160,9 @@ export default function LibraryPage() {
           notedSources: data.notedSources ?? 0,
           highlightsTotal: data.highlightsTotal ?? 0,
         });
+        // /stats endpoint kütüphanedeki toplam entry sayısını da döndürür.
+        // Sidebar'daki "Tüm Kütüphane" sayacı için scope-bağımsız değer.
+        setLibraryTotal(data.total ?? 0);
       })
       .catch(() => undefined);
   }, [sidebarKey]);
@@ -389,7 +400,7 @@ export default function LibraryPage() {
               selection={selection}
               onSelectionChange={setSelection}
               refreshKey={sidebarKey}
-              totalEntries={total}
+              totalEntries={libraryTotal}
             />
             <div className="flex-1 min-w-0">
 
@@ -532,6 +543,10 @@ export default function LibraryPage() {
                 onEdit={handleEdit}
                 onDelete={handleDelete}
                 onPdfAttached={() => fetchEntries()}
+                // Decade grouping yıl-bazlı sıralamada anlamlı; yazar/başlık/
+                // son düzenleme'de gruplamayı kapat ki server-side sıralama
+                // görünür olsun.
+                groupByDecade={sort === "year_desc" || sort === "year_asc"}
               />
             )}
             </div>
