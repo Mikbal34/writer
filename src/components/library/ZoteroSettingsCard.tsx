@@ -8,7 +8,6 @@
  * Bağlıysa: koleksiyon listesi + seçim + sync butonu.
  */
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -33,7 +32,6 @@ interface ZoteroSettingsDialogProps {
 export default function ZoteroSettingsDialog({
   open, onOpenChange, onSynced,
 }: ZoteroSettingsDialogProps) {
-  const searchParams = useSearchParams();
   const [connected, setConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -69,21 +67,24 @@ export default function ZoteroSettingsDialog({
     if (open) fetchCollections();
   }, [open, fetchCollections]);
 
-  // OAuth callback URL params (?zotero=connected|error)
+  // OAuth callback URL params (?zotero=connected|error) — read on mount
+  // via window.location to avoid Next.js useSearchParams suspense wrap.
   useEffect(() => {
-    const zoteroStatus = searchParams.get("zotero");
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const zoteroStatus = sp.get("zotero");
     if (zoteroStatus === "connected") {
-      const username = searchParams.get("username");
+      const username = sp.get("username");
       toast.success(username ? `Zotero bağlandı (${username})` : "Zotero bağlandı");
       setConnected(true);
       fetchCollections();
       window.history.replaceState({}, "", "/library");
     } else if (zoteroStatus === "error") {
-      const reason = searchParams.get("reason");
+      const reason = sp.get("reason");
       toast.error(`Zotero bağlantı hatası: ${reason ?? "bilinmeyen sebep"}`);
       window.history.replaceState({}, "", "/library");
     }
-  }, [searchParams, fetchCollections]);
+  }, [fetchCollections]);
 
   async function handleOAuthConnect() {
     setIsConnecting(true);
