@@ -13,11 +13,13 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Pencil,
   ExternalLink,
   FileText,
   Highlighter,
+  MessageSquare,
   MoreHorizontal,
   Copy,
   Trash2,
@@ -299,6 +301,13 @@ export default function BookHero({
 
       {/* Action row */}
       <div className="flex items-center gap-1.5 px-5 pt-4">
+        <Link
+          href={`/library/chat?entryId=${entry.id}`}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-gold text-white font-ui text-xs font-semibold hover:bg-gold-hover transition-colors"
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          Bu kitaba sor
+        </Link>
         {entry.filePath && entry.fileType === "pdf" && (
           <a
             href={`/api/library/${entry.id}/pdf`}
@@ -549,10 +558,7 @@ function CollectionPickerButton({ entryId }: { entryId: string }) {
           collections.map((c) => (
             <DropdownMenuItem
               key={c.id}
-              onSelect={(e) => {
-                e.preventDefault();
-                addToCollection(c);
-              }}
+              onClick={() => addToCollection(c)}
             >
               {c.color ? (
                 <span

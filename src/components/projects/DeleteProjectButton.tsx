@@ -106,10 +106,7 @@ export default function DeleteProjectButton({
             }}
           >
             <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault();
-                setOpen(true);
-              }}
+              onClick={() => setOpen(true)}
               className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
             >
               <Trash2 className="h-3.5 w-3.5 mr-2" />

@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
-import NotificationBell from "@/components/shared/NotificationBell";
 import NavProcessingBadge from "@/components/shared/NavProcessingBadge";
 
 interface NavItem {
@@ -170,9 +169,6 @@ export default function IconRail() {
       {/* Bottom utilities */}
       <div className="mt-auto pt-2 flex flex-col items-center gap-1">
         <NavProcessingBadge />
-        <div className="flex items-center justify-center [&_button]:px-0 [&_button]:py-1.5 [&_button]:w-[38px] [&_button]:h-[38px] [&_button]:rounded-[9px] [&_button]:justify-center">
-          <NotificationBell tone="dark" />
-        </div>
         <CreditPill />
         <Link
           href="/account"

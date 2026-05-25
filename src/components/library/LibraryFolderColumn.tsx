@@ -500,7 +500,7 @@ function FolderTree(p: FolderTreeProps) {
                     />
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
-                        onSelect={() => {
+                        onClick={() => {
                           p.setEditingId(c.id);
                           p.setEditingDraft(c.name);
                         }}
@@ -509,7 +509,7 @@ function FolderTree(p: FolderTreeProps) {
                         Yeniden adlandır
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onSelect={() => p.deleteCollection(c)}
+                        onClick={() => p.deleteCollection(c)}
                         className="text-red-600"
                       >
                         <Trash2 className="h-3.5 w-3.5 mr-2" />
