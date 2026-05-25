@@ -393,12 +393,9 @@ function FolderTree(p: FolderTreeProps) {
               onDragOver={(e) => p.onDragOver(c.id, e)}
               onDragLeave={() => p.setHoverDropId((id) => (id === c.id ? null : id))}
               onDrop={(e) => p.onDrop(c.id, e)}
-              onClick={() => {
-                if (!isEditing) p.onSelectionChange({ kind: "collection", collectionId: c.id });
-              }}
               style={{ paddingLeft: 6 + p.depth * 18 }}
               className={[
-                "group flex items-center gap-1 pr-1.5 py-1.5 rounded-md text-[12.5px] transition-colors cursor-pointer relative",
+                "group flex items-center gap-1 pr-1.5 py-1.5 rounded-md text-[12.5px] transition-colors relative",
                 isActive
                   ? "bg-forest/10 text-ink font-semibold"
                   : "text-ink-light hover:bg-forest/5",
@@ -417,8 +414,7 @@ function FolderTree(p: FolderTreeProps) {
               {hasChildren ? (
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
                     p.setExpandedIds((prev) => {
                       const next = new Set(prev);
                       if (next.has(c.id)) next.delete(c.id);
@@ -438,42 +434,50 @@ function FolderTree(p: FolderTreeProps) {
                 <span className="w-3 -ml-1" />
               )}
 
-              <Folder
-                className={[
-                  "h-3.5 w-3.5 flex-shrink-0",
-                  isActive ? "text-forest" : "text-gold-dark/70",
-                ].join(" ")}
-              />
-              {c.color && (
-                <span
-                  className="h-1.5 w-1.5 rounded-full flex-shrink-0"
-                  style={{ background: c.color }}
-                />
-              )}
               {isEditing ? (
-                <input
-                  value={p.editingDraft}
-                  autoFocus
-                  onChange={(e) => p.setEditingDraft(e.target.value)}
-                  onBlur={() => p.renameCollection(c.id, p.editingDraft, c.name)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") p.renameCollection(c.id, p.editingDraft, c.name);
-                    else if (e.key === "Escape") p.setEditingId(null);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex-1 bg-elevated border border-forest/30 rounded px-1.5 py-0.5 text-[12px] outline-none focus:border-forest"
-                />
+                <>
+                  <Folder className="h-3.5 w-3.5 flex-shrink-0 text-gold-dark/70" />
+                  <input
+                    value={p.editingDraft}
+                    autoFocus
+                    onChange={(e) => p.setEditingDraft(e.target.value)}
+                    onBlur={() => p.renameCollection(c.id, p.editingDraft, c.name)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") p.renameCollection(c.id, p.editingDraft, c.name);
+                      else if (e.key === "Escape") p.setEditingId(null);
+                    }}
+                    className="flex-1 bg-elevated border border-forest/30 rounded px-1.5 py-0.5 text-[12px] outline-none focus:border-forest"
+                  />
+                </>
               ) : (
                 <>
-                  <span className="flex-1 truncate ml-1">{c.name}</span>
-                  <span className="text-[11px] text-ink-muted tabular-nums">
-                    {c.entryCount}
-                  </span>
-                  {/* Hızlı sub-folder ekleme butonu — hep görünür */}
+                  {/* Tıklanabilir asıl alan — sadece selection toggle eder */}
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => p.onSelectionChange({ kind: "collection", collectionId: c.id })}
+                    className="flex-1 flex items-center gap-1.5 min-w-0 text-left cursor-pointer"
+                  >
+                    <Folder
+                      className={[
+                        "h-3.5 w-3.5 flex-shrink-0",
+                        isActive ? "text-forest" : "text-gold-dark/70",
+                      ].join(" ")}
+                    />
+                    {c.color && (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full flex-shrink-0"
+                        style={{ background: c.color }}
+                      />
+                    )}
+                    <span className="flex-1 truncate ml-0.5">{c.name}</span>
+                    <span className="text-[11px] text-ink-muted tabular-nums">
+                      {c.entryCount}
+                    </span>
+                  </button>
+                  {/* Hızlı sub-folder ekleme butonu — sibling, row select etmez */}
+                  <button
+                    type="button"
+                    onClick={() => {
                       p.onCreateChild(c.id);
                       p.setExpandedIds((prev) => new Set(prev).add(c.id));
                     }}
@@ -487,7 +491,6 @@ function FolderTree(p: FolderTreeProps) {
                       render={
                         <button
                           type="button"
-                          onClick={(e) => e.stopPropagation()}
                           className="p-0.5 rounded text-ink-muted/60 hover:text-ink hover:bg-ink/10 transition-colors"
                           aria-label="Klasör menüsü"
                         >
@@ -496,15 +499,6 @@ function FolderTree(p: FolderTreeProps) {
                       }
                     />
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          p.onCreateChild(c.id);
-                          p.setExpandedIds((prev) => new Set(prev).add(c.id));
-                        }}
-                      >
-                        <FolderPlus className="h-3.5 w-3.5 mr-2" />
-                        Alt klasör ekle
-                      </DropdownMenuItem>
                       <DropdownMenuItem
                         onSelect={() => {
                           p.setEditingId(c.id);
