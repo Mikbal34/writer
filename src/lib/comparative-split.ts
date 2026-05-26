@@ -17,6 +17,17 @@
  */
 import { generateJSONWithUsage, HAIKU } from "@/lib/claude";
 
+/**
+ * Önce ucuz pattern match — sadece comparative sinyali olan sorular Haiku'ya gider.
+ * Spesifik sorularda (Q07 Gazzâlî Münkız vb.) Haiku false-positive sub-queries
+ * üretirdi → balanced retrieve devreye girip alakasız chunks getiriyordu.
+ */
+function isLikelyComparative(query: string): boolean {
+  const tr = /\b(vs|versus|karşı|farkl?ı|farkı|arasındaki fark|nasıl ayrı|karşılaştır|kıyasla|ayrılık|ayrım)\b/i
+  const en = /\b(vs|versus|difference|compare|contrast|against|distinguish|differ)\b/i
+  return tr.test(query) || en.test(query)
+}
+
 const SYSTEM_PROMPT =
   "You are a query analyzer for an academic RAG system. Given a question, decide if " +
   "it COMPARES two or more authors / concepts / works / positions. If yes, split it " +
@@ -41,6 +52,7 @@ const SYSTEM_PROMPT =
 export async function splitComparativeQuery(query: string): Promise<string[]> {
   const q = query.trim();
   if (q.length < 10) return [];
+  if (!isLikelyComparative(q)) return []; // Pattern check — Haiku call'u skip
   try {
     const result = await generateJSONWithUsage<{ subqueries?: string[] }>(
       `Question: "${q}"\n\nReturn JSON.`,
