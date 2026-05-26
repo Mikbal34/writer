@@ -21,6 +21,7 @@ import { ftsChunks, ftsNotes, rrfMerge, rrfMergeMany } from '@/lib/hybrid-retrie
 import { rewriteQuery } from '@/lib/query-rewrite'
 import { expandQuery } from '@/lib/query-expansion'
 import { splitComparativeQuery } from '@/lib/comparative-split'
+import { generateHyde } from '@/lib/hyde'
 import { SYNTHESIS_PROMPT_BLOCK, shouldActivateSynthesis } from '@/lib/synthesis-mode'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
@@ -204,13 +205,18 @@ export async function POST(req: NextRequest) {
     const libraryLangs = userId === 'cmn1ulqtk00030purt66j5ow6'
       ? ['en', 'tr', 'ar']
       : undefined
-    const [variants, subqueries] = await Promise.all([
+    // HyDE: sorunun hipotetik cevabını üret, onu da variant olarak ekle.
+    // Sorgu vektörü "soruya cevap olabilecek metne" yakın olur → chunk match
+    // güçlenir (Gao et al. 2022, paper +10-20pp recall).
+    const [variants, subqueries, hyde] = await Promise.all([
       expandQuery(retrievalQuery, libraryLangs),
       splitComparativeQuery(retrievalQuery),
+      generateHyde(retrievalQuery),
     ])
     // Dedup: subquery zaten variant olarak gelmiş olabilir.
     const allVariantsSet = new Set<string>(variants)
     for (const s of subqueries) allVariantsSet.add(s)
+    if (hyde) allVariantsSet.add(hyde)
     const allVariants = [...allVariantsSet]
     const variantVecs = await Promise.all(allVariants.map(embedQuery))
 
