@@ -56,6 +56,9 @@ const TOP_K_NOTES = 4
 // kaplamasını engeller, beklenen 5+ kaynaktan daha çok temsil garanti edilir.
 // 0 = cap kapalı (mevcut davranış), 2 = her kitaptan max 2 chunk.
 const ENTRY_CAP_PER_TOPK = parseInt(process.env.ENTRY_CAP_PER_TOPK ?? '2', 10)
+// Bookwise adaptive: pool'un kitap dağılımına göre Mode A (top-4 × 2) veya
+// Mode B (top-8 × 1) seçer. ENTRY_CAP yerine geçer eğer aktifse.
+const BOOKWISE_ADAPTIVE = (process.env.BOOKWISE_ADAPTIVE ?? '0') === '1'
 const MAX_HISTORY_MESSAGES = 12
 
 type Scope = 'all' | 'picked' | 'single'
@@ -117,6 +120,61 @@ function applyDiversityCap<T extends { entryId: string }>(
     selected.push(item)
   }
   return selected
+}
+
+/**
+ * Adaptive bookwise retrieval — pool'daki kitap dağılımına göre 2 modlu seçim:
+ *
+ *   Mode A (dominant): Top-3 kitap pool'un %50'sinden fazla chunk içeriyor
+ *     → "iki taraf var, derin oku" → top-(topK/2) kitap × 2 chunk
+ *     Karşılaştırmalı ve dar tematik için iyi.
+ *
+ *   Mode B (yayılmış): pool'da kitap dağılımı geniş
+ *     → "her kitaptan birer pasaj" → top-topK kitap × 1 chunk (= cap=1)
+ *     5+ kaynak bekleyen geniş tematik için iyi.
+ *
+ * Kitap sıralaması: her entry'nin pool'da ilk göründüğü pozisyon (en yüksek RRF).
+ */
+function applyBookwiseAdaptive<T extends { entryId: string }>(
+  sortedItems: T[],
+  topK: number,
+): T[] {
+  if (sortedItems.length === 0) return []
+  const entryChunks = new Map<string, T[]>()
+  const entryFirstPos = new Map<string, number>()
+  for (let i = 0; i < sortedItems.length; i++) {
+    const c = sortedItems[i]
+    if (!entryFirstPos.has(c.entryId)) entryFirstPos.set(c.entryId, i)
+    if (!entryChunks.has(c.entryId)) entryChunks.set(c.entryId, [])
+    entryChunks.get(c.entryId)!.push(c)
+  }
+  // Entry'leri RRF sırasına göre (ilk göründükleri pozisyon) sırala
+  const sortedEntries = [...entryFirstPos.entries()].sort((a, b) => a[1] - b[1])
+
+  // Dominant: top-3 entry pool'un %50+'ını kaplıyor mu
+  const top3ChunkCount = sortedEntries.slice(0, 3).reduce(
+    (sum, [eid]) => sum + (entryChunks.get(eid)?.length ?? 0),
+    0,
+  )
+  const dominant = top3ChunkCount > sortedItems.length * 0.5
+
+  const result: T[] = []
+  if (dominant) {
+    // Mode A: top-(topK/2) kitap × 2 chunk
+    const bookLimit = Math.max(2, Math.ceil(topK / 2))
+    for (const [eid] of sortedEntries.slice(0, bookLimit)) {
+      const chunks = entryChunks.get(eid)!
+      result.push(...chunks.slice(0, 2))
+      if (result.length >= topK) break
+    }
+  } else {
+    // Mode B: top-topK kitap × 1 chunk (cap=1 behavior)
+    for (const [eid] of sortedEntries) {
+      result.push(entryChunks.get(eid)![0])
+      if (result.length >= topK) break
+    }
+  }
+  return result.slice(0, topK)
 }
 
 export async function POST(req: NextRequest) {
@@ -400,9 +458,11 @@ export async function POST(req: NextRequest) {
             (order.get(a.id) ?? Number.POSITIVE_INFINITY) -
             (order.get(b.id) ?? Number.POSITIVE_INFINITY),
         )
-      retrievedChunks = ENTRY_CAP_PER_TOPK > 0
-        ? applyDiversityCap(sortedByScore, TOP_K_CHUNKS, ENTRY_CAP_PER_TOPK)
-        : sortedByScore.slice(0, TOP_K_CHUNKS)
+      retrievedChunks = BOOKWISE_ADAPTIVE
+        ? applyBookwiseAdaptive(sortedByScore, TOP_K_CHUNKS)
+        : ENTRY_CAP_PER_TOPK > 0
+          ? applyDiversityCap(sortedByScore, TOP_K_CHUNKS, ENTRY_CAP_PER_TOPK)
+          : sortedByScore.slice(0, TOP_K_CHUNKS)
     }
     if (retrievedNotes.length > TOP_K_NOTES) {
       const ranked = await rerankChunks(
