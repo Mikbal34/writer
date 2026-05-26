@@ -48,8 +48,10 @@ export const runtime = 'nodejs'
 // rerank'in daha çok adaydan seçmesini sağlıyoruz.
 const RETRIEVAL_POOL_CHUNKS = 60
 const RETRIEVAL_POOL_NOTES = 15
-const TOP_K_CHUNKS = 8
-const TOP_K_NOTES = 4
+// 8 → 6: Sonnet'a daha az excerpt → input token %25 ↓ → prod chat call maliyeti
+// belirgin düşer. Eval gösterdi top-8'in son 2 chunk'ı genelde marjinal.
+const TOP_K_CHUNKS = 6
+const TOP_K_NOTES = 3
 const MAX_HISTORY_MESSAGES = 12
 
 type Scope = 'all' | 'picked' | 'single'
