@@ -23,6 +23,7 @@ import { expandQuery } from '@/lib/query-expansion'
 import { splitComparativeQuery } from '@/lib/comparative-split'
 import { generateHyde } from '@/lib/hyde'
 import { judgeSufficiency } from '@/lib/iterative-retrieval'
+import { classifyQuery, CONFIGS, type QueryType } from '@/lib/query-classifier'
 import { SYNTHESIS_PROMPT_BLOCK, shouldActivateSynthesis } from '@/lib/synthesis-mode'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
@@ -64,6 +65,9 @@ const BOOKWISE_ADAPTIVE = (process.env.BOOKWISE_ADAPTIVE ?? '0') === '1'
 // Iterative retrieval: top-K sonrası Haiku judge "yeterli mi?" der;
 // eksik kavram varsa 2. tur retrieve + merge. Tematik/karşılaştırmalı için.
 const ITERATIVE_ENABLED = (process.env.ITERATIVE_ENABLED ?? '0') === '1'
+// Adaptive pipeline: query classifier (specific/thematic/comparative) ile
+// topK + HyDE + cap her kategoriye özel. Sabit pipeline yerine adaptif.
+const ADAPTIVE_ENABLED = (process.env.ADAPTIVE_ENABLED ?? '0') === '1'
 const MAX_HISTORY_MESSAGES = 12
 
 type Scope = 'all' | 'picked' | 'single'
@@ -314,11 +318,19 @@ export async function POST(req: NextRequest) {
     const libraryLangs = userId === 'cmn1ulqtk00030purt66j5ow6'
       ? ['en', 'tr', 'ar']
       : undefined
-    // HyDE: sorunun hipotetik cevabını üret, onu da variant olarak ekle.
-    // Sorgu vektörü "soruya cevap olabilecek metne" yakın olur → chunk match
-    // güçlenir (Gao et al. 2022, paper +10-20pp recall).
-    // Env flag ile aç/kapa — eval-driven karar için.
-    const hydeEnabled = (process.env.HYDE_ENABLED ?? '1') === '1'
+    // ADAPTIVE: Query classifier ile soru tipini belirle, config'i uygula.
+    // Aksi durumda mevcut sabit pipeline (env flags).
+    let queryType: QueryType = 'specific'
+    let adaptiveConfig = CONFIGS.specific
+    if (ADAPTIVE_ENABLED) {
+      queryType = await classifyQuery(retrievalQuery)
+      adaptiveConfig = CONFIGS[queryType]
+    }
+
+    // HyDE: adaptive mode'da config'den, değilse env'den.
+    const hydeEnabled = ADAPTIVE_ENABLED
+      ? adaptiveConfig.useHyDE
+      : (process.env.HYDE_ENABLED ?? '1') === '1'
     const [variants, subqueries, hyde] = await Promise.all([
       expandQuery(retrievalQuery, libraryLangs),
       splitComparativeQuery(retrievalQuery),
@@ -444,7 +456,10 @@ export async function POST(req: NextRequest) {
     // and returns a 0-10 relevance score; we then keep the highest-
     // scoring TOP_K_CHUNKS / TOP_K_NOTES. Falls back to vector
     // order on Haiku failure.
-    if (retrievedChunks.length > TOP_K_CHUNKS) {
+    // Adaptive topK + cap (varsa); değilse sabit env.
+    const effectiveTopK = ADAPTIVE_ENABLED ? adaptiveConfig.topK : TOP_K_CHUNKS
+    const effectiveCap = ADAPTIVE_ENABLED ? adaptiveConfig.capPerEntry : ENTRY_CAP_PER_TOPK
+    if (retrievedChunks.length > effectiveTopK) {
       const ranked = await rerankChunks(
         retrievalQuery,
         retrievedChunks.map((c) => ({
@@ -464,10 +479,10 @@ export async function POST(req: NextRequest) {
             (order.get(b.id) ?? Number.POSITIVE_INFINITY),
         )
       retrievedChunks = BOOKWISE_ADAPTIVE
-        ? applyBookwiseAdaptive(sortedByScore, TOP_K_CHUNKS)
-        : ENTRY_CAP_PER_TOPK > 0
-          ? applyDiversityCap(sortedByScore, TOP_K_CHUNKS, ENTRY_CAP_PER_TOPK)
-          : sortedByScore.slice(0, TOP_K_CHUNKS)
+        ? applyBookwiseAdaptive(sortedByScore, effectiveTopK)
+        : effectiveCap > 0
+          ? applyDiversityCap(sortedByScore, effectiveTopK, effectiveCap)
+          : sortedByScore.slice(0, effectiveTopK)
     }
 
     // ITERATIVE RETRIEVAL: top-K geldi, Haiku judge "yeterli mi?" der;
