@@ -192,13 +192,20 @@ export async function POST(req: NextRequest) {
     // from any variant reaches the reranker. variants[0] is always
     // the original, so this only adds recall.
     // Variants pipeline:
-    //   1) query expansion → 3 cross-lingual / domain-term variants
+    //   1) query expansion → her kütüphane diline 1 variant + 1 domain-term
     //   2) comparative split → 0-4 alt-sorgu (sadece "X vs Y" sorularında)
     // Birleşmiş listede her variant için ayrı vector+FTS retrieve çalışır,
-    // RRF ile birleştirilir → compositional sorular hem X hem Y chunk'larını
-    // ayrı yakalayabilir.
+    // RRF ile birleştirilir → multilingual kütüphanelerde her dilin
+    // chunk'ları kendi dilindeki sorgu vektörü ile match yapar.
+    //
+    // TODO: libraryLangs şimdilik hardcoded — eval-driven yaklaşım.
+    // Olumlu sonuç verirse runtime auto-detection helper'ına geçilecek
+    // (lib/library-languages.ts). beratok2312 dağılımı: en(66) tr(56) ar(6).
+    const libraryLangs = userId === 'cmn1ulqtk00030purt66j5ow6'
+      ? ['en', 'tr', 'ar']
+      : undefined
     const [variants, subqueries] = await Promise.all([
-      expandQuery(retrievalQuery),
+      expandQuery(retrievalQuery, libraryLangs),
       splitComparativeQuery(retrievalQuery),
     ])
     // Dedup: subquery zaten variant olarak gelmiş olabilir.
