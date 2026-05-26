@@ -6,6 +6,7 @@ import { checkCredits, deductCredits } from '@/lib/credits'
 import { buildSessionContext } from '@/lib/prompts/session-context'
 import { getWritingPrompt } from '@/lib/prompts/writing'
 import { startJob, completeJob, failJob } from '@/lib/jobs'
+import { embedQuery } from '@/lib/library-pipeline'
 
 type RouteContext = { params: Promise<{ id: string; subsectionId: string }> }
 
@@ -25,24 +26,8 @@ interface RagChunk {
   sourceTitle: string
 }
 
-const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8000'
 const TOP_PROJECT_CHUNKS = 4
 const TOP_LIBRARY_CHUNKS = 4
-
-async function embedQueryText(text: string): Promise<number[] | null> {
-  try {
-    const res = await fetch(`${PYTHON_SERVICE_URL}/embed`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texts: [text] }),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { embeddings: number[][] }
-    return data.embeddings?.[0] ?? null
-  } catch {
-    return null
-  }
-}
 
 async function fetchRagChunks(
   projectId: string,
@@ -74,7 +59,7 @@ async function fetchRagChunks(
   const hasSubsectionScope = bibIds.length > 0
 
   // Ideal path: embed the subsection query, then semantic-search both tables.
-  const queryVector = await embedQueryText(queryText)
+  const queryVector = await embedQuery(queryText)
 
   if (queryVector) {
     const vecLiteral = JSON.stringify(queryVector)

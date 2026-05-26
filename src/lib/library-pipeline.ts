@@ -438,7 +438,7 @@ const VOYAGE_MODEL = process.env.VOYAGE_MODEL || 'voyage-multilingual-2'
 // Voyage's batch cap is currently 128 inputs OR 320k tokens combined.
 // Our EMBED_BATCH_SIZE=100 is safely under both.
 
-async function embedBatch(texts: string[]): Promise<number[][] | null> {
+export async function embedBatch(texts: string[]): Promise<number[][] | null> {
   // Primary path: Voyage when configured.
   if (VOYAGE_API_KEY) {
     try {

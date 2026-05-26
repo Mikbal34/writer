@@ -5,6 +5,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
 import { checkCredits, deductCredits } from '@/lib/credits'
+import { embedBatch } from '@/lib/library-pipeline'
 
 // The uploads directory is at the project root (same level as /src)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads')
@@ -432,22 +433,12 @@ Rules:
           const batchRecords = chunkRecords.slice(batchStart, batchEnd)
 
           try {
-            const embedResponse = await fetch(`${pythonServiceUrl}/embed`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ texts: batchTexts }),
-            })
-
-            if (!embedResponse.ok) {
-              const errText = await embedResponse.text().catch(() => '')
+            const embeddings = await embedBatch(batchTexts)
+            if (!embeddings) {
               console.error(
-                `[sources/upload] Embedding batch failed (${batchStart}-${batchEnd}): ${embedResponse.status} ${errText}`
+                `[sources/upload] Embedding batch failed (${batchStart}-${batchEnd})`
               )
               continue
-            }
-
-            const { embeddings } = (await embedResponse.json()) as {
-              embeddings: number[][]
             }
 
             // Update vectors via raw SQL (Prisma doesn't support vector type directly)
