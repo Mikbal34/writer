@@ -507,7 +507,10 @@ export async function embedBatch(texts: string[]): Promise<number[][] | null> {
  * Tek bir kullanıcı sorusu için embed üret (input_type='query').
  * Chat retrieval bunu kullanır — Voyage doküman/sorgu için ayrı optimize eder.
  */
-export async function embedQuery(text: string): Promise<number[] | null> {
+export async function embedQuery(
+  text: string,
+  options?: { model?: string },
+): Promise<number[] | null> {
   if (!text.trim()) return null
   if (VOYAGE_API_KEY) {
     try {
@@ -518,7 +521,7 @@ export async function embedQuery(text: string): Promise<number[] | null> {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: VOYAGE_MODEL,
+          model: options?.model ?? VOYAGE_MODEL,
           input: [text],
           input_type: 'query',
         }),

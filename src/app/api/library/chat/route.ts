@@ -68,6 +68,9 @@ const ITERATIVE_ENABLED = (process.env.ITERATIVE_ENABLED ?? '0') === '1'
 // Adaptive pipeline: query classifier (specific/thematic/comparative) ile
 // topK + HyDE + cap her kategoriye özel. Sabit pipeline yerine adaptif.
 const ADAPTIVE_ENABLED = (process.env.ADAPTIVE_ENABLED ?? '0') === '1'
+// Voyage 3 dual-index pilot: USE_VOYAGE_V3=1 ise sorgu Voyage 3 ile embed,
+// retrieve embeddingV3 column'a bakar (sadece pilot kitap pool).
+const USE_VOYAGE_V3 = (process.env.USE_VOYAGE_V3 ?? '0') === '1'
 const MAX_HISTORY_MESSAGES = 12
 
 type Scope = 'all' | 'picked' | 'single'
@@ -341,7 +344,11 @@ export async function POST(req: NextRequest) {
     for (const s of subqueries) allVariantsSet.add(s)
     if (hyde) allVariantsSet.add(hyde)
     const allVariants = [...allVariantsSet]
-    const variantVecs = await Promise.all(allVariants.map(embedQuery))
+    // USE_VOYAGE_V3 ise sorgu Voyage 3 ile embed et — pilot için izole karşılaştırma.
+    const queryEmbedModel = USE_VOYAGE_V3 ? 'voyage-3' : undefined
+    const variantVecs = await Promise.all(
+      allVariants.map((q) => embedQuery(q, queryEmbedModel ? { model: queryEmbedModel } : undefined)),
+    )
 
     let retrievedChunks: RetrievedChunk[] = []
     let retrievedNotes: RetrievedChunk[] = []
@@ -353,33 +360,62 @@ export async function POST(req: NextRequest) {
       qText: string,
       vecLiteral: string,
     ): Promise<RetrievedChunk[]> => {
+      // USE_VOYAGE_V3: embeddingV3 column + WHERE NOT NULL (sadece pilot kitap pool).
+      const vecQuery = USE_VOYAGE_V3
+        ? (scope === 'all'
+            ? prisma.$queryRaw<RetrievedChunk[]>`
+                SELECT lc.id AS id, 'chunk' AS kind, le.id AS "entryId",
+                       lc."volumeId" AS "volumeId", le.title AS title,
+                       le."authorSurname" AS "authorSurname", lc."pageNumber" AS "pageNumber",
+                       lc."pdfPageLabel" AS "pdfPageLabel", lc."sectionTitle" AS "sectionTitle",
+                       lc.content AS content, NULL AS "noteTitle"
+                FROM "LibraryChunk" lc
+                JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
+                WHERE le."userId" = ${userId} AND lc."embeddingV3" IS NOT NULL
+                ORDER BY lc."embeddingV3" <=> ${vecLiteral}::vector
+                LIMIT ${RETRIEVAL_POOL_CHUNKS}
+              `
+            : prisma.$queryRaw<RetrievedChunk[]>`
+                SELECT lc.id AS id, 'chunk' AS kind, le.id AS "entryId",
+                       lc."volumeId" AS "volumeId", le.title AS title,
+                       le."authorSurname" AS "authorSurname", lc."pageNumber" AS "pageNumber",
+                       lc."pdfPageLabel" AS "pdfPageLabel", lc."sectionTitle" AS "sectionTitle",
+                       lc.content AS content, NULL AS "noteTitle"
+                FROM "LibraryChunk" lc
+                JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
+                WHERE le."userId" = ${userId}
+                  AND le.id = ANY(${entryIds}::text[]) AND lc."embeddingV3" IS NOT NULL
+                ORDER BY lc."embeddingV3" <=> ${vecLiteral}::vector
+                LIMIT ${RETRIEVAL_POOL_CHUNKS}
+              `)
+        : (scope === 'all'
+            ? prisma.$queryRaw<RetrievedChunk[]>`
+                SELECT lc.id AS id, 'chunk' AS kind, le.id AS "entryId",
+                       lc."volumeId" AS "volumeId", le.title AS title,
+                       le."authorSurname" AS "authorSurname", lc."pageNumber" AS "pageNumber",
+                       lc."pdfPageLabel" AS "pdfPageLabel", lc."sectionTitle" AS "sectionTitle",
+                       lc.content AS content, NULL AS "noteTitle"
+                FROM "LibraryChunk" lc
+                JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
+                WHERE le."userId" = ${userId} AND lc.embedding IS NOT NULL
+                ORDER BY lc.embedding <=> ${vecLiteral}::vector
+                LIMIT ${RETRIEVAL_POOL_CHUNKS}
+              `
+            : prisma.$queryRaw<RetrievedChunk[]>`
+                SELECT lc.id AS id, 'chunk' AS kind, le.id AS "entryId",
+                       lc."volumeId" AS "volumeId", le.title AS title,
+                       le."authorSurname" AS "authorSurname", lc."pageNumber" AS "pageNumber",
+                       lc."pdfPageLabel" AS "pdfPageLabel", lc."sectionTitle" AS "sectionTitle",
+                       lc.content AS content, NULL AS "noteTitle"
+                FROM "LibraryChunk" lc
+                JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
+                WHERE le."userId" = ${userId}
+                  AND le.id = ANY(${entryIds}::text[]) AND lc.embedding IS NOT NULL
+                ORDER BY lc.embedding <=> ${vecLiteral}::vector
+                LIMIT ${RETRIEVAL_POOL_CHUNKS}
+              `)
       const [vec, lex] = await Promise.all([
-        scope === 'all'
-          ? prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT lc.id AS id, 'chunk' AS kind, le.id AS "entryId",
-                     lc."volumeId" AS "volumeId", le.title AS title,
-                     le."authorSurname" AS "authorSurname", lc."pageNumber" AS "pageNumber",
-                     lc."pdfPageLabel" AS "pdfPageLabel", lc."sectionTitle" AS "sectionTitle",
-                     lc.content AS content, NULL AS "noteTitle"
-              FROM "LibraryChunk" lc
-              JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
-              WHERE le."userId" = ${userId} AND lc.embedding IS NOT NULL
-              ORDER BY lc.embedding <=> ${vecLiteral}::vector
-              LIMIT ${RETRIEVAL_POOL_CHUNKS}
-            `
-          : prisma.$queryRaw<RetrievedChunk[]>`
-              SELECT lc.id AS id, 'chunk' AS kind, le.id AS "entryId",
-                     lc."volumeId" AS "volumeId", le.title AS title,
-                     le."authorSurname" AS "authorSurname", lc."pageNumber" AS "pageNumber",
-                     lc."pdfPageLabel" AS "pdfPageLabel", lc."sectionTitle" AS "sectionTitle",
-                     lc.content AS content, NULL AS "noteTitle"
-              FROM "LibraryChunk" lc
-              JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
-              WHERE le."userId" = ${userId}
-                AND le.id = ANY(${entryIds}::text[]) AND lc.embedding IS NOT NULL
-              ORDER BY lc.embedding <=> ${vecLiteral}::vector
-              LIMIT ${RETRIEVAL_POOL_CHUNKS}
-            `,
+        vecQuery,
         ftsChunks(
           userId,
           qText,
