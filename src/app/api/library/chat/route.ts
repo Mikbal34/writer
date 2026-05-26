@@ -20,6 +20,7 @@ import { isGenericBookQuery } from '@/lib/book-summary'
 import { ftsChunks, ftsNotes, rrfMerge, rrfMergeMany } from '@/lib/hybrid-retrieval'
 import { rewriteQuery } from '@/lib/query-rewrite'
 import { expandQuery } from '@/lib/query-expansion'
+import { splitComparativeQuery } from '@/lib/comparative-split'
 import { SYNTHESIS_PROMPT_BLOCK, shouldActivateSynthesis } from '@/lib/synthesis-mode'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
@@ -41,12 +42,13 @@ export const runtime = 'nodejs'
 // pattern for notes, smaller pool since they're already user-
 // curated. Hard-disabling rerank (RERANK_ENABLED=false) collapses
 // the pipeline back to vector-only as a safety hatch.
-const RETRIEVAL_POOL_CHUNKS = 30
-const RETRIEVAL_POOL_NOTES = 10
-// 8 → 15: eval baseline'da tematik sorular (5+ kaynak bekleyen) recall %25'te
-// kaldı çünkü beklenen kaynakların yarısı top-8'in altına düşüyordu.
-const TOP_K_CHUNKS = 15
-const TOP_K_NOTES = 5
+// Pool 30 → 60: eval'da recall@∞ = recall@8 idi (~%47), yani beklenen
+// kaynakların yarısı vector pool'a hiç girmiyor. Pool'u genişletip
+// rerank'in daha çok adaydan seçmesini sağlıyoruz.
+const RETRIEVAL_POOL_CHUNKS = 60
+const RETRIEVAL_POOL_NOTES = 15
+const TOP_K_CHUNKS = 8
+const TOP_K_NOTES = 4
 const MAX_HISTORY_MESSAGES = 12
 
 type Scope = 'all' | 'picked' | 'single'
@@ -189,8 +191,21 @@ export async function POST(req: NextRequest) {
     // EACH (hybrid: vector + FTS), and RRF-fuse the union so a hit
     // from any variant reaches the reranker. variants[0] is always
     // the original, so this only adds recall.
-    const variants = await expandQuery(retrievalQuery)
-    const variantVecs = await Promise.all(variants.map(embedQuery))
+    // Variants pipeline:
+    //   1) query expansion → 3 cross-lingual / domain-term variants
+    //   2) comparative split → 0-4 alt-sorgu (sadece "X vs Y" sorularında)
+    // Birleşmiş listede her variant için ayrı vector+FTS retrieve çalışır,
+    // RRF ile birleştirilir → compositional sorular hem X hem Y chunk'larını
+    // ayrı yakalayabilir.
+    const [variants, subqueries] = await Promise.all([
+      expandQuery(retrievalQuery),
+      splitComparativeQuery(retrievalQuery),
+    ])
+    // Dedup: subquery zaten variant olarak gelmiş olabilir.
+    const allVariantsSet = new Set<string>(variants)
+    for (const s of subqueries) allVariantsSet.add(s)
+    const allVariants = [...allVariantsSet]
+    const variantVecs = await Promise.all(allVariants.map(embedQuery))
 
     let retrievedChunks: RetrievedChunk[] = []
     let retrievedNotes: RetrievedChunk[] = []
@@ -244,7 +259,7 @@ export async function POST(req: NextRequest) {
 
     // Chunks: retrieve per variant, fuse the union.
     const chunkPools = await Promise.all(
-      variants.map((qText, i) => {
+      allVariants.map((qText, i) => {
         const v = variantVecs[i]
         return v ? hybridChunksFor(qText, JSON.stringify(v)) : Promise.resolve([] as RetrievedChunk[])
       }),
