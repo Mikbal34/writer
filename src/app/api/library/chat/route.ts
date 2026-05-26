@@ -43,8 +43,10 @@ export const runtime = 'nodejs'
 // the pipeline back to vector-only as a safety hatch.
 const RETRIEVAL_POOL_CHUNKS = 30
 const RETRIEVAL_POOL_NOTES = 10
-const TOP_K_CHUNKS = 8
-const TOP_K_NOTES = 4
+// 8 → 15: eval baseline'da tematik sorular (5+ kaynak bekleyen) recall %25'te
+// kaldı çünkü beklenen kaynakların yarısı top-8'in altına düşüyordu.
+const TOP_K_CHUNKS = 15
+const TOP_K_NOTES = 5
 const MAX_HISTORY_MESSAGES = 12
 
 type Scope = 'all' | 'picked' | 'single'
