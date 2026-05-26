@@ -318,51 +318,17 @@ export async function POST(req: NextRequest) {
       return rrfMerge(vec, lex)
     }
 
-    // BALANCED COMPARATIVE RETRIEVE: "X vs Y" sorularda her sub-query
-    // için AYRI havuz + her tarafdan eşit chunk. RRF'nin bir tarafa
-    // bias problemini çözer (K kategorisi 0.323'te takılıydı).
-    const isComparative = subqueries.length >= 2
-    if (isComparative) {
-      const perSideTopK = Math.ceil(TOP_K_CHUNKS / subqueries.length)
-      const perSidePool: RetrievedChunk[][] = []
-      for (const sq of subqueries) {
-        const idx = allVariants.indexOf(sq)
-        const sqVec = idx >= 0 ? variantVecs[idx] : null
-        if (!sqVec) continue
-        const sidePool = await hybridChunksFor(sq, JSON.stringify(sqVec))
-        // Her tarafdan diversity-cap=1 ile top-K_per_side (her kitap max 1)
-        const sideTop = applyDiversityCap(sidePool, perSideTopK, 1)
-        perSidePool.push(sideTop)
-      }
-      // Round-robin merge: her taraftan sırayla 1'er chunk al
-      const balancedChunks: RetrievedChunk[] = []
-      const seenIds = new Set<string>()
-      let added = true
-      let pos = 0
-      while (added && balancedChunks.length < TOP_K_CHUNKS) {
-        added = false
-        for (const side of perSidePool) {
-          if (pos >= side.length) continue
-          const c = side[pos]
-          if (seenIds.has(c.id)) continue
-          balancedChunks.push(c)
-          seenIds.add(c.id)
-          added = true
-          if (balancedChunks.length >= TOP_K_CHUNKS) break
-        }
-        pos++
-      }
-      retrievedChunks = balancedChunks
-    } else {
-      // Chunks: retrieve per variant, fuse the union (normal akış).
-      const chunkPools = await Promise.all(
-        allVariants.map((qText, i) => {
-          const v = variantVecs[i]
-          return v ? hybridChunksFor(qText, JSON.stringify(v)) : Promise.resolve([] as RetrievedChunk[])
-        }),
-      )
-      retrievedChunks = rrfMergeMany(chunkPools).slice(0, RETRIEVAL_POOL_CHUNKS)
-    }
+    // Chunks: retrieve per variant, fuse the union.
+    // (Balanced comparative retrieve denenmişti ama splitter false-positive
+    // veriyor — Q07 Gazzâlî gibi spesifik sorularda da 2+ subqueries
+    // dönüyor → normal RRF'ye geri dönüldü.)
+    const chunkPools = await Promise.all(
+      allVariants.map((qText, i) => {
+        const v = variantVecs[i]
+        return v ? hybridChunksFor(qText, JSON.stringify(v)) : Promise.resolve([] as RetrievedChunk[])
+      }),
+    )
+    retrievedChunks = rrfMergeMany(chunkPools).slice(0, RETRIEVAL_POOL_CHUNKS)
 
     // Notes: user's own annotations, almost always in the user's
     // language and low-volume — expansion adds little, so retrieve
