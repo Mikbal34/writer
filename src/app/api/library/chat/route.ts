@@ -49,8 +49,8 @@ const RETRIEVAL_POOL_CHUNKS = 60
 const RETRIEVAL_POOL_NOTES = 15
 // 8 → 6: Sonnet'a daha az excerpt → input token %25 ↓ → prod chat call maliyeti
 // belirgin düşer. Eval gösterdi top-8'in son 2 chunk'ı genelde marjinal.
-const TOP_K_CHUNKS = 6
-const TOP_K_NOTES = 3
+const TOP_K_CHUNKS = 8
+const TOP_K_NOTES = 4
 // MMR-lite (entry-level diversity cap): top-K seçiminde aynı kitap'tan
 // en fazla N chunk al. Tematik sorularda tek kitabın 3-4 chunk'ı top-K'yı
 // kaplamasını engeller, beklenen 5+ kaynaktan daha çok temsil garanti edilir.
