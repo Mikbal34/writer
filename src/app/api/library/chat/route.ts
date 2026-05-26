@@ -541,9 +541,13 @@ export async function POST(req: NextRequest) {
         }
         let fullText = ''
         try {
+          // Prompt caching: system prompt'u "cache: true" parts olarak
+          // gönder. Anthropic 5 dakika cache TTL ile sonraki çağrıları
+          // %90 input cost düşürür. Aynı session içinde art arda chat'lerde
+          // büyük tasarruf — Sonnet maliyetini ~%50 azaltır.
           const result = await streamChatWithUsage(
             messagesForLlm,
-            systemPrompt,
+            [{ text: systemPrompt, cache: true }],
             (chunk) => {
               fullText += chunk
               safeEnqueue(`data: ${JSON.stringify({ delta: chunk })}\n\n`)
