@@ -13,8 +13,7 @@
  *   DATABASE_URL — expected entry hint'lerini ID'lere çevirmek için
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
-import { PrismaClient } from '@prisma/client'
+import { resolve } from 'node:path'
 
 interface ExpectedHint {
   authorSurname: string
@@ -26,6 +25,8 @@ interface Question {
   category: 'S' | 'T' | 'K'
   question: string
   expectedEntries: ExpectedHint[]
+  /** Önceden VM'de çözümlenmiş entry ID'leri. resolve_expected.py üretir. */
+  expectedIds: string[]
 }
 
 interface EvalSet {
@@ -74,10 +75,10 @@ if (!EVAL_TOKEN) {
   process.exit(1)
 }
 
-const SET_PATH = resolve(process.cwd(), 'scripts/eval/library-rag-set.json')
+const SET_PATH = args.set
+  ? resolve(args.set)
+  : resolve(process.cwd(), 'scripts/eval/library-rag-set.resolved.json')
 const OUT_DIR = resolve(process.cwd(), 'scripts/eval/results')
-
-const prisma = new PrismaClient()
 
 async function main() {
   const set: EvalSet = JSON.parse(readFileSync(SET_PATH, 'utf-8'))
@@ -149,13 +150,11 @@ async function main() {
     ),
   )
   console.log(`\n  sonuç: ${outPath}`)
-
-  await prisma.$disconnect()
 }
 
 async function runOne(userId: string, q: Question): Promise<QResult> {
-  // 1) Expected hint'leri DB'de ID'ye çevir
-  const expectedIds = await resolveExpectedIds(userId, q.expectedEntries)
+  // 1) Expected ID'ler resolved JSON'da hazır
+  const expectedIds = q.expectedIds ?? []
   if (expectedIds.length === 0) {
     return {
       id: q.id,
@@ -187,6 +186,8 @@ async function runOne(userId: string, q: Question): Promise<QResult> {
         'Content-Type': 'application/json',
         'X-Eval-Token': EVAL_TOKEN as string,
         'X-Eval-User-Id': userId,
+        // Eval-mode: Sonnet'a hiç gitme, sadece sources dön. %85 maliyet düşer.
+        'X-Eval-Skip-LLM': '1',
       },
       body: JSON.stringify({
         sessionId,
@@ -196,10 +197,17 @@ async function runOne(userId: string, q: Question): Promise<QResult> {
     })
     if (!res.ok) {
       errorMsg = `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`
-    } else if (!res.body) {
-      errorMsg = 'no body'
     } else {
-      sources = await readSourcesFromSSE(res.body)
+      const ct = res.headers.get('content-type') ?? ''
+      if (ct.includes('application/json')) {
+        // Eval-mode: düz JSON döner
+        const data = (await res.json()) as { sources?: ChatSource[] }
+        sources = data.sources ?? []
+      } else if (res.body) {
+        sources = await readSourcesFromSSE(res.body)
+      } else {
+        errorMsg = 'no body'
+      }
     }
   } catch (err) {
     errorMsg = err instanceof Error ? err.message : String(err)
@@ -242,26 +250,6 @@ async function runOne(userId: string, q: Question): Promise<QResult> {
     latencyMs,
     errorMsg,
   }
-}
-
-async function resolveExpectedIds(
-  userId: string,
-  hints: ExpectedHint[],
-): Promise<string[]> {
-  const ids: string[] = []
-  for (const h of hints) {
-    const found = await prisma.libraryEntry.findMany({
-      where: {
-        userId,
-        authorSurname: { contains: h.authorSurname, mode: 'insensitive' },
-        title: { contains: h.titleHint, mode: 'insensitive' },
-      },
-      select: { id: true },
-      take: 5,
-    })
-    for (const row of found) if (!ids.includes(row.id)) ids.push(row.id)
-  }
-  return ids
 }
 
 async function readSourcesFromSSE(body: ReadableStream<Uint8Array>): Promise<ChatSource[]> {

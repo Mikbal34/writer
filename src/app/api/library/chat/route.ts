@@ -144,17 +144,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Credits gate.
-    const credits = await checkCredits(userId, 'library_chat')
-    if (!credits.allowed) {
-      return new Response(
-        JSON.stringify({
-          error: 'Insufficient credits',
-          balance: credits.balance,
-          cost: credits.estimatedCost,
-        }),
-        { status: 402, headers: { 'Content-Type': 'application/json' } },
-      )
+    // Eval-mode: retrieve + rerank yap, sources döndür, Sonnet'i ATLA.
+    // Credit check, user msg persist, assistant msg persist YOK — yan etki
+    // sıfır. Eval runner için ucuz ölçüm (~%85 maliyet düşer).
+    const evalSkipLlm = req.headers.get('x-eval-skip-llm') === '1'
+
+    // Credits gate (eval-mode'da atlanır).
+    if (!evalSkipLlm) {
+      const credits = await checkCredits(userId, 'library_chat')
+      if (!credits.allowed) {
+        return new Response(
+          JSON.stringify({
+            error: 'Insufficient credits',
+            balance: credits.balance,
+            cost: credits.estimatedCost,
+          }),
+          { status: 402, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
     }
 
     // Load existing thread, oldest → newest, and compress to keep
@@ -472,17 +479,19 @@ export async function POST(req: NextRequest) {
     ]
 
     // Persist the user message before streaming so a mid-stream crash
-    // doesn't lose the prompt.
-    await prisma.libraryChatMessage.create({
-      data: {
-        userId: userId,
-        sessionId,
-        role: 'user',
-        content: message,
-        scope,
-        entryIds,
-      },
-    })
+    // doesn't lose the prompt. Eval-mode: hiç yazma (yan etki sıfır).
+    if (!evalSkipLlm) {
+      await prisma.libraryChatMessage.create({
+        data: {
+          userId: userId,
+          sessionId,
+          role: 'user',
+          content: message,
+          scope,
+          entryIds,
+        },
+      })
+    }
 
     // Bump the rewrite endpoint pattern to also stream here. The final
     // 'done' event carries the citation list so the UI can render
@@ -510,6 +519,13 @@ export async function POST(req: NextRequest) {
       // the source. Keeps the payload light; full content is in DB.
       text: (c.content ?? '').slice(0, 280),
     }))
+
+    // Eval-mode early return: Sonnet'a hiç gitme, sadece sources dön.
+    if (evalSkipLlm) {
+      return new Response(JSON.stringify({ done: true, sources }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
 
     const stream = new ReadableStream({
       async start(controller) {
