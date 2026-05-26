@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
   // resolves relative to the real on-disk file. react-pdf (client
   // only, "use client") stays in transpilePackages to fix the .mjs
   // export shape webpack otherwise mishandles in the browser bundle.
-  serverExternalPackages: ["@prisma/client", "pdfkit", "pdfjs-dist"],
+  serverExternalPackages: ["@prisma/client", "pdfkit", "pdfjs-dist", "crypto-js", "oauth-1.0a"],
   transpilePackages: ["react-pdf"],
   experimental: {
     serverActions: {
