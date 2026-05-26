@@ -52,6 +52,11 @@ const RETRIEVAL_POOL_NOTES = 15
 // belirgin düşer. Eval gösterdi top-8'in son 2 chunk'ı genelde marjinal.
 const TOP_K_CHUNKS = 6
 const TOP_K_NOTES = 3
+// MMR-lite (entry-level diversity cap): top-K seçiminde aynı kitap'tan
+// en fazla N chunk al. Tematik sorularda tek kitabın 3-4 chunk'ı top-K'yı
+// kaplamasını engeller, beklenen 5+ kaynaktan daha çok temsil garanti edilir.
+// 0 = cap kapalı (mevcut davranış), 2 = her kitaptan max 2 chunk.
+const ENTRY_CAP_PER_TOPK = parseInt(process.env.ENTRY_CAP_PER_TOPK ?? '2', 10)
 const MAX_HISTORY_MESSAGES = 12
 
 type Scope = 'all' | 'picked' | 'single'
@@ -81,6 +86,39 @@ interface RetrievedChunk {
   noteTitle: string | null
 }
 
+
+/**
+ * MMR-lite diversity cap: sıralı listeden top-K seç, ama aynı entry'den
+ * en fazla `capPerEntry` chunk. Tematik sorularda tek kitabın top-K'yı
+ * kaplamasını engeller — 5+ farklı kaynak bekleyen sorularda recall ↑.
+ *
+ * Algoritma: skoruna göre sıralı listede gez, cap'i aşmayanları al, cap'i
+ * aşanları "yedek" listeye koy. Top-K dolmazsa yedeklerle tamamla.
+ */
+function applyDiversityCap<T extends { entryId: string }>(
+  sortedItems: T[],
+  topK: number,
+  capPerEntry: number,
+): T[] {
+  const selected: T[] = []
+  const overflow: T[] = []
+  const perEntryCount = new Map<string, number>()
+  for (const item of sortedItems) {
+    if (selected.length >= topK) break
+    const count = perEntryCount.get(item.entryId) ?? 0
+    if (count < capPerEntry) {
+      selected.push(item)
+      perEntryCount.set(item.entryId, count + 1)
+    } else {
+      overflow.push(item)
+    }
+  }
+  for (const item of overflow) {
+    if (selected.length >= topK) break
+    selected.push(item)
+  }
+  return selected
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -353,14 +391,16 @@ export async function POST(req: NextRequest) {
         })),
       )
       const order = new Map(ranked.map((r, i) => [r.id, i]))
-      retrievedChunks = retrievedChunks
+      const sortedByScore = retrievedChunks
         .slice()
         .sort(
           (a, b) =>
             (order.get(a.id) ?? Number.POSITIVE_INFINITY) -
             (order.get(b.id) ?? Number.POSITIVE_INFINITY),
         )
-        .slice(0, TOP_K_CHUNKS)
+      retrievedChunks = ENTRY_CAP_PER_TOPK > 0
+        ? applyDiversityCap(sortedByScore, TOP_K_CHUNKS, ENTRY_CAP_PER_TOPK)
+        : sortedByScore.slice(0, TOP_K_CHUNKS)
     }
     if (retrievedNotes.length > TOP_K_NOTES) {
       const ranked = await rerankChunks(
