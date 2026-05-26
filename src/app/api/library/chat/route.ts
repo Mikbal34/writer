@@ -43,11 +43,11 @@ export const runtime = 'nodejs'
 // pattern for notes, smaller pool since they're already user-
 // curated. Hard-disabling rerank (RERANK_ENABLED=false) collapses
 // the pipeline back to vector-only as a safety hatch.
-// Pool 30 → 60: eval'da recall@∞ = recall@8 idi (~%47), yani beklenen
-// kaynakların yarısı vector pool'a hiç girmiyor. Pool'u genişletip
-// rerank'in daha çok adaydan seçmesini sağlıyoruz.
-const RETRIEVAL_POOL_CHUNKS = 60
-const RETRIEVAL_POOL_NOTES = 15
+// Pool 30 → 60 → 100: MMR diversity cap top-K'da farklı kitap garantili,
+// ama önce pool'a giren kitap çeşitliliği yetersizse cap işe yaramaz.
+// 100'e çıkardık ki RRF her dilden/her kavramdan daha çok aday toplasın.
+const RETRIEVAL_POOL_CHUNKS = 100
+const RETRIEVAL_POOL_NOTES = 20
 // 8 → 6: Sonnet'a daha az excerpt → input token %25 ↓ → prod chat call maliyeti
 // belirgin düşer. Eval gösterdi top-8'in son 2 chunk'ı genelde marjinal.
 const TOP_K_CHUNKS = 6
