@@ -217,10 +217,12 @@ export async function POST(req: NextRequest) {
     // HyDE: sorunun hipotetik cevabını üret, onu da variant olarak ekle.
     // Sorgu vektörü "soruya cevap olabilecek metne" yakın olur → chunk match
     // güçlenir (Gao et al. 2022, paper +10-20pp recall).
+    // Env flag ile aç/kapa — eval-driven karar için.
+    const hydeEnabled = (process.env.HYDE_ENABLED ?? '1') === '1'
     const [variants, subqueries, hyde] = await Promise.all([
       expandQuery(retrievalQuery, libraryLangs),
       splitComparativeQuery(retrievalQuery),
-      generateHyde(retrievalQuery),
+      hydeEnabled ? generateHyde(retrievalQuery) : Promise.resolve(null),
     ])
     // Dedup: subquery zaten variant olarak gelmiş olabilir.
     const allVariantsSet = new Set<string>(variants)
