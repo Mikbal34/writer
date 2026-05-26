@@ -22,6 +22,7 @@ import { rewriteQuery } from '@/lib/query-rewrite'
 import { expandQuery } from '@/lib/query-expansion'
 import { splitComparativeQuery } from '@/lib/comparative-split'
 import { generateHyde } from '@/lib/hyde'
+import { judgeSufficiency } from '@/lib/iterative-retrieval'
 import { SYNTHESIS_PROMPT_BLOCK, shouldActivateSynthesis } from '@/lib/synthesis-mode'
 import { compressHistory } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
@@ -60,6 +61,9 @@ const ENTRY_CAP_PER_TOPK = parseInt(process.env.ENTRY_CAP_PER_TOPK ?? '2', 10)
 // Bookwise adaptive: pool'un kitap dağılımına göre Mode A (top-4 × 2) veya
 // Mode B (top-8 × 1) seçer. ENTRY_CAP yerine geçer eğer aktifse.
 const BOOKWISE_ADAPTIVE = (process.env.BOOKWISE_ADAPTIVE ?? '0') === '1'
+// Iterative retrieval: top-K sonrası Haiku judge "yeterli mi?" der;
+// eksik kavram varsa 2. tur retrieve + merge. Tematik/karşılaştırmalı için.
+const ITERATIVE_ENABLED = (process.env.ITERATIVE_ENABLED ?? '0') === '1'
 const MAX_HISTORY_MESSAGES = 12
 
 type Scope = 'all' | 'picked' | 'single'
@@ -464,6 +468,31 @@ export async function POST(req: NextRequest) {
         : ENTRY_CAP_PER_TOPK > 0
           ? applyDiversityCap(sortedByScore, TOP_K_CHUNKS, ENTRY_CAP_PER_TOPK)
           : sortedByScore.slice(0, TOP_K_CHUNKS)
+    }
+
+    // ITERATIVE RETRIEVAL: top-K geldi, Haiku judge "yeterli mi?" der;
+    // eksik kavram varsa 2. tur retrieve + merge (cap=1 ile final 8).
+    if (ITERATIVE_ENABLED && retrievedChunks.length > 0) {
+      const briefs = retrievedChunks.slice(0, 5).map((c) => ({
+        authorSurname: c.authorSurname,
+        title: c.title,
+        preview: c.content.slice(0, 100),
+      }))
+      const judge = await judgeSufficiency(retrievalQuery, briefs)
+      if (!judge.sufficient && judge.missingTopic) {
+        // 2. tur: missing topic ile retrieve
+        const secondVec = await embedQuery(judge.missingTopic)
+        if (secondVec) {
+          const secondPool = await hybridChunksFor(judge.missingTopic, JSON.stringify(secondVec))
+          // Merge: birinci + ikinci (dedup by id), sonra cap=1 ile final
+          const seenIds = new Set(retrievedChunks.map((c) => c.id))
+          const newOnes = secondPool.filter((c) => !seenIds.has(c.id))
+          const merged = [...retrievedChunks, ...newOnes]
+          retrievedChunks = ENTRY_CAP_PER_TOPK > 0
+            ? applyDiversityCap(merged, TOP_K_CHUNKS, ENTRY_CAP_PER_TOPK)
+            : merged.slice(0, TOP_K_CHUNKS)
+        }
+      }
     }
     if (retrievedNotes.length > TOP_K_NOTES) {
       const ranked = await rerankChunks(
