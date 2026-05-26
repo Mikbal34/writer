@@ -43,10 +43,11 @@ export const runtime = 'nodejs'
 // pattern for notes, smaller pool since they're already user-
 // curated. Hard-disabling rerank (RERANK_ENABLED=false) collapses
 // the pipeline back to vector-only as a safety hatch.
-// Pool 60 sweet spot — 100'e çıkarmak RRF skorlarını dilüte etti, top-K
-// kalitesi bozuldu. MMR diversity cap (entry-cap=2) ile 60 chunk yeter.
-const RETRIEVAL_POOL_CHUNKS = 60
-const RETRIEVAL_POOL_NOTES = 15
+// Pool 60 → 80 deneyi: cap=1 + topK=8 sweet spot daha geniş aday ile
+// daha çok kitap çeşitliliği sağlayabilir. 100'de RRF dilüsyon olmuştu;
+// 80 orta yol.
+const RETRIEVAL_POOL_CHUNKS = 80
+const RETRIEVAL_POOL_NOTES = 18
 // 8 → 6: Sonnet'a daha az excerpt → input token %25 ↓ → prod chat call maliyeti
 // belirgin düşer. Eval gösterdi top-8'in son 2 chunk'ı genelde marjinal.
 const TOP_K_CHUNKS = 8
