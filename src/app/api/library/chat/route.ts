@@ -43,11 +43,10 @@ export const runtime = 'nodejs'
 // pattern for notes, smaller pool since they're already user-
 // curated. Hard-disabling rerank (RERANK_ENABLED=false) collapses
 // the pipeline back to vector-only as a safety hatch.
-// Pool 30 → 60 → 100: MMR diversity cap top-K'da farklı kitap garantili,
-// ama önce pool'a giren kitap çeşitliliği yetersizse cap işe yaramaz.
-// 100'e çıkardık ki RRF her dilden/her kavramdan daha çok aday toplasın.
-const RETRIEVAL_POOL_CHUNKS = 100
-const RETRIEVAL_POOL_NOTES = 20
+// Pool 60 sweet spot — 100'e çıkarmak RRF skorlarını dilüte etti, top-K
+// kalitesi bozuldu. MMR diversity cap (entry-cap=2) ile 60 chunk yeter.
+const RETRIEVAL_POOL_CHUNKS = 60
+const RETRIEVAL_POOL_NOTES = 15
 // 8 → 6: Sonnet'a daha az excerpt → input token %25 ↓ → prod chat call maliyeti
 // belirgin düşer. Eval gösterdi top-8'in son 2 chunk'ı genelde marjinal.
 const TOP_K_CHUNKS = 6
@@ -319,14 +318,51 @@ export async function POST(req: NextRequest) {
       return rrfMerge(vec, lex)
     }
 
-    // Chunks: retrieve per variant, fuse the union.
-    const chunkPools = await Promise.all(
-      allVariants.map((qText, i) => {
-        const v = variantVecs[i]
-        return v ? hybridChunksFor(qText, JSON.stringify(v)) : Promise.resolve([] as RetrievedChunk[])
-      }),
-    )
-    retrievedChunks = rrfMergeMany(chunkPools).slice(0, RETRIEVAL_POOL_CHUNKS)
+    // BALANCED COMPARATIVE RETRIEVE: "X vs Y" sorularda her sub-query
+    // için AYRI havuz + her tarafdan eşit chunk. RRF'nin bir tarafa
+    // bias problemini çözer (K kategorisi 0.323'te takılıydı).
+    const isComparative = subqueries.length >= 2
+    if (isComparative) {
+      const perSideTopK = Math.ceil(TOP_K_CHUNKS / subqueries.length)
+      const perSidePool: RetrievedChunk[][] = []
+      for (const sq of subqueries) {
+        const idx = allVariants.indexOf(sq)
+        const sqVec = idx >= 0 ? variantVecs[idx] : null
+        if (!sqVec) continue
+        const sidePool = await hybridChunksFor(sq, JSON.stringify(sqVec))
+        // Her tarafdan diversity-cap=1 ile top-K_per_side (her kitap max 1)
+        const sideTop = applyDiversityCap(sidePool, perSideTopK, 1)
+        perSidePool.push(sideTop)
+      }
+      // Round-robin merge: her taraftan sırayla 1'er chunk al
+      const balancedChunks: RetrievedChunk[] = []
+      const seenIds = new Set<string>()
+      let added = true
+      let pos = 0
+      while (added && balancedChunks.length < TOP_K_CHUNKS) {
+        added = false
+        for (const side of perSidePool) {
+          if (pos >= side.length) continue
+          const c = side[pos]
+          if (seenIds.has(c.id)) continue
+          balancedChunks.push(c)
+          seenIds.add(c.id)
+          added = true
+          if (balancedChunks.length >= TOP_K_CHUNKS) break
+        }
+        pos++
+      }
+      retrievedChunks = balancedChunks
+    } else {
+      // Chunks: retrieve per variant, fuse the union (normal akış).
+      const chunkPools = await Promise.all(
+        allVariants.map((qText, i) => {
+          const v = variantVecs[i]
+          return v ? hybridChunksFor(qText, JSON.stringify(v)) : Promise.resolve([] as RetrievedChunk[])
+        }),
+      )
+      retrievedChunks = rrfMergeMany(chunkPools).slice(0, RETRIEVAL_POOL_CHUNKS)
+    }
 
     // Notes: user's own annotations, almost always in the user's
     // language and low-volume — expansion adds little, so retrieve
