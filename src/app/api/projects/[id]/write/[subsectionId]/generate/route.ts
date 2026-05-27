@@ -7,6 +7,7 @@ import { buildSessionContext } from '@/lib/prompts/session-context'
 import { getWritingPrompt } from '@/lib/prompts/writing'
 import { startJob, completeJob, failJob } from '@/lib/jobs'
 import { embedQuery } from '@/lib/library-pipeline'
+import { retrieveLibraryChunks } from '@/lib/library-retrieval'
 
 type RouteContext = { params: Promise<{ id: string; subsectionId: string }> }
 
@@ -27,11 +28,12 @@ interface RagChunk {
 }
 
 const TOP_PROJECT_CHUNKS = 4
-const TOP_LIBRARY_CHUNKS = 4
+const TOP_LIBRARY_CHUNKS = 8
 
 async function fetchRagChunks(
   projectId: string,
   subsectionId: string,
+  userId: string,
   subsection: { title: string; description: string | null; keyPoints: string[] }
 ): Promise<RagChunk[]> {
   const queryText = [subsection.title, subsection.description, ...(subsection.keyPoints ?? [])]
@@ -100,40 +102,47 @@ async function fetchRagChunks(
           LIMIT ${TOP_PROJECT_CHUNKS}
         `.catch(() => [])
 
-    // Library entries linked via Bibliography. Same logic: narrow to those
-    // mapped to this subsection; fall back to project scope otherwise.
-    const libraryChunks = hasSubsectionScope && mappedLibraryEntryIds.length > 0
-      ? await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; pdfPageLabel: string | null; sourceTitle: string }>>`
-          SELECT lc.content,
-                 lc."pageNumber",
-                 lc."pdfPageLabel",
-                 le.title as "sourceTitle"
-          FROM "LibraryChunk" lc
-          JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
-          WHERE le.id = ANY(${mappedLibraryEntryIds}::text[])
-            AND lc.embedding IS NOT NULL
-          ORDER BY lc.embedding <-> ${vecLiteral}::vector
-          LIMIT ${TOP_LIBRARY_CHUNKS}
-        `.catch(() => [])
-      : hasSubsectionScope
-      ? []
-      : await prisma.$queryRaw<Array<{ content: string; pageNumber: number | null; pdfPageLabel: string | null; sourceTitle: string }>>`
-          SELECT lc.content,
-                 lc."pageNumber",
-                 lc."pdfPageLabel",
-                 le.title as "sourceTitle"
-          FROM "LibraryChunk" lc
-          JOIN "LibraryEntry" le ON lc."libraryEntryId" = le.id
-          WHERE le.id IN (
-            SELECT DISTINCT b."libraryEntryId"
-            FROM "Bibliography" b
-            WHERE b."projectId" = ${projectId}
-              AND b."libraryEntryId" IS NOT NULL
-          )
-          AND lc.embedding IS NOT NULL
-          ORDER BY lc.embedding <-> ${vecLiteral}::vector
-          LIMIT ${TOP_LIBRARY_CHUNKS}
-        `.catch(() => [])
+    // Library chunks — chat seviyesinde retrieval (multilingual expansion,
+    // MMR diversity cap=1, hybrid vector+FTS, RRF). Yazıda 5+ kaynak bekleyen
+    // subsection'larda tek kitap dominate edemesin.
+    let libraryEntryIdsScope: string[] = []
+    if (hasSubsectionScope && mappedLibraryEntryIds.length > 0) {
+      libraryEntryIdsScope = mappedLibraryEntryIds
+    } else if (!hasSubsectionScope) {
+      // Proje-genel: proje bibliography'lerinde library entry'ler
+      const projectBibs = await prisma.bibliography.findMany({
+        where: { projectId, libraryEntryId: { not: null } },
+        select: { libraryEntryId: true },
+      })
+      libraryEntryIdsScope = projectBibs
+        .map((b) => b.libraryEntryId)
+        .filter((id): id is string => !!id)
+    }
+
+    let libraryChunks: Array<{
+      content: string
+      pageNumber: number | null
+      pdfPageLabel: string | null
+      sourceTitle: string
+    }> = []
+
+    if (libraryEntryIdsScope.length > 0) {
+      const result = await retrieveLibraryChunks({
+        userId,
+        query: queryText,
+        scope: 'picked',
+        entryIds: libraryEntryIdsScope,
+        topK: TOP_LIBRARY_CHUNKS,
+        diversityCap: 1,
+        pool: 60,
+      }).catch(() => ({ chunks: [], variants: [] }))
+      libraryChunks = result.chunks.map((c) => ({
+        content: c.content,
+        pageNumber: c.pageNumber,
+        pdfPageLabel: c.pdfPageLabel,
+        sourceTitle: c.title,
+      }))
+    }
 
     const merged = [...projectChunks, ...libraryChunks]
     if (merged.length > 0) return merged
@@ -257,7 +266,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     // RAG chunks — skip for non-academic projects
     const needsSources = project.projectType === 'ACADEMIC'
-    const ragChunks = needsSources ? await fetchRagChunks(projectId, subsectionId, subsection) : []
+    const ragChunks = needsSources ? await fetchRagChunks(projectId, subsectionId, session.user.id, subsection) : []
     const ragBlock =
       ragChunks.length > 0
         ? `\n\nRELEVANT SOURCE EXCERPTS:\n${ragChunks
