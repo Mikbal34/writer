@@ -8,6 +8,9 @@ import { getWritingPrompt } from '@/lib/prompts/writing'
 import { startJob, completeJob, failJob } from '@/lib/jobs'
 import { embedQuery } from '@/lib/library-pipeline'
 import { retrieveLibraryChunks } from '@/lib/library-retrieval'
+import { validateCitations } from '@/lib/citation-validator'
+import { reviewSubsection } from '@/lib/writing-reviewer'
+import { buildEvidenceGraph, formatEvidenceForPrompt } from '@/lib/evidence-graph'
 
 type RouteContext = { params: Promise<{ id: string; subsectionId: string }> }
 
@@ -281,6 +284,38 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             .join('\n\n')}`
         : ''
 
+    // EVIDENCE GRAPH (Stage 4) — opsiyonel. Chunks'tan önce Haiku ile
+    // claim/evidence yapısı çıkar; Sonnet ham metin yerine yapılandırılmış
+    // evidence görür. Env flag ile aç/kapa (default kapalı, deneysel).
+    const evidenceEnabled = (process.env.EVIDENCE_GRAPH_ENABLED ?? '0') === '1'
+    let evidenceBlock = ''
+    if (evidenceEnabled && ragChunks.length > 0 && needsSources) {
+      const titleToBibId = new Map<string, string>()
+      for (const s of writingCtx.sources) titleToBibId.set(s.title, s.bibliographyId)
+      const subsectionObjective = [
+        subsection.description,
+        ...(subsection.keyPoints ?? []),
+      ]
+        .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+        .join('\n')
+      const graph = await buildEvidenceGraph({
+        subsectionObjective: `${subsection.title}\n${subsectionObjective}`,
+        chunks: ragChunks.map((c) => ({
+          bibId: titleToBibId.get(c.sourceTitle) ?? 'unknown',
+          sourceTitle: c.sourceTitle,
+          page: c.pdfPageLabel ?? (c.pageNumber !== null ? String(c.pageNumber) : null),
+          content: c.content,
+        })),
+      })
+      if (graph.claims.length > 0) {
+        evidenceBlock = '\n\n' + formatEvidenceForPrompt(graph.claims)
+        console.log(
+          `[evidence-graph] subsection=${subsectionId} claims=${graph.claims.length}` +
+            ` coverage=${(graph.coverageRate * 100).toFixed(0)}%`,
+        )
+      }
+    }
+
     // In continue mode prepend the existing draft so the LLM picks up
     // exactly where it left off without paraphrasing or repeating.
     const existingContent = mode === 'continue' ? subsection.content?.trim() ?? '' : ''
@@ -288,7 +323,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       mode === 'continue' && existingContent
         ? `\n\nÖNCEDEN YAZILMIŞ KISIM (bu metnin tam devamını yaz; tekrar etme, özetleme — bittiği yerden doğal cümleyle bağla):\n\n${existingContent}`
         : ''
-    const fullUserPrompt = userPrompt + ragBlock + continuationBlock
+    const fullUserPrompt = userPrompt + ragBlock + evidenceBlock + continuationBlock
 
     // Create writing session record
     const writingSession = await prisma.writingSession.create({
@@ -432,11 +467,82 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           },
         })
 
+        // Citation accuracy validation — ölçüm aşamasında, sistemi değiştirmiyor.
+        // ALLOWED_BIB_IDS = subsection'a bağlı bibliography ID'leri.
+        const allowedBibIds = writingCtx.sources.map((s) => s.bibliographyId)
+        const citationCheck = validateCitations({
+          text: result.fullText,
+          allowedBibIds,
+        })
+        if (citationCheck.totalCiteMarkers > 0) {
+          console.log(
+            `[citation-check] subsection=${subsectionId} ${citationCheck.summary}`,
+          )
+          if (citationCheck.fabricatedBibIds.length > 0) {
+            console.warn(
+              `[citation-check] FABRICATED:`,
+              citationCheck.fabricatedBibIds.map((c) => c.bibId),
+            )
+          }
+        }
+
+        // REVIEWER AGENT (Stage 7) — Haiku judge unsupported claims +
+        // fabricated citations + objective coverage. Env flag ile kapatılabilir.
+        const reviewerEnabled = (process.env.WRITING_REVIEWER_ENABLED ?? '1') === '1'
+        let reviewResult: Awaited<ReturnType<typeof reviewSubsection>> | null = null
+        if (reviewerEnabled && result.fullText.length > 100) {
+          const subsectionObjective = [
+            subsection.description,
+            ...(subsection.keyPoints ?? []),
+          ]
+            .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+            .join('\n')
+          reviewResult = await reviewSubsection({
+            subsectionTitle: subsection.title,
+            subsectionObjective,
+            paragraph: result.fullText,
+            allowedBibIds,
+            retrievedExcerpts: ragChunks.slice(0, 8).map((c) => ({
+              sourceTitle: c.sourceTitle,
+              preview: c.content,
+            })),
+          })
+          console.log(
+            `[reviewer] subsection=${subsectionId} score=${reviewResult.score.toFixed(2)}` +
+              ` unsupported=${reviewResult.unsupportedClaims.length}` +
+              ` fabricated=${reviewResult.fabricatedCitations.length}` +
+              ` regenerate=${reviewResult.regenerate}`,
+          )
+        }
+
         await prisma.writingSession.update({
           where: { id: writingSession.id },
           data: {
             responseReceived: result.fullText,
             status: 'completed',
+            context: {
+              position: writingCtx.position,
+              sourcesCount: writingCtx.sources.length,
+              ragChunksCount: ragChunks.length,
+              citationCheck: {
+                total: citationCheck.totalCiteMarkers,
+                valid: citationCheck.validCiteMarkers,
+                fabricated: citationCheck.fabricatedBibIds.map((c) => c.bibId),
+                fabricatedRate: citationCheck.fabricatedRate,
+                footnotes: citationCheck.totalFootnotes,
+              },
+              ...(reviewResult ? {
+                review: {
+                  score: reviewResult.score,
+                  unsupportedClaims: reviewResult.unsupportedClaims,
+                  fabricatedCitations: reviewResult.fabricatedCitations,
+                  missingObjective: reviewResult.missingObjective,
+                  coherent: reviewResult.coherent,
+                  regenerate: reviewResult.regenerate,
+                  judgeFailed: reviewResult.judgeFailed,
+                },
+              } : {}),
+            } as unknown as object,
           },
         })
 

@@ -179,6 +179,31 @@ export function getSessionContextPrompt(
       })
       parts.push('')
     }
+
+    // CITATION-CONSTRAINED GENERATION (Stage 6 — strict whitelist).
+    // Sonnet asla bu listede olmayan bir bibId üretmemeli. Eğer iddia
+    // bu kaynaklardan desteklenmiyorsa, citation marker YAZMAMALI —
+    // uydurma marker'dan kaynaksız claim daha az zararlı.
+    const allowedBibIds = sources.map((s) => s.bibliographyId)
+    if (allowedBibIds.length > 0) {
+      parts.push('## ALLOWED_CITATIONS (strict whitelist)')
+      parts.push('')
+      parts.push('The ONLY bibIds you are permitted to use in [cite:] markers:')
+      parts.push('')
+      parts.push('```')
+      allowedBibIds.forEach((id) => parts.push(id))
+      parts.push('```')
+      parts.push('')
+      parts.push('**STRICT RULES:**')
+      parts.push('- ⛔ FORBIDDEN: inventing a bibId that is not in this list.')
+      parts.push('- ⛔ FORBIDDEN: using `[cite:xxx]` with any identifier outside this whitelist.')
+      parts.push('- ⛔ FORBIDDEN: fabricating page numbers — only cite pages that appear in the retrieved excerpts.')
+      parts.push('- ✅ If a claim is NOT supported by these sources, write it WITHOUT a citation marker. An uncited claim is acceptable; a fabricated citation is NOT.')
+      parts.push('- ✅ If you use a [fn:] fallback, format the citation literally — do NOT invent author/title/year.')
+      parts.push('')
+      parts.push('A reviewer will validate every citation marker against this whitelist. Fabricated bibIds are tracked and will trigger regeneration.')
+      parts.push('')
+    }
   }
 
   // Citation instructions + style reminders moved to cacheable system block
