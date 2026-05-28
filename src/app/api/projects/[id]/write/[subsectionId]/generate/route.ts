@@ -289,10 +289,23 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             .join('\n\n')}`
         : ''
 
-    // EVIDENCE GRAPH (Stage 4) — opsiyonel. Chunks'tan önce Haiku ile
+    // EVIDENCE GRAPH (Stage 4) — adaptive. Chunks'tan önce Haiku ile
     // claim/evidence yapısı çıkar; Sonnet ham metin yerine yapılandırılmış
-    // evidence görür. Env flag ile aç/kapa (default kapalı, deneysel).
-    const evidenceEnabled = (process.env.EVIDENCE_GRAPH_ENABLED ?? '0') === '1'
+    // evidence görür. Eval'da net pattern: tematik (4+ kaynak) sentezde
+    // ciddi pozitif, comparative'de A→B yapısını "claim soup"a çevirip
+    // negatif. Bu yüzden adaptive rule: en az 4 mapped bibliography AND
+    // comparative pattern YOK ise aç. Env flag global kill-switch.
+    const evidenceEnvOn = (process.env.EVIDENCE_GRAPH_ENABLED ?? '0') === '1'
+    const compareCorpus = [
+      subsection.title,
+      subsection.description ?? '',
+      ...(subsection.keyPoints ?? []),
+    ].join(' ').toLowerCase()
+    const isComparativeSubsection =
+      /\b(vs|versus|difference|compare|contrast|distinguish|differ)\b/i.test(compareCorpus) ||
+      /(karşılaştır|kıyas|fark|arasındaki|nasıl ayrı|ayrılık|ayrım)/i.test(compareCorpus)
+    const evidenceEnabled =
+      evidenceEnvOn && writingCtx.sources.length >= 4 && !isComparativeSubsection
     let evidenceBlock = ''
     if (evidenceEnabled && ragChunks.length > 0 && needsSources) {
       const titleToBibId = new Map<string, string>()
@@ -319,6 +332,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             ` coverage=${(graph.coverageRate * 100).toFixed(0)}%`,
         )
       }
+    } else if (evidenceEnvOn) {
+      console.log(
+        `[evidence-graph] subsection=${subsectionId} SKIPPED sources=${writingCtx.sources.length} comparative=${isComparativeSubsection}`,
+      )
     }
 
     // In continue mode prepend the existing draft so the LLM picks up
