@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, AuthError } from '@/lib/auth'
+import { AuthError, resolveUserIdForEval } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { streamChatWithUsage } from '@/lib/claude'
 import { checkCredits, deductCredits } from '@/lib/credits'
@@ -228,7 +228,12 @@ async function fetchRagChunks(
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest, ctx: RouteContext) {
   try {
-    const session = await requireAuth()
+    // Eval-mode bypass: X-Eval-Token + X-Eval-User-Id ile auth atlat.
+    // Eval mode'da: credit skip + BackgroundJob skip + SSE yerine JSON.
+    const isEvalMode =
+      !!process.env.EVAL_TOKEN &&
+      req.headers.get('x-eval-token') === process.env.EVAL_TOKEN
+    const userId = await resolveUserIdForEval(req.headers)
     const { id: projectId, subsectionId } = await ctx.params
 
     // Optional body: { mode: 'fresh' | 'continue' }. 'continue' tells the
@@ -245,7 +250,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     // Verify project ownership
     const project = await prisma.project.findFirst({
-      where: { id: projectId, userId: session.user.id },
+      where: { id: projectId, userId: userId },
       select: { id: true, projectType: true },
     })
     if (!project) {
@@ -269,7 +274,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     // RAG chunks — skip for non-academic projects
     const needsSources = project.projectType === 'ACADEMIC'
-    const ragChunks = needsSources ? await fetchRagChunks(projectId, subsectionId, session.user.id, subsection) : []
+    const ragChunks = needsSources ? await fetchRagChunks(projectId, subsectionId, userId, subsection) : []
     const ragBlock =
       ragChunks.length > 0
         ? `\n\nRELEVANT SOURCE EXCERPTS:\n${ragChunks
@@ -343,25 +348,30 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       },
     })
 
-    // Credit check
-    const credits = await checkCredits(session.user.id, 'write_subsection_alt')
-    if (!credits.allowed) {
-      return NextResponse.json(
-        { error: 'Insufficient credits', balance: credits.balance, cost: credits.estimatedCost },
-        { status: 402 }
-      )
+    // Credit check (eval-mode'da atlanır)
+    if (!isEvalMode) {
+      const credits = await checkCredits(userId, 'write_subsection_alt')
+      if (!credits.allowed) {
+        return NextResponse.json(
+          { error: 'Insufficient credits', balance: credits.balance, cost: credits.estimatedCost },
+          { status: 402 }
+        )
+      }
     }
 
     // Create a BackgroundJob so the bell can surface progress / completion.
-    const jobId = await startJob({
-      userId: session.user.id,
-      type: 'subsection',
-      title: subsection.title,
-      projectId,
-      subsectionId,
-      resultUrl: `/projects/${projectId}/write?subsection=${subsectionId}`,
-      message: 'Yazılıyor…',
-    })
+    // Eval-mode atlar — bell/notification akışı evaluation kapsamında değil.
+    const jobId = isEvalMode
+      ? ''
+      : await startJob({
+          userId: userId,
+          type: 'subsection',
+          title: subsection.title,
+          projectId,
+          subsectionId,
+          resultUrl: `/projects/${projectId}/write?subsection=${subsectionId}`,
+          message: 'Yazılıyor…',
+        })
 
     // LLM worker. Pressing the Stop button on the client aborts the
     // request — we listen for that signal to (a) cancel the LLM stream
@@ -546,18 +556,20 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           },
         })
 
-        const { newBalance, creditsUsed } = await deductCredits(
-          session.user.id,
-          'write_subsection_alt',
-          result.inputTokens,
-          result.outputTokens,
-          'sonnet',
-          { projectId, subsectionId },
-          { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
-        )
-        creditInfo = { newBalance, creditsUsed }
+        if (!isEvalMode) {
+          const { newBalance, creditsUsed } = await deductCredits(
+            userId,
+            'write_subsection_alt',
+            result.inputTokens,
+            result.outputTokens,
+            'sonnet',
+            { projectId, subsectionId },
+            { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
+          )
+          creditInfo = { newBalance, creditsUsed }
 
-        await completeJob(jobId, { message: `${wordCount} kelime yazıldı` })
+          await completeJob(jobId, { message: `${wordCount} kelime yazıldı` })
+        }
       } catch (err) {
         // AbortError is the expected path when the user pressed Stop —
         // the listener has already persisted the partial; no need to
@@ -568,7 +580,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           await prisma.writingSession
             .update({ where: { id: writingSession.id }, data: { status: 'paused' } })
             .catch(() => {})
-          await failJob(jobId, 'paused').catch(() => {})
+          if (!isEvalMode) await failJob(jobId, 'paused').catch(() => {})
           return
         }
         workError = err instanceof Error ? err.message : String(err)
@@ -578,7 +590,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         await prisma.subsection
           .update({ where: { id: subsectionId }, data: { status: 'pending' } })
           .catch(() => {})
-        await failJob(jobId, workError).catch(() => {})
+        if (!isEvalMode) await failJob(jobId, workError).catch(() => {})
       } finally {
         workDone = true
         wake()
@@ -588,6 +600,33 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Surface unhandled rejections to the log (the promise is intentionally
     // not awaited by the response path).
     workPromise.catch((err) => console.error('[generate] detached worker:', err))
+
+    // Eval-mode: SSE'i atla, workPromise bitene kadar bekle, JSON dön.
+    // Runner böylece tek çağrıda fullText + citationCheck + review skoru alır.
+    if (isEvalMode) {
+      const startMs = Date.now()
+      await workPromise
+      const latencyMs = Date.now() - startMs
+      if (workError) {
+        return NextResponse.json({ error: workError, sessionId: writingSession.id }, { status: 500 })
+      }
+      // Closure-write narrowing'den kaçınmak için tüm sonuçları DB'den oku.
+      const ws = await prisma.writingSession.findUnique({
+        where: { id: writingSession.id },
+        select: { context: true, responseReceived: true },
+      })
+      const fullText = ws?.responseReceived ?? ''
+      return NextResponse.json({
+        sessionId: writingSession.id,
+        subsectionId,
+        fullText,
+        wordCount: fullText.trim().split(/\s+/).filter(Boolean).length,
+        ragChunksCount: writingCtx.sources.length,
+        allowedBibIds: writingCtx.sources.map((s) => s.bibliographyId),
+        context: ws?.context ?? null,
+        latencyMs,
+      })
+    }
 
     // SSE stream: polls the buffer every 80ms and enqueues any new text.
     // If the client disconnects, enqueue throws — we swallow the error and
