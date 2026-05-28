@@ -100,6 +100,30 @@ export function getSessionContextPrompt(
   if (subsection.writingStrategy) {
     parts.push(`**Writing Strategy:** ${subsection.writingStrategy}`)
   }
+
+  // Comparative-structure detection (Stage 2). When the subsection asks
+  // for an X-vs-Y reading, the model otherwise tends to blend both
+  // authors in a single argumentative blob — losing the very contrast
+  // the subsection is supposed to deliver. Detect on TR/EN markers and
+  // inject a 4-block structure prompt.
+  const compareCorpus = [
+    subsection.title,
+    subsection.description ?? '',
+    subsection.whatToWrite ?? '',
+    ...(subsection.keyPoints ?? []),
+  ].join(' ').toLowerCase()
+  const isComparative = /\b(vs|versus|difference|compare|contrast|distinguish|differ)\b/i.test(compareCorpus)
+    || /\b(karşılaştır|kıyas|fark|arasındaki|nasıl ayrı|ayrılık|ayrım)/i.test(compareCorpus)
+  if (isComparative) {
+    parts.push('')
+    parts.push(`**Comparative structure (REQUIRED):** This subsection compares two or more positions. Structure the body in four explicit blocks, in this order:`)
+    parts.push(`  1. **A's position** — the first author/school in their own terms, with [cite:bibIdA,p=X] markers.`)
+    parts.push(`  2. **B's position** — the second author/school in their own terms, with [cite:bibIdB,p=X] markers.`)
+    parts.push(`  3. **Convergences** — where they agree or overlap, citing both.`)
+    parts.push(`  4. **Divergences** — where they disagree, what each rejects from the other, citing both.`)
+    parts.push(`Do NOT collapse A and B into a single synthetic blob; the contrast is the point of the subsection.`)
+  }
+
   if (subsection.estimatedPages) {
     const { wordsPerPage } = getFormatSettings(citationFormat)
     const targetWords = subsection.estimatedPages * wordsPerPage
@@ -195,13 +219,18 @@ export function getSessionContextPrompt(
       parts.push('```')
       parts.push('')
       parts.push('**STRICT RULES:**')
+      parts.push('- ⛔ FORBIDDEN: writing `[fn: ...]` markers. The system handles citation formatting — you only emit `[cite:bibId]` or `[cite:bibId,p=X]`. Any `[fn:]` marker is treated as a protocol violation.')
+      parts.push('- ⛔ FORBIDDEN: writing full bibliographic entries inline (author, title, publisher, year, page). NEVER produce "Wolfson, *The Philosophy of the Kalam* (Cambridge: Harvard University Press, 1976), 261." style text. The export pipeline generates the formatted citation from the bibId.')
       parts.push('- ⛔ FORBIDDEN: inventing a bibId that is not in this list.')
       parts.push('- ⛔ FORBIDDEN: using `[cite:xxx]` with any identifier outside this whitelist.')
       parts.push('- ⛔ FORBIDDEN: fabricating page numbers — only cite pages that appear in the retrieved excerpts.')
       parts.push('- ✅ If a claim is NOT supported by these sources, write it WITHOUT a citation marker. An uncited claim is acceptable; a fabricated citation is NOT.')
-      parts.push('- ✅ If you use a [fn:] fallback, format the citation literally — do NOT invent author/title/year.')
       parts.push('')
-      parts.push('A reviewer will validate every citation marker against this whitelist. Fabricated bibIds are tracked and will trigger regeneration.')
+      parts.push('**COVERAGE RULE (Stage 1):**')
+      parts.push('- Each bibId in the whitelist above MUST appear in at least one `[cite:bibId]` marker in your output.')
+      parts.push('- If a source genuinely cannot be cited because the retrieved excerpts do not support any relevant claim, append one sentence after the body in the form: `<!-- coverage-note: bib_xxx — açıklama -->` (HTML comment). The reviewer reads these; an empty omission counts as missed coverage.')
+      parts.push('')
+      parts.push('A reviewer validates every citation marker, checks coverage, and flags fabricated bibIds + protocol violations. Output is regenerated if violations exceed threshold.')
       parts.push('')
     }
   }
@@ -246,10 +275,7 @@ export function getSessionContextPrompt(
       })()
     )
     parts.push(
-      `Do not include the subsection heading — just the body text with footnote markers indicated as [fn: citation text].`
-    )
-    parts.push(
-      `Footnote format: Insert [fn: <citation>] immediately after the punctuation that follows the referenced claim.`
+      `Do not include the subsection heading — just the body text with structured citation markers \`[cite:bibId]\` or \`[cite:bibId,p=X]\` immediately after the punctuation that follows the cited claim. Do NOT emit \`[fn: ...]\` markers; the export pipeline turns each \`[cite:]\` into the format-correct footnote/in-text reference automatically.`
     )
   }
 
@@ -534,73 +560,28 @@ function buildPositionInstructions(position: PositionInfo): string[] {
 }
 
 function buildCitationInstructions(citationFormat: CitationFormat): string {
-  const base = `You are writing in the ${citationFormat} citation format.
+  // The downstream export pipeline takes a [cite:bibId,p=X] marker and
+  // renders it into the correct ${citationFormat} footnote / in-text
+  // reference. The LLM's only job is to emit the structured marker.
+  // Inline bibliographic strings ("Adı Soyadı, Başlık (Yer: Yayınevi…)")
+  // are FORBIDDEN — see ALLOWED_CITATIONS rules in the user prompt.
+  return `You are writing for a project whose citation format is ${citationFormat}. You DO NOT format citations yourself — the export pipeline turns each structured marker into the correct ${citationFormat} footnote, in-text, or numbered reference automatically.
 
-PREFERRED: Use structured inline citation markers. Immediately after the closing punctuation of a sentence that makes a cited claim, insert one of:
+REQUIRED citation marker syntax (and the ONLY syntax you may emit):
 
   [cite:<bibId>]              — no page
   [cite:<bibId>,p=45]         — single page
   [cite:<bibId>,pp=45-48]     — page range
   [cite:<bibId>,v=2,p=45]     — volume + page (multi-volume works)
 
-The <bibId> MUST come from the "Sources for This Subsection" list above (the string after \`bibId:\`). The export pipeline resolves these markers into the correct ${citationFormat} in-text style, footnote, or numbered reference automatically — you do NOT need to format the citation yourself.
+The <bibId> MUST come from the "Sources for This Subsection" list (the string after \`bibId:\`).
 
-FALLBACK (only if you absolutely cannot use [cite:...]): write [fn: <fully-formatted citation>] yourself. Do NOT use markdown (*italic*, **bold**) inside [fn:] markers; the export keeps that text verbatim.`
+FORBIDDEN under any circumstance:
+- \`[fn: …]\` markers (any content)
+- Inline bibliographic strings like "Wolfson, *The Philosophy of the Kalam* (Cambridge: Harvard University Press, 1976), 261." Even one such string voids the entire output.
+- Markdown emphasis inside markers.
 
-  const specifics: Partial<Record<CitationFormat, string>> = {
-    ISNAD: `ISNAD 2. Baskı kuralları:
-- Dipnotta yazar adı NORMAL sırada: Adı Soyadı (NOT Soyadı, Adı)
-- Parçalar virgülle ayrılır (nokta DEĞİL)
-- Yayınevi bilgisi parantez içinde: (Yer: Yayınevi, Yıl)
-- age/agm KULLANILMAZ, tekrarlayan atıflarda kısa başlık kullanılır
-- İlk atıf: Adı Soyadı, Başlık (Yer: Yayınevi, Yıl), Sayfa.
-- Sonraki atıf: Soyadı, KısaBaşlık, Sayfa.
-- Do NOT use markdown (*italic*, **bold**) inside [fn:] markers. Write plain text only.`,
-    APA: `APA 7: Use (Author, Year, p. X) style markers in place of footnote markers.`,
-    CHICAGO: `Chicago 17 Notes-Bibliography: Full citation on first use, short title on subsequent uses.`,
-    MLA: `MLA 9: Use (Author Page) style in-text citations. No comma between author and page number.`,
-    HARVARD: `Harvard (Cite Them Right) rules:
-- In-text citation format: (Surname Year, p. X) — e.g., (Smith 2023, p. 45)
-- Two authors: (Smith and Jones 2023)
-- Three or more authors: (Smith et al. 2023)
-- Multiple works: (Smith 2020; Jones 2023)
-- Direct quote: include page number (Smith 2023, p. 45)
-- Paraphrase: page number optional (Smith 2023)
-- Do NOT use markdown (*italic*, **bold**) inside [fn:] markers. Write plain text only.`,
-    VANCOUVER: `Vancouver/ICMJE rules:
-- Use numbered references in order of first appearance
-- Mark with superscript or bracketed numbers: [fn: 1], [fn: 2]
-- Reuse the SAME number when citing the same source again
-- Do NOT start a new number for a repeated source
-- Author format: Surname Initials (no periods) — e.g., Smith AB
-- List up to 6 authors, then "et al."
-- Do NOT use markdown inside [fn:] markers. Write plain text only.`,
-    IEEE: `IEEE citation rules:
-- Use numbered references in square brackets: [fn: [1]], [fn: [2]]
-- Number by order of first appearance; reuse same number for repeated citations
-- Author format: Initial(s). Surname — e.g., A. B. Smith
-- Article: A. B. Smith, "Article title," Journal Abbrev., vol. X, no. Y, pp. Z-W, Year.
-- Book: A. B. Smith, Book Title, Edition. City: Publisher, Year.
-- 3+ authors: first author et al.
-- Do NOT use markdown inside [fn:] markers. Write plain text only.`,
-    AMA: `AMA 11th edition rules:
-- Use superscript numbered references: [fn: 1], [fn: 2]
-- Number by order of first appearance; reuse same number
-- Place superscript after periods and commas, before colons and semicolons
-- Author format: Surname Initials (no periods) — e.g., Smith AB
-- List up to 6 authors, then "et al"
-- Journal: Author(s). Title. Journal Abbrev. Year;Vol(Issue):Pages. doi:
-- Do NOT use markdown inside [fn:] markers. Write plain text only.`,
-    TURABIAN: `Turabian 9th edition (Notes-Bibliography) rules:
-- First use: Firstname Lastname, Title (Place: Publisher, Year), Page.
-- Subsequent: Lastname, Short Title, Page.
-- Bibliography: Lastname, Firstname. Title. Place: Publisher, Year.
-- Very similar to Chicago but simplified for student papers
-- Do NOT use markdown (*italic*, **bold**) inside [fn:] markers. Write plain text only.`,
-  }
-
-  const specific = specifics[citationFormat]
-  return specific ? `${base}\n${specific}` : base
+If you genuinely cannot cite a claim, omit the citation marker entirely and rephrase the claim more cautiously. Uncited careful claims are acceptable; inline künye text is not.`
 }
 
 function buildCitationSystemNote(citationFormat: CitationFormat): string {

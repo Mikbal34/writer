@@ -540,6 +540,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
                 fabricated: citationCheck.fabricatedBibIds.map((c) => c.bibId),
                 fabricatedRate: citationCheck.fabricatedRate,
                 footnotes: citationCheck.totalFootnotes,
+                fnViolations: citationCheck.fnViolations,
+                inlineKunyeViolations: citationCheck.inlineKunyeViolations,
+                coverage: citationCheck.coverage,
+                coverageNotes: citationCheck.coverageNotes,
               },
               ...(reviewResult ? {
                 review: {

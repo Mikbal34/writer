@@ -39,6 +39,10 @@ interface EvalResult {
     fabricated: string[];
     fabricatedRate: number;
     footnotes: number;
+    fnViolations?: number;
+    inlineKunyeViolations?: number;
+    coverage?: { cited: number; total: number; missing: string[] };
+    coverageNotes?: Array<{ bibId: string; reason: string }>;
   };
   review?: {
     score: number;
@@ -53,8 +57,17 @@ interface EvalResult {
 }
 
 async function loadSubsections(projectId: string): Promise<Subsection[]> {
-  const sql = `SELECT sub.id || '|' || sub."subsectionId" || '|' || REPLACE(sub.title, '|', '/') || '|' || COUNT(sm.id) FROM "Subsection" sub JOIN "Section" s ON sub."sectionId"=s.id JOIN "Chapter" c ON s."chapterId"=c.id LEFT JOIN "SourceMapping" sm ON sm."subsectionId"=sub.id WHERE c."projectId"='${projectId}' GROUP BY sub.id, sub."subsectionId", sub.title, sub."sortOrder" ORDER BY sub."sortOrder";`;
-  const cmd = `${SSH} "${PSQL} -t -A -c \\"${sql}\\""`;
+  const sql = `SELECT sub.id || '|' || sub."subsectionId" || '|' || REPLACE(sub.title, '|', '/') || '|' || COUNT(sm.id)
+FROM "Subsection" sub
+JOIN "Section" s ON sub."sectionId"=s.id
+JOIN "Chapter" c ON s."chapterId"=c.id
+LEFT JOIN "SourceMapping" sm ON sm."subsectionId"=sub.id
+WHERE c."projectId"='${projectId}'
+GROUP BY sub.id, sub."subsectionId", sub.title, sub."sortOrder"
+ORDER BY sub."sortOrder";`;
+  writeFileSync("/tmp/_load-subs.sql", sql);
+  execSync(`scp -i ~/.ssh/quilpen.pem /tmp/_load-subs.sql azureuser@4.180.10.105:/tmp/`, { stdio: "ignore" });
+  const cmd = `${SSH} 'sudo docker cp /tmp/_load-subs.sql quilpen-postgres-1:/tmp/ && ${PSQL} -t -A -f /tmp/_load-subs.sql'`;
   const raw = execSync(cmd, { encoding: "utf-8" }).trim();
   return raw
     .split("\n")
@@ -153,8 +166,11 @@ async function main() {
     const r = await runSubsection(projectId, sub);
     results.push(r);
     if (r.status === "ok") {
+      const cov = r.citation?.coverage
+        ? `cov=${r.citation.coverage.cited}/${r.citation.coverage.total}`
+        : "cov=?";
       const cit = r.citation
-        ? `cite_valid=${fmtPct(r.citation.valid / Math.max(1, r.citation.total))} fabricated=${r.citation.fabricated.length}`
+        ? `cite_valid=${fmtPct(r.citation.valid / Math.max(1, r.citation.total))} ${cov} fn=${r.citation.fnViolations ?? r.citation.footnotes} künye=${r.citation.inlineKunyeViolations ?? 0}`
         : "no-cite-meta";
       const rev = r.review ? `review=${fmtScore(r.review.score)}` : "no-review";
       console.log(`✓ ${r.wordCount}w, ${(r.latencyMs / 1000).toFixed(1)}s, ${cit}, ${rev}`);
