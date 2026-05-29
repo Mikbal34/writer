@@ -218,8 +218,4 @@ export interface WritingContext {
   projectType: ProjectType
   /** Style profile (may be partial) — Writing Twin (stable personal habits) */
   styleProfile: Partial<StyleProfile> | null
-  /** Project-scoped style overrides — hard rules that win over the Twin */
-  styleOverrides: Partial<ProjectStyleOverrides> | null
-  /** Any other free-form writingGuidelines (non-styleOverrides namespace) */
-  writingGuidelines: string | null
 }

@@ -16,7 +16,6 @@ import {
   X,
   Paintbrush,
   BookmarkCheck,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CreditBalance from "@/components/shared/CreditBalance";
@@ -95,12 +94,6 @@ export default function ProjectSidebar({
       label: "Dashboard",
       href: `/projects/${projectId}`,
       icon: <LayoutDashboard className="w-4 h-4" />,
-      statusKey: "roadmap",
-    },
-    {
-      label: "Stil",
-      href: `/projects/${projectId}/style`,
-      icon: <Sparkles className="w-4 h-4" />,
       statusKey: "roadmap",
     },
     {

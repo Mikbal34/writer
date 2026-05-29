@@ -10,7 +10,6 @@
 import type {
   WritingContext,
   StyleProfile,
-  ProjectStyleOverrides,
   SubsectionFull,
   SectionWithSubsections,
   ChapterWithSections,
@@ -38,8 +37,6 @@ export function getWritingPrompt(context: WritingContext): {
     context.projectType,
     context.styleProfile,
     context.citationFormat,
-    context.writingGuidelines,
-    context.styleOverrides,
   )
 
   const userPrompt = getSessionContextPrompt(
@@ -399,8 +396,6 @@ function buildSystemPromptParts(
   projectType: ProjectType,
   styleProfile: Partial<StyleProfile> | null,
   citationFormat: CitationFormat,
-  writingGuidelines: string | null,
-  styleOverrides: Partial<ProjectStyleOverrides> | null,
 ): SystemPromptPart[] {
   // --- Part 1: Core rules (cacheable, same across project) ---
   const coreLines: string[] = []
@@ -485,56 +480,6 @@ function buildSystemPromptParts(
       coreLines.push(`## Voice`)
       coreLines.push(...styleBullets)
     }
-  }
-
-  // Project-scoped style overrides are HARD RULES for this manuscript.
-  // They override any matching field on the Writing Twin above. Format
-  // them as a tight block the model can scan in one pass.
-  if (styleOverrides && Object.keys(styleOverrides).length > 0) {
-    const lines: string[] = []
-    if (styleOverrides.tone) lines.push(`- Tone: **${styleOverrides.tone}**`)
-    if (typeof styleOverrides.formality === 'number') {
-      lines.push(`- Formality: **${styleOverrides.formality}/10**`)
-    }
-    if (styleOverrides.usesFirstPerson !== undefined) {
-      lines.push(
-        `- First person: **${styleOverrides.usesFirstPerson ? 'allowed' : 'disallowed'}**`,
-      )
-    }
-    if (styleOverrides.voicePreference) {
-      lines.push(`- Voice: **${styleOverrides.voicePreference}**`)
-    }
-    if (styleOverrides.terminologyDensity) {
-      lines.push(`- Terminology density: **${styleOverrides.terminologyDensity}**`)
-    }
-    if (styleOverrides.citationDensity) {
-      lines.push(`- Citation density: **${styleOverrides.citationDensity}** (citations per paragraph the AI should target)`)
-    }
-    if (styleOverrides.paragraphLength) {
-      lines.push(`- Paragraph length: **${styleOverrides.paragraphLength}**`)
-    }
-    if (styleOverrides.usesBlockQuotes !== undefined) {
-      lines.push(
-        `- Block quotes for long quotations: **${styleOverrides.usesBlockQuotes ? 'yes' : 'no'}**`,
-      )
-    }
-    if (styleOverrides.notes) {
-      lines.push(`- Notes: ${styleOverrides.notes}`)
-    }
-    if (lines.length > 0) {
-      coreLines.push('')
-      coreLines.push(`## Project Style Overrides (HARD RULES for this project)`)
-      coreLines.push(
-        'These override any matching trait on the Writing Twin. Follow them strictly.',
-      )
-      coreLines.push(...lines)
-    }
-  }
-
-  if (writingGuidelines) {
-    coreLines.push('')
-    coreLines.push(`## Additional Project Guidelines`)
-    coreLines.push(writingGuidelines)
   }
 
   if (projectType === 'ACADEMIC') {
