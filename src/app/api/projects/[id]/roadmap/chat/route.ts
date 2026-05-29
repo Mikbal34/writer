@@ -327,7 +327,13 @@ Available commands:
   const toolsSection = needsSources
     ? `TOOLS:
 - Use get_library_entries to search the user's source library before adding sources. Always check the library first.
-${isCreationMode ? '' : '- Use get_chapter_detail to retrieve full details of a specific chapter when you need to modify it. Only fetch chapters you need.\n'}`
+${isCreationMode ? '' : '- Use get_chapter_detail to retrieve full details of a specific chapter when you need to modify it. Only fetch chapters you need.\n'}
+TOOL DISCIPLINE (CRITICAL — read carefully):
+- When you tell the user you will search the library ("Şimdi tarayacağım", "Kütüphaneye bakıyorum", "Let me search", "I'll look up", etc.), you MUST emit the get_library_entries tool_use call IN THE SAME RESPONSE — not in the next one.
+- NEVER promise a search in plain text and then end the turn without the actual tool call. That breaks the user's flow and forces them to ask again.
+- If the user says "tara", "ara", "bul", "search", "find", "aratır mısın", "kütüphanede ne var" — call get_library_entries IMMEDIATELY in your next response. Do NOT prefix with prose like "Tabii, hemen tarıyorum…" — go straight to the tool call.
+- If your previous reply said you would search but the actual search did not happen, your next reply MUST start with the tool call before any text.
+`
     : isCreationMode ? '' : `TOOLS:
 - Use get_chapter_detail to retrieve full details of a specific chapter when you need to modify it. Only fetch chapters you need.\n`
 
@@ -1167,6 +1173,32 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       wake()
     }
 
+    // Tool-choice nudge: if the user's last turn clearly asks for a
+    // library search (or AI promised one in its previous turn), force
+    // Sonnet to call get_library_entries on the first iteration.
+    // Otherwise leave tool_choice unset ("auto") so the model decides.
+    const libSearchPattern =
+      /\b(tara|tarayın|tarayın\s*mı|tarama|aratır|aratırsın|aratayım|ara|bul|search|find|look\s*up|kütüphan|library)\b/i
+    const lastUserMessage = [...compressedMessages]
+      .reverse()
+      .find((m) => m.role === 'user')
+    const lastAssistantMessage = [...compressedMessages]
+      .reverse()
+      .find((m) => m.role === 'assistant')
+    const promisedSearch =
+      typeof lastAssistantMessage?.content === 'string' &&
+      /(şimdi\s*tarayacağım|kütüphane(ni)?z(?:i)?\s*tar|let\s*me\s*search|i'?ll\s*search)/i.test(
+        lastAssistantMessage.content,
+      )
+    const userAsksSearch =
+      typeof lastUserMessage?.content === 'string' &&
+      libSearchPattern.test(lastUserMessage.content)
+    const hasLibraryTool = tools.some((t) => t.name === 'get_library_entries')
+    const initialToolChoice: { type: 'tool'; name: string } | undefined =
+      hasLibraryTool && (userAsksSearch || promisedSearch)
+        ? { type: 'tool', name: 'get_library_entries' }
+        : undefined
+
     // Detached LLM worker — survives client disconnect.
     const workPromise = (async () => {
       try {
@@ -1177,7 +1209,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           (toolName, toolInput) => handleToolCallFn(toolName, toolInput, projectId, session.user.id),
           (chunk) => enqueueEvent({ chunk }),
           (toolName) => enqueueEvent({ step: 'thinking', tool: toolName }),
-          { cacheTools: true }
+          { cacheTools: true, ...(initialToolChoice && { initialToolChoice }) }
         )
 
         const { newBalance, creditsUsed } = await deductCredits(

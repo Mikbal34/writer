@@ -147,7 +147,23 @@ export async function streamChatWithTools(
   handleToolCall: (toolName: string, toolInput: Record<string, unknown>) => Promise<string>,
   onChunk?: (text: string) => void,
   onToolCall?: (toolName: string) => void,
-  options?: { model?: string; maxIterations?: number; maxToolResultChars?: number; cacheTools?: boolean }
+  options?: {
+    model?: string
+    maxIterations?: number
+    maxToolResultChars?: number
+    cacheTools?: boolean
+    /**
+     * Force Anthropic's tool_choice for the FIRST iteration only.
+     * Use this when the user's last message clearly demands a specific
+     * tool (e.g. "tara"/"search" → get_library_entries). After the first
+     * iteration the model auto-decides whether to emit more tool calls or
+     * close the turn with text.
+     */
+    initialToolChoice?:
+      | { type: 'auto' }
+      | { type: 'any' }
+      | { type: 'tool'; name: string }
+  }
 ): Promise<StreamResult> {
   const client = createClaudeClient()
   const model = options?.model ?? SONNET
@@ -177,12 +193,19 @@ export async function streamChatWithTools(
   }))
 
   for (let i = 0; i < maxIterations; i++) {
+    // tool_choice only applied on the FIRST iteration. After Sonnet
+    // emits a tool_use, subsequent iterations should be free to either
+    // call more tools OR close the turn with text — forcing tool_choice
+    // throughout would loop indefinitely on small libraries.
+    const toolChoiceForThisIter =
+      i === 0 && options?.initialToolChoice ? options.initialToolChoice : undefined
     const response = await client.messages.create({
       model,
       max_tokens: 32768,
       system: buildSystemParam(systemPrompt),
       messages: apiMessages,
       tools: apiTools,
+      ...(toolChoiceForThisIter && { tool_choice: toolChoiceForThisIter }),
       stream: true,
     })
 
