@@ -620,14 +620,11 @@ function extractSubsectionsFromCommands(
         }
         break
       }
-      case 'update_subsection': {
-        const fields = cmd.fields as Record<string, unknown> | undefined
-        // Update sadece tek subsection'ı etkiliyor — onun bütüncül
-        // metadata'sını bilemediğimiz için "fields"ı subsection gibi
-        // muamele edip validator'a sun (subId boş).
-        if (fields) push(fields)
-        break
-      }
+      // update_subsection validator dışında — kısmi field güncellemesi
+      // (ör. sadece sectionGoal gönderildi, depth atlandı) batch genel
+      // analizinde yanlış pozitif (all depth=3) tetikler. Validator
+      // yalnızca YENİ eklenen subsection'lara odaklanır; mevcut
+      // subsection düzeltmeleri rule kapsamı dışı.
     }
   }
   return out
