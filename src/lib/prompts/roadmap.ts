@@ -45,6 +45,19 @@ interface BookSubsection {
   keyPoints: string[]  // 3–6 key arguments or points to make
   writingStrategy: string  // How to approach writing this subsection
   estimatedPages: number   // Realistic page estimate (typically 2–5)
+  synthesisMode: 'SPECIFIC' | 'THEMATIC' | 'COMPARATIVE'
+  // Synthesis strategy — picked by YOU based on what this subsection
+  // demands intellectually. Drives a downstream synthesis-planner agent.
+  //   SPECIFIC    → 1-3 sources, single-text or single-author analysis,
+  //                 introductions, definitions, narrow technical points.
+  //   THEMATIC    → 4+ sources discussed together; expects the writer to
+  //                 map a field (positions, common ground, divergences,
+  //                 historical shift). Use for "X tradition", "literature
+  //                 of Y", "approaches to Z".
+  //   COMPARATIVE → Explicit X-vs-Y framing (two sides, often two
+  //                 thinkers/schools). Subsection title or description
+  //                 contains "fark", "vs", "karşılaştırma", "ayrılık",
+  //                 "difference", "compare", etc.
   sources: {
     classical: Array<{ author: string; work: string; relevance: string; priority: 'primary' | 'supporting' }>
     modern:    Array<{ author: string; work: string; relevance: string; priority: 'primary' | 'supporting' }>
@@ -80,6 +93,7 @@ interface BookStructure {
 - Section IDs must follow "chapter.section" (e.g., 1.1, 1.2).
 - Include an introductory chapter (Chapter 1) and a conclusion chapter as appropriate.
 - Source suggestions should be realistic for the topic — use well-known scholars and works where possible.
+- synthesisMode is REQUIRED on every subsection. Pick honestly: SPECIFIC by default; THEMATIC when 4+ sources are discussed together and the subsection demands field-mapping; COMPARATIVE only when the subsection is structured around a head-to-head between two thinkers/schools/positions.
 - Return ONLY the JSON object. No markdown fences, no preamble.`
 }
 

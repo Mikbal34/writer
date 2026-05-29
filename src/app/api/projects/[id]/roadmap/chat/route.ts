@@ -312,14 +312,14 @@ SOURCE RULES:
 
   const commandDocs = `
 Available commands:
-- {"action": "update_subsection", "subsectionDbId": "...", "fields": {"title?": "...", "description?": "...", "whatToWrite?": "...", "keyPoints?": [...], "writingStrategy?": "...", "estimatedPages?": N}}
-- {"action": "add_subsection", "sectionDbId": "...", "subsection": {"subsectionId": "1.1.4", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}}
+- {"action": "update_subsection", "subsectionDbId": "...", "fields": {"title?": "...", "description?": "...", "whatToWrite?": "...", "keyPoints?": [...], "writingStrategy?": "...", "estimatedPages?": N, "synthesisMode?": "SPECIFIC|THEMATIC|COMPARATIVE"}}
+- {"action": "add_subsection", "sectionDbId": "...", "subsection": {"subsectionId": "1.1.4", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE"${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}}
 - {"action": "remove_subsection", "subsectionDbId": "..."}
 - {"action": "update_section", "sectionDbId": "...", "fields": {"title?": "...", "keyConcepts?": [...]}}
-- {"action": "add_section", "chapterDbId": "...", "section": {"sectionId": "1.3", "title": "...", "keyConcepts": [...]}, "subsections": [{"subsectionId": "1.3.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N}]}
+- {"action": "add_section", "chapterDbId": "...", "section": {"sectionId": "1.3", "title": "...", "keyConcepts": [...]}, "subsections": [{"subsectionId": "1.3.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE"}]}
 - {"action": "remove_section", "sectionDbId": "..."}
 - {"action": "update_chapter", "chapterDbId": "...", "fields": {"title?": "...", "purpose?": "...", "estimatedPages?": N}}
-- {"action": "add_chapter", "chapter": {"number": N, "title": "...", "purpose": "...", "estimatedPages": N}, "tempId": "__temp_ch_1", "sections": [{"sectionId": "1.1", "title": "...", "keyConcepts": [...], "tempId": "__temp_sec_1_1", "subsections": [{"subsectionId": "1.1.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}]}]}
+- {"action": "add_chapter", "chapter": {"number": N, "title": "...", "purpose": "...", "estimatedPages": N}, "tempId": "__temp_ch_1", "sections": [{"sectionId": "1.1", "title": "...", "keyConcepts": [...], "tempId": "__temp_sec_1_1", "subsections": [{"subsectionId": "1.1.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE"${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}]}]}
 - {"action": "remove_chapter", "chapterDbId": "..."}
 - {"action": "move_section", "sectionDbId": "...", "targetChapterDbId": "..."}${sourceCommandDocs}
 - {"action": "update_project", "fields": {"topic?": "...", "purpose?": "...", "audience?": "...", "styleProfile?": {"narrativePOV?": "...", "genre?": "...", "dialogueStyle?": "...", "pacing?": "...", "moodAtmosphere?": "...", "targetAgeGroup?": "...", "narrativeStyle?": "...", "tone?": "..."}}}${sourceRules}`
@@ -378,6 +378,10 @@ Each subsection you describe will later become a writing-session prompt. Give th
 - keyPoints: 2-5 bullets naming the ideas the subsection must cover. Each bullet should be concrete enough that a writer cannot reasonably miss its target.
 - writingStrategy: one or two sentences on tone, structure, or pacing for this specific subsection — what makes THIS subsection different from its neighbours.
 - estimatedPages: your best page-count estimate in whole pages.
+- synthesisMode: pick honestly per subsection.
+   • SPECIFIC: 1-3 sources, single-text / single-author analysis, introductions, definitions, narrow technical points. This is the safe default.
+   • THEMATIC: the subsection must MAP A FIELD across 4+ sources — positions, common ground, divergences, possible historical shift. Use for "X tradition", "Y literature", "approaches to Z", synthesis / conclusion subsections.
+   • COMPARATIVE: an explicit X-vs-Y framing (two thinkers, two schools, two positions). Title or description contains language like "fark", "vs", "karşılaştırma", "ayrılık", "difference", "compare". Picks here trigger a downstream agent that builds the contrast skeleton (sideA / sideB / convergences / difference / significance) before writing.
 When you are not given enough information to fill a field responsibly, write your best estimate and flag the assumption; do not leave the field empty.
 
 COMMON ROADMAP PITFALLS
@@ -616,6 +620,10 @@ async function applyCommands(
             ...(fields.keyPoints !== undefined && { keyPoints: fields.keyPoints as string[] }),
             ...(fields.writingStrategy !== undefined && { writingStrategy: fields.writingStrategy as string }),
             ...(fields.estimatedPages !== undefined && { estimatedPages: fields.estimatedPages as number }),
+            ...(typeof fields.synthesisMode === 'string' &&
+              (fields.synthesisMode === 'THEMATIC' || fields.synthesisMode === 'COMPARATIVE' || fields.synthesisMode === 'SPECIFIC') && {
+                synthesisMode: fields.synthesisMode,
+              }),
           },
         })
         break
@@ -644,6 +652,7 @@ async function applyCommands(
         const newSubId = parentSection
           ? `${parentSection.sectionId}.${maxSuffix + 1}`
           : `${maxSuffix + 1}`
+        const subSm = sub.synthesisMode
         const subsection = await tx.subsection.create({
           data: {
             sectionId: sectionDbId,
@@ -654,6 +663,8 @@ async function applyCommands(
             keyPoints: (sub.keyPoints as string[]) ?? [],
             writingStrategy: (sub.writingStrategy as string) ?? null,
             estimatedPages: (sub.estimatedPages as number) ?? null,
+            synthesisMode:
+              subSm === 'THEMATIC' || subSm === 'COMPARATIVE' ? subSm : 'SPECIFIC',
             sortOrder: nextOrder,
             status: 'pending',
           },
@@ -722,6 +733,7 @@ async function applyCommands(
         const subsections = (cmd.subsections ?? sec.subsections) as Array<Record<string, unknown>> | undefined
         if (subsections && Array.isArray(subsections)) {
           for (const [subIdx, sub] of subsections.entries()) {
+            const sm = sub.synthesisMode
             const subsec = await tx.subsection.create({
               data: {
                 sectionId: section.id,
@@ -732,6 +744,7 @@ async function applyCommands(
                 keyPoints: (sub.keyPoints as string[]) ?? [],
                 writingStrategy: (sub.writingStrategy as string) ?? null,
                 estimatedPages: (sub.estimatedPages as number) ?? null,
+                synthesisMode: sm === 'THEMATIC' || sm === 'COMPARATIVE' ? sm : 'SPECIFIC',
                 sortOrder: subIdx,
                 status: 'pending',
               },
@@ -813,6 +826,7 @@ async function applyCommands(
             const subsections = sec.subsections as Array<Record<string, unknown>> | undefined
             if (subsections && Array.isArray(subsections)) {
               for (const [subIdx, sub] of subsections.entries()) {
+                const sm = sub.synthesisMode
                 const subsec = await tx.subsection.create({
                   data: {
                     sectionId: section.id,
@@ -823,6 +837,8 @@ async function applyCommands(
                     keyPoints: (sub.keyPoints as string[]) ?? [],
                     writingStrategy: (sub.writingStrategy as string) ?? null,
                     estimatedPages: (sub.estimatedPages as number) ?? null,
+                    synthesisMode:
+                      sm === 'THEMATIC' || sm === 'COMPARATIVE' ? sm : 'SPECIFIC',
                     sortOrder: subIdx,
                     status: 'pending',
                   },

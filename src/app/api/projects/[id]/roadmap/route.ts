@@ -147,6 +147,9 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
           })
 
           for (const [subIndex, bookSub] of bookSection.subsections.entries()) {
+            const sm = (bookSub as { synthesisMode?: string }).synthesisMode
+            const synthesisMode =
+              sm === 'THEMATIC' || sm === 'COMPARATIVE' ? sm : 'SPECIFIC'
             const subsection = await tx.subsection.create({
               data: {
                 sectionId: section.id,
@@ -157,6 +160,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
                 keyPoints: bookSub.keyPoints ?? [],
                 writingStrategy: bookSub.writingStrategy,
                 estimatedPages: bookSub.estimatedPages,
+                synthesisMode,
                 sortOrder: subIndex,
                 status: 'pending',
               },

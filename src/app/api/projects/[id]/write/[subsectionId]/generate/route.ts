@@ -11,6 +11,7 @@ import { retrieveLibraryChunks } from '@/lib/library-retrieval'
 import { validateCitations } from '@/lib/citation-validator'
 import { reviewSubsection } from '@/lib/writing-reviewer'
 import { buildEvidenceGraph, formatEvidenceForPrompt } from '@/lib/evidence-graph'
+import { buildSynthesisPlan, formatPlanForPrompt, type SynthesisMode } from '@/lib/synthesis-planner'
 
 type RouteContext = { params: Promise<{ id: string; subsectionId: string }> }
 
@@ -338,6 +339,47 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       )
     }
 
+    // SYNTHESIS PLANNER — pipeline'ın "düşünme" katmanı. Ham source listesi
+    // yerine Writer'a anlaşma/çatışma/sonuç haritası verir, böylece çıktı
+    // "Mâtürîdî diyor ki, Rudolph diyor ki" akışından "iki yaklaşım şu
+    // noktada örtüşür, şu noktada ayrılır, dolayısıyla..." akışına geçer.
+    // synthesisMode roadmap tarafından otomatik atanıyor (SPECIFIC default).
+    const synthesisMode: SynthesisMode = subsection.synthesisMode ?? 'SPECIFIC'
+    let synthesisBlock = ''
+    if (
+      needsSources &&
+      ragChunks.length > 0 &&
+      (synthesisMode === 'THEMATIC' || synthesisMode === 'COMPARATIVE')
+    ) {
+      const titleToBibId = new Map<string, string>()
+      for (const s of writingCtx.sources) titleToBibId.set(s.title, s.bibliographyId)
+      const subsectionObjective = [
+        subsection.description,
+        ...(subsection.keyPoints ?? []),
+      ]
+        .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+        .join('\n')
+      const planResult = await buildSynthesisPlan({
+        subsectionTitle: subsection.title,
+        subsectionObjective,
+        mode: synthesisMode,
+        chunks: ragChunks.map((c) => ({
+          bibId: titleToBibId.get(c.sourceTitle) ?? 'unknown',
+          sourceTitle: c.sourceTitle,
+          page: c.pdfPageLabel ?? (c.pageNumber !== null ? String(c.pageNumber) : null),
+          content: c.content,
+        })),
+      })
+      if (!planResult.failed) {
+        synthesisBlock = '\n\n' + formatPlanForPrompt(planResult)
+        console.log(`[synthesis-planner] subsection=${subsectionId} mode=${synthesisMode} OK`)
+      } else {
+        console.warn(
+          `[synthesis-planner] subsection=${subsectionId} mode=${synthesisMode} FAILED: ${planResult.reason}`,
+        )
+      }
+    }
+
     // In continue mode prepend the existing draft so the LLM picks up
     // exactly where it left off without paraphrasing or repeating.
     const existingContent = mode === 'continue' ? subsection.content?.trim() ?? '' : ''
@@ -345,7 +387,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       mode === 'continue' && existingContent
         ? `\n\nÖNCEDEN YAZILMIŞ KISIM (bu metnin tam devamını yaz; tekrar etme, özetleme — bittiği yerden doğal cümleyle bağla):\n\n${existingContent}`
         : ''
-    const fullUserPrompt = userPrompt + ragBlock + evidenceBlock + continuationBlock
+    const fullUserPrompt =
+      userPrompt + ragBlock + evidenceBlock + synthesisBlock + continuationBlock
 
     // Create writing session record
     const writingSession = await prisma.writingSession.create({
@@ -551,6 +594,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
               position: writingCtx.position,
               sourcesCount: writingCtx.sources.length,
               ragChunksCount: ragChunks.length,
+              synthesisMode,
+              synthesisPlanned: synthesisBlock.length > 0,
               citationCheck: {
                 total: citationCheck.totalCiteMarkers,
                 valid: citationCheck.validCiteMarkers,
