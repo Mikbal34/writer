@@ -8,6 +8,13 @@ import { checkCredits, deductCredits } from '@/lib/credits'
 import { getFormatSettings } from '@/lib/constants'
 import { findOrCreateBibliography } from '@/lib/bibliography'
 import { startJob, completeJob, failJob } from '@/lib/jobs'
+import {
+  validateRoadmapBatch,
+  formatValidationFeedback,
+  type ValidatedSubsection,
+  type SynthesisMode as VMode,
+  type SectionGoal as VGoal,
+} from '@/lib/roadmap-validator'
 import type { Prisma } from '@prisma/client'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -385,6 +392,15 @@ Each subsection you describe will later become a writing-session prompt. Give th
 - writingStrategy: one or two sentences on tone, structure, or pacing for this specific subsection — what makes THIS subsection different from its neighbours.
 - estimatedPages: your best page-count estimate in whole pages.
 - synthesisMode + sectionGoal + analysisDepth: pair them honestly per subsection. synthesisMode = epistemik YAPI (nasıl), sectionGoal = bölüm içindeki GÖREV (neden), depth = yorum yoğunluğu. Bu üç eksen ayrıdır; karıştırma. sectionGoal one of: DEFINE / CONTEXT / COMPARE / SYNTHESIZE / LITERATURE_GAP / THESIS_CONCLUSION. THESIS_CONCLUSION goal'ı tez başına 0-2 subsection — her chapter sonu THESIS_CONCLUSION DEĞİL.
+
+METADATA DISCIPLINE (KRİTİK — automated quality gate aktiftir):
+- DEFINE ve depth=3 SADECE şema default'larıdır; OTOMATİK seçim değil. Her subsection için ayrı düşün.
+- Bir roadmap'te TÜM subsection'ların sectionGoal=DEFINE olması → roadmap REDDEDİLİR (kaydedilmez).
+- Bir roadmap'te TÜM subsection'ların analysisDepth=3 olması → roadmap REDDEDİLİR.
+- synthesisMode=COMPARATIVE subsection'larının goal'u GENELLİKLE COMPARE'dir (sentez ise SYNTHESIZE). 5+ COMPARATIVE varsa en az biri COMPARE olmazsa REDDEDİLİR.
+- 20+ subsection üretildiyse en az 1 THESIS_CONCLUSION beklenir (tezin payoff'u). 3+ THEMATIC varsa en az biri SYNTHESIZE veya LITERATURE_GAP olmalıdır.
+- BÖLÜM SONU subsection'larını özellikle incele: çoğunlukla SYNTHESIZE veya THESIS_CONCLUSION goal'u içerir; analysisDepth 7-9 aralığındadır. Mekanik DEFINE/3 atama burada kesin yanlıştır.
+- Karşılaştırma bölümleri → COMPARE (depth 5-6). Literatür değerlendirmesi → LITERATURE_GAP (depth 5-7). Tarihsel/bağlamsal bölümler → CONTEXT (depth 3-5). Tek metin / tek kavram → DEFINE (depth 1-3). Tezin nihai sonucu → THESIS_CONCLUSION (depth 8-10).
    • SPECIFIC (depth 1-3): 1-3 sources, single-text / single-author analysis, introductions, definitions, narrow technical points. Default for routine subsections. Low depth tells the writer "stay descriptive, no interpretive padding".
    • THEMATIC (depth 5-7): the subsection must MAP A FIELD across 4+ sources — positions, common ground, divergences, possible historical shift. Use for "X tradition", "Y literature", "approaches to Z".
    • COMPARATIVE (depth 4-6): an explicit X-vs-Y framing (two thinkers, two schools, two positions). Title or description contains language like "fark", "vs", "karşılaştırma", "ayrılık", "difference", "compare". Triggers a downstream agent that builds the contrast skeleton (sideA / sideB / convergences / difference / significance / implications) before writing.
@@ -534,6 +550,89 @@ Project information:
 // ---------------------------------------------------------------------------
 // Parse <roadmap_commands> from the AI response
 // ---------------------------------------------------------------------------
+// Batch'teki TÜM yeni subsection metadata'sını topla. Yeni eklenen
+// (add_subsection / add_section.subsections / add_chapter.sections[].
+// subsections) ve update_subsection.fields kapsam içinde. Eksik mode/
+// goal/depth field'ları default'a düşer — bu, validator'un yakalamak
+// istediği davranıştır.
+function extractSubsectionsFromCommands(
+  commands: Array<Record<string, unknown>>,
+): ValidatedSubsection[] {
+  const out: ValidatedSubsection[] = []
+  const allowedModes: VMode[] = ['SPECIFIC', 'THEMATIC', 'COMPARATIVE', 'SYNTHESIS']
+  const allowedGoals: VGoal[] = [
+    'DEFINE',
+    'CONTEXT',
+    'COMPARE',
+    'SYNTHESIZE',
+    'LITERATURE_GAP',
+    'THESIS_CONCLUSION',
+  ]
+  const push = (sub: Record<string, unknown>) => {
+    if (!sub) return
+    const rawMode = sub.synthesisMode
+    const mode: VMode = allowedModes.includes(rawMode as VMode)
+      ? (rawMode as VMode)
+      : 'SPECIFIC'
+    const rawGoal = sub.sectionGoal
+    const goal: VGoal = allowedGoals.includes(rawGoal as VGoal)
+      ? (rawGoal as VGoal)
+      : 'DEFINE'
+    const rawDepth = sub.analysisDepth
+    const depth =
+      typeof rawDepth === 'number'
+        ? Math.min(10, Math.max(0, Math.round(rawDepth)))
+        : 3
+    out.push({
+      subsectionId: typeof sub.subsectionId === 'string' ? sub.subsectionId : '',
+      title: typeof sub.title === 'string' ? sub.title : '',
+      synthesisMode: mode,
+      sectionGoal: goal,
+      analysisDepth: depth,
+    })
+  }
+  for (const cmd of commands) {
+    switch (cmd.action) {
+      case 'add_subsection': {
+        const sub = cmd.subsection as Record<string, unknown> | undefined
+        if (sub) push(sub)
+        break
+      }
+      case 'add_section': {
+        const subs = cmd.subsections as Array<Record<string, unknown>> | undefined
+        if (Array.isArray(subs)) subs.forEach(push)
+        const sec = cmd.section as { subsections?: Array<Record<string, unknown>> } | undefined
+        if (Array.isArray(sec?.subsections)) sec.subsections.forEach(push)
+        break
+      }
+      case 'add_chapter': {
+        const sections = cmd.sections as Array<{ subsections?: Array<Record<string, unknown>> }> | undefined
+        if (Array.isArray(sections)) {
+          for (const sec of sections) {
+            if (Array.isArray(sec?.subsections)) sec.subsections.forEach(push)
+          }
+        }
+        const chap = cmd.chapter as { sections?: Array<{ subsections?: Array<Record<string, unknown>> }> } | undefined
+        if (Array.isArray(chap?.sections)) {
+          for (const sec of chap.sections) {
+            if (Array.isArray(sec?.subsections)) sec.subsections.forEach(push)
+          }
+        }
+        break
+      }
+      case 'update_subsection': {
+        const fields = cmd.fields as Record<string, unknown> | undefined
+        // Update sadece tek subsection'ı etkiliyor — onun bütüncül
+        // metadata'sını bilemediğimiz için "fields"ı subsection gibi
+        // muamele edip validator'a sun (subId boş).
+        if (fields) push(fields)
+        break
+      }
+    }
+  }
+  return out
+}
+
 function parseCommands(text: string): Array<Record<string, unknown>> {
   const match = text.match(/<roadmap_commands>\s*([\s\S]*?)\s*<\/roadmap_commands>/)
   if (!match) return []
@@ -1226,23 +1325,49 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         let commandsApplied = false
 
         if (commands.length > 0) {
-          enqueueEvent({ step: 'applying' })
-          try {
-            await prisma.$transaction(async (tx) => {
-              await applyCommands(tx, projectId, commands, session.user.id)
-            })
-            commandsApplied = true
-            // Bust the App Router cache for every page under /projects/[id]
-            // (write, preview, design, sources, …) so they re-fetch the
-            // freshly mutated chapter/section/subsection rows on next nav.
-            revalidatePath(`/projects/${projectId}`, 'layout')
-          } catch (cmdErr) {
-            console.error('[roadmap/chat] Failed to apply commands:', cmdErr)
+          // Quality gate — extract all subsection metadata from the batch
+          // and run the V4 validator. Reject blocks the transaction and
+          // surfaces actionable feedback so the user sees why nothing
+          // was saved.
+          const batchSubs = extractSubsectionsFromCommands(commands)
+          const validation = validateRoadmapBatch(batchSubs)
+
+          if (!validation.ok) {
+            const feedback = formatValidationFeedback(validation)
+            console.warn(
+              `[roadmap/chat] Validation REJECTED. subs=${batchSubs.length} rejects=${validation.rejects.length} warns=${validation.warnings.length}`,
+            )
             enqueueEvent({
-              chunk: '\n\n[An error occurred while applying commands. Please try again.]',
+              chunk: `\n\n[Roadmap kalite kontrolünden geçemedi — kaydedilmedi.]\n\n${feedback}`,
             })
+            enqueueEvent({ step: 'applied' })
+          } else {
+            if (validation.warnings.length > 0) {
+              console.warn(
+                `[roadmap/chat] Validation warnings: ${validation.warnings.join(' | ')}`,
+              )
+              enqueueEvent({
+                chunk: `\n\n[Uyarı] ${validation.warnings.join(' ')}`,
+              })
+            }
+            enqueueEvent({ step: 'applying' })
+            try {
+              await prisma.$transaction(async (tx) => {
+                await applyCommands(tx, projectId, commands, session.user.id)
+              })
+              commandsApplied = true
+              // Bust the App Router cache for every page under /projects/[id]
+              // (write, preview, design, sources, …) so they re-fetch the
+              // freshly mutated chapter/section/subsection rows on next nav.
+              revalidatePath(`/projects/${projectId}`, 'layout')
+            } catch (cmdErr) {
+              console.error('[roadmap/chat] Failed to apply commands:', cmdErr)
+              enqueueEvent({
+                chunk: '\n\n[An error occurred while applying commands. Please try again.]',
+              })
+            }
+            enqueueEvent({ step: 'applied' })
           }
-          enqueueEvent({ step: 'applied' })
         }
 
         enqueueEvent({
