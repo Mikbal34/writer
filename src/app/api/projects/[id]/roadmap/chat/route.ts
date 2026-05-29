@@ -312,14 +312,14 @@ SOURCE RULES:
 
   const commandDocs = `
 Available commands:
-- {"action": "update_subsection", "subsectionDbId": "...", "fields": {"title?": "...", "description?": "...", "whatToWrite?": "...", "keyPoints?": [...], "writingStrategy?": "...", "estimatedPages?": N, "synthesisMode?": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "analysisDepth?": 0-10}}
-- {"action": "add_subsection", "sectionDbId": "...", "subsection": {"subsectionId": "1.1.4", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "analysisDepth": 0-10${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}}
+- {"action": "update_subsection", "subsectionDbId": "...", "fields": {"title?": "...", "description?": "...", "whatToWrite?": "...", "keyPoints?": [...], "writingStrategy?": "...", "estimatedPages?": N, "synthesisMode?": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "sectionGoal?": "DEFINE|CONTEXT|COMPARE|SYNTHESIZE|LITERATURE_GAP|THESIS_CONCLUSION", "analysisDepth?": 0-10}}
+- {"action": "add_subsection", "sectionDbId": "...", "subsection": {"subsectionId": "1.1.4", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "sectionGoal": "DEFINE|CONTEXT|COMPARE|SYNTHESIZE|LITERATURE_GAP|THESIS_CONCLUSION", "analysisDepth": 0-10${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}}
 - {"action": "remove_subsection", "subsectionDbId": "..."}
 - {"action": "update_section", "sectionDbId": "...", "fields": {"title?": "...", "keyConcepts?": [...]}}
-- {"action": "add_section", "chapterDbId": "...", "section": {"sectionId": "1.3", "title": "...", "keyConcepts": [...]}, "subsections": [{"subsectionId": "1.3.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "analysisDepth": 0-10}]}
+- {"action": "add_section", "chapterDbId": "...", "section": {"sectionId": "1.3", "title": "...", "keyConcepts": [...]}, "subsections": [{"subsectionId": "1.3.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "sectionGoal": "DEFINE|CONTEXT|COMPARE|SYNTHESIZE|LITERATURE_GAP|THESIS_CONCLUSION", "analysisDepth": 0-10}]}
 - {"action": "remove_section", "sectionDbId": "..."}
 - {"action": "update_chapter", "chapterDbId": "...", "fields": {"title?": "...", "purpose?": "...", "estimatedPages?": N}}
-- {"action": "add_chapter", "chapter": {"number": N, "title": "...", "purpose": "...", "estimatedPages": N}, "tempId": "__temp_ch_1", "sections": [{"sectionId": "1.1", "title": "...", "keyConcepts": [...], "tempId": "__temp_sec_1_1", "subsections": [{"subsectionId": "1.1.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "analysisDepth": 0-10${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}]}]}
+- {"action": "add_chapter", "chapter": {"number": N, "title": "...", "purpose": "...", "estimatedPages": N}, "tempId": "__temp_ch_1", "sections": [{"sectionId": "1.1", "title": "...", "keyConcepts": [...], "tempId": "__temp_sec_1_1", "subsections": [{"subsectionId": "1.1.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "sectionGoal": "DEFINE|CONTEXT|COMPARE|SYNTHESIZE|LITERATURE_GAP|THESIS_CONCLUSION", "analysisDepth": 0-10${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}]}]}
 - {"action": "remove_chapter", "chapterDbId": "..."}
 - {"action": "move_section", "sectionDbId": "...", "targetChapterDbId": "..."}${sourceCommandDocs}
 - {"action": "update_project", "fields": {"topic?": "...", "purpose?": "...", "audience?": "...", "styleProfile?": {"narrativePOV?": "...", "genre?": "...", "dialogueStyle?": "...", "pacing?": "...", "moodAtmosphere?": "...", "targetAgeGroup?": "...", "narrativeStyle?": "...", "tone?": "..."}}}${sourceRules}`
@@ -378,7 +378,7 @@ Each subsection you describe will later become a writing-session prompt. Give th
 - keyPoints: 2-5 bullets naming the ideas the subsection must cover. Each bullet should be concrete enough that a writer cannot reasonably miss its target.
 - writingStrategy: one or two sentences on tone, structure, or pacing for this specific subsection — what makes THIS subsection different from its neighbours.
 - estimatedPages: your best page-count estimate in whole pages.
-- synthesisMode + analysisDepth: pair them honestly per subsection.
+- synthesisMode + sectionGoal + analysisDepth: pair them honestly per subsection. synthesisMode = epistemik YAPI (nasıl), sectionGoal = bölüm içindeki GÖREV (neden), depth = yorum yoğunluğu. Bu üç eksen ayrıdır; karıştırma. sectionGoal one of: DEFINE / CONTEXT / COMPARE / SYNTHESIZE / LITERATURE_GAP / THESIS_CONCLUSION. THESIS_CONCLUSION goal'ı tez başına 0-2 subsection — her chapter sonu THESIS_CONCLUSION DEĞİL.
    • SPECIFIC (depth 1-3): 1-3 sources, single-text / single-author analysis, introductions, definitions, narrow technical points. Default for routine subsections. Low depth tells the writer "stay descriptive, no interpretive padding".
    • THEMATIC (depth 5-7): the subsection must MAP A FIELD across 4+ sources — positions, common ground, divergences, possible historical shift. Use for "X tradition", "Y literature", "approaches to Z".
    • COMPARATIVE (depth 4-6): an explicit X-vs-Y framing (two thinkers, two schools, two positions). Title or description contains language like "fark", "vs", "karşılaştırma", "ayrılık", "difference", "compare". Triggers a downstream agent that builds the contrast skeleton (sideA / sideB / convergences / difference / significance / implications) before writing.
@@ -628,6 +628,15 @@ async function applyCommands(
                 fields.synthesisMode === 'SYNTHESIS') && {
                 synthesisMode: fields.synthesisMode,
               }),
+            ...(typeof fields.sectionGoal === 'string' &&
+              (fields.sectionGoal === 'DEFINE' ||
+                fields.sectionGoal === 'CONTEXT' ||
+                fields.sectionGoal === 'COMPARE' ||
+                fields.sectionGoal === 'SYNTHESIZE' ||
+                fields.sectionGoal === 'LITERATURE_GAP' ||
+                fields.sectionGoal === 'THESIS_CONCLUSION') && {
+                sectionGoal: fields.sectionGoal,
+              }),
             ...(typeof fields.analysisDepth === 'number' && {
               analysisDepth: Math.min(10, Math.max(0, Math.round(fields.analysisDepth as number))),
             }),
@@ -755,6 +764,14 @@ async function applyCommands(
                 sm === 'THEMATIC' || sm === 'COMPARATIVE' || sm === 'SYNTHESIS'
                   ? sm
                   : 'SPECIFIC',
+              ...((sub.sectionGoal === 'CONTEXT' ||
+                sub.sectionGoal === 'COMPARE' ||
+                sub.sectionGoal === 'SYNTHESIZE' ||
+                sub.sectionGoal === 'LITERATURE_GAP' ||
+                sub.sectionGoal === 'THESIS_CONCLUSION' ||
+                sub.sectionGoal === 'DEFINE') && {
+                sectionGoal: sub.sectionGoal,
+              }),
               ...(typeof sub.analysisDepth === 'number' && {
                 analysisDepth: Math.min(10, Math.max(0, Math.round(sub.analysisDepth as number))),
               }),

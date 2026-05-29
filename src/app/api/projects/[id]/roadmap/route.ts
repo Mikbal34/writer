@@ -152,6 +152,15 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
               rawSm === 'THEMATIC' || rawSm === 'COMPARATIVE' || rawSm === 'SYNTHESIS'
                 ? rawSm
                 : 'SPECIFIC'
+            const rawGoal = (bookSub as { sectionGoal?: string }).sectionGoal
+            const sectionGoal =
+              rawGoal === 'CONTEXT' ||
+              rawGoal === 'COMPARE' ||
+              rawGoal === 'SYNTHESIZE' ||
+              rawGoal === 'LITERATURE_GAP' ||
+              rawGoal === 'THESIS_CONCLUSION'
+                ? rawGoal
+                : 'DEFINE'
             const rawDepth = (bookSub as { analysisDepth?: number }).analysisDepth
             const analysisDepth =
               typeof rawDepth === 'number'
@@ -174,6 +183,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
                 writingStrategy: bookSub.writingStrategy,
                 estimatedPages: bookSub.estimatedPages,
                 synthesisMode,
+                sectionGoal,
                 analysisDepth,
                 sortOrder: subIndex,
                 status: 'pending',

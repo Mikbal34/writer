@@ -11,7 +11,13 @@ import { retrieveLibraryChunks } from '@/lib/library-retrieval'
 import { validateCitations } from '@/lib/citation-validator'
 import { reviewSubsection } from '@/lib/writing-reviewer'
 import { buildEvidenceGraph, formatEvidenceForPrompt } from '@/lib/evidence-graph'
-import { buildSynthesisPlan, formatPlanForPrompt, type SynthesisMode } from '@/lib/synthesis-planner'
+import {
+  buildSynthesisPlan,
+  formatPlanForPrompt,
+  plannerBackendForGoal,
+  type SynthesisMode,
+  type SectionGoal,
+} from '@/lib/synthesis-planner'
 
 type RouteContext = { params: Promise<{ id: string; subsectionId: string }> }
 
@@ -345,13 +351,13 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // noktada örtüşür, şu noktada ayrılır, dolayısıyla..." akışına geçer.
     // synthesisMode roadmap tarafından otomatik atanıyor (SPECIFIC default).
     const synthesisMode: SynthesisMode = subsection.synthesisMode ?? 'SPECIFIC'
+    const sectionGoal: SectionGoal = subsection.sectionGoal ?? 'DEFINE'
     const analysisDepth = Math.min(10, Math.max(0, subsection.analysisDepth ?? 3))
+    const plannerBackend = plannerBackendForGoal(sectionGoal)
+    // Planner artık goal'a göre tetikleniyor (mod değil). DEFINE → OFF;
+    // CONTEXT → LIGHT (descriptive sentez); diğerleri → ilgili şema.
     let synthesisBlock = ''
-    if (
-      needsSources &&
-      ragChunks.length > 0 &&
-      (synthesisMode === 'THEMATIC' || synthesisMode === 'COMPARATIVE' || synthesisMode === 'SYNTHESIS')
-    ) {
+    if (needsSources && ragChunks.length > 0 && plannerBackend !== 'OFF') {
       const titleToBibId = new Map<string, string>()
       for (const s of writingCtx.sources) titleToBibId.set(s.title, s.bibliographyId)
       const subsectionObjective = [
@@ -364,6 +370,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         subsectionTitle: subsection.title,
         subsectionObjective,
         mode: synthesisMode,
+        goal: sectionGoal,
         chunks: ragChunks.map((c) => ({
           bibId: titleToBibId.get(c.sourceTitle) ?? 'unknown',
           sourceTitle: c.sourceTitle,
@@ -373,7 +380,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       })
       if (!planResult.failed) {
         synthesisBlock = '\n\n' + formatPlanForPrompt(planResult, analysisDepth)
-        console.log(`[synthesis-planner] subsection=${subsectionId} mode=${synthesisMode} depth=${analysisDepth} OK`)
+        console.log(
+          `[synthesis-planner] subsection=${subsectionId} mode=${synthesisMode} goal=${sectionGoal} backend=${plannerBackend} depth=${analysisDepth} OK`,
+        )
       } else {
         console.warn(
           `[synthesis-planner] subsection=${subsectionId} mode=${synthesisMode} FAILED: ${planResult.reason}`,
@@ -577,6 +586,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
               sourceTitle: c.sourceTitle,
               preview: c.content,
             })),
+            goal: sectionGoal,
           })
           console.log(
             `[reviewer] subsection=${subsectionId} score=${reviewResult.score.toFixed(2)}` +
@@ -596,6 +606,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
               sourcesCount: writingCtx.sources.length,
               ragChunksCount: ragChunks.length,
               synthesisMode,
+              sectionGoal,
+              plannerBackend,
+              analysisDepth,
               synthesisPlanned: synthesisBlock.length > 0,
               citationCheck: {
                 total: citationCheck.totalCiteMarkers,
@@ -616,6 +629,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
                   missingObjective: reviewResult.missingObjective,
                   coherent: reviewResult.coherent,
                   regenerate: reviewResult.regenerate,
+                  goalCriteriaMet: reviewResult.goalCriteriaMet,
                   judgeFailed: reviewResult.judgeFailed,
                 },
               } : {}),

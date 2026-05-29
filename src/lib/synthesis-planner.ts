@@ -25,10 +25,55 @@ import { generateJSONWithUsage, HAIKU } from "@/lib/claude";
 
 export type SynthesisMode = "SPECIFIC" | "THEMATIC" | "COMPARATIVE" | "SYNTHESIS";
 
+/**
+ * SectionGoal — subsection'ın bölüm içindeki AMACI. Mode "nasıl"sa,
+ * goal "neden". Planner output şemasını ve writer kapanış kuralını
+ * goal değiştirir. Mode + goal ortogonal.
+ */
+export type SectionGoal =
+  | "DEFINE"
+  | "CONTEXT"
+  | "COMPARE"
+  | "SYNTHESIZE"
+  | "LITERATURE_GAP"
+  | "THESIS_CONCLUSION";
+
+/**
+ * Planner backend — goal'a göre eşlenir.
+ *   OFF        → planner çağrılmaz (DEFINE)
+ *   LIGHT      → drivers / relationships / historical_significance
+ *                (CONTEXT — descriptive sentez ama implication yok)
+ *   COMPARATIVE → mevcut comparative şema (COMPARE)
+ *   FULL       → mevcut thematic şema + implications (SYNTHESIZE)
+ *   GAP        → literatür haritası + boşluk + müdahale (LITERATURE_GAP)
+ *   CONCLUSION → restated_thesis + load_bearing_claims + open_lines
+ *                (THESIS_CONCLUSION)
+ */
+export type PlannerBackend = "OFF" | "LIGHT" | "COMPARATIVE" | "FULL" | "GAP" | "CONCLUSION";
+
+export function plannerBackendForGoal(goal: SectionGoal): PlannerBackend {
+  switch (goal) {
+    case "DEFINE":
+      return "OFF";
+    case "CONTEXT":
+      return "LIGHT";
+    case "COMPARE":
+      return "COMPARATIVE";
+    case "SYNTHESIZE":
+      return "FULL";
+    case "LITERATURE_GAP":
+      return "GAP";
+    case "THESIS_CONCLUSION":
+      return "CONCLUSION";
+  }
+}
+
 export interface PlannerInput {
   subsectionTitle: string;
   subsectionObjective: string; // description + keyPoints birleşmiş
   mode: SynthesisMode;
+  /** Subsection'ın bölüm içindeki amacı — planner backend'i seçer */
+  goal?: SectionGoal;
   /** Retrieve'dan gelen chunks — bibId + page metadata ile */
   chunks: Array<{
     bibId: string;
@@ -85,11 +130,57 @@ export interface ComparativePlan {
   implications: ImplicationItem[];
 }
 
+/**
+ * LIGHT plan — CONTEXT subsection'larının ihtiyacı: hafif sentez,
+ * implication YOK. Coğrafya, siyasi, eğitim, sosyal etmenleri ve
+ * aralarındaki ilişkileri kurar ki Writer "A oldu, B oldu, C oldu"
+ * listesi yerine bağlam çıkarsın. Drivers + relationships +
+ * historical_significance üç bloktur.
+ */
+export interface LightPlan {
+  drivers: Array<{ label: string; description: string; supporting_bibIds: string[] }>;
+  relationships: Array<{ between: string[]; nature: string; supporting_bibIds: string[] }>;
+  historical_significance: string; // 1-2 cümle — neden bu bağlam önemli
+}
+
+/**
+ * GAP plan — LITERATURE_GAP subsection'ları için. Mevcut literatürü
+ * haritalandırır, neyin eksik / fazla işlendiğini söyler, tezin
+ * müdahale noktasını belirtir.
+ */
+export interface GapPlan {
+  /** Mevcut literatürün haritası — pozisyonlar ve hangi kaynaklar */
+  positions: Array<{ stance: string; representative_bibIds: string[] }>;
+  /** Yeterince ele alınmamış / atlanmış mevzular */
+  what_is_missing: string[];
+  /** Aşırı ele alınmış / doygun mevzular */
+  what_is_overdone: string[];
+  /** Tezin bu boşluğa müdahale ettiği nokta — 1 paragraf */
+  where_this_thesis_intervenes: string;
+}
+
+/**
+ * CONCLUSION plan — THESIS_CONCLUSION subsection'ı için. Tezin
+ * tamamının payoff'unu kurar: yeniden ifade, yük taşıyan iddialar,
+ * açık araştırma hatları.
+ */
+export interface ConclusionPlan {
+  /** Tezin merkezî iddiasının yeniden ifadesi — 1-2 cümle */
+  restated_thesis: string;
+  /** Üç yük taşıyan iddia (load-bearing claims) + kaynaklar */
+  three_load_bearing_claims: Array<{ claim: string; supporting_bibIds: string[] }>;
+  /** Açık araştırma hatları — sonraki çalışmaya gündem */
+  open_research_lines: string[];
+}
+
 export type PlannerResult =
-  | { mode: "THEMATIC"; plan: ThematicPlan; failed?: false }
-  | { mode: "SYNTHESIS"; plan: ThematicPlan; failed?: false }
-  | { mode: "COMPARATIVE"; plan: ComparativePlan; failed?: false }
-  | { mode: SynthesisMode; plan: null; failed: true; reason: string };
+  | { mode: "THEMATIC"; plan: ThematicPlan; backend: "FULL"; failed?: false }
+  | { mode: "SYNTHESIS"; plan: ThematicPlan; backend: "FULL"; failed?: false }
+  | { mode: "COMPARATIVE"; plan: ComparativePlan; backend: "COMPARATIVE"; failed?: false }
+  | { mode: SynthesisMode; plan: LightPlan; backend: "LIGHT"; failed?: false }
+  | { mode: SynthesisMode; plan: GapPlan; backend: "GAP"; failed?: false }
+  | { mode: SynthesisMode; plan: ConclusionPlan; backend: "CONCLUSION"; failed?: false }
+  | { mode: SynthesisMode; plan: null; backend: PlannerBackend; failed: true; reason: string };
 
 const THEMATIC_SYSTEM = `You are an academic synthesis planner. You are given a subsection
 objective and retrieved chunks from N (4+) sources. Your job is NOT to
@@ -214,6 +305,72 @@ Output ONLY JSON:
   "implications": [{ "claim": "...", "kind": "cause|consequence|literature_impact", "grounded_in_bibIds": ["..."], "basis": "from_chunk|inference_from_contrast" }]
 }`;
 
+const LIGHT_SYSTEM = `You are a context planner for an academic CONTEXT subsection.
+Your job is light synthesis — NOT a list of "X happened, Y happened, Z
+happened". You identify the DRIVERS shaping the context, the
+RELATIONSHIPS between them, and one short paragraph on the historical
+SIGNIFICANCE — i.e. why this context matters for the thesis ahead.
+
+EVIDENCE DISCIPLINE: Drivers and relationships must be VERBATIM
+derivable from chunks. Use ONLY bibIds that appear in the supplied
+chunks. Do NOT emit implication / "this shows that" style claims —
+context's job is to set the stage, not interpret it. The Writer will
+later use this map to weave context, not list facts.
+
+Output ONLY JSON:
+{
+  "drivers": [{ "label": "...", "description": "...", "supporting_bibIds": ["..."] }],
+  "relationships": [{ "between": ["driverA","driverB"], "nature": "...", "supporting_bibIds": ["..."] }],
+  "historical_significance": "..."
+}`;
+
+const GAP_SYSTEM = `You are a literature-gap planner for an academic LITERATURE_GAP
+subsection. Your job is to map the existing scholarly conversation,
+identify what is missing or overdone in it, and state where this thesis
+intervenes.
+
+EVIDENCE DISCIPLINE:
+- "positions" must be verbatim derivable from chunks (these are real
+  positions held by real authors in the supplied excerpts).
+- "what_is_missing" and "what_is_overdone" are SCHOLARLY ASSESSMENTS —
+  you may infer these from comparing what the chunks DO discuss against
+  what a serious thesis on this topic should require. Inference is
+  allowed here; that is the whole purpose of this field.
+- "where_this_thesis_intervenes" must follow from the gaps you
+  identified — one paragraph (max 60 words).
+Use ONLY bibIds present in chunks.
+
+Output ONLY JSON:
+{
+  "positions": [{ "stance": "...", "representative_bibIds": ["..."] }],
+  "what_is_missing": ["..."],
+  "what_is_overdone": ["..."],
+  "where_this_thesis_intervenes": "..."
+}`;
+
+const CONCLUSION_SYSTEM = `You are a thesis-conclusion planner for a THESIS_CONCLUSION subsection.
+Your job is to construct the PAYOFF of the entire thesis — not a
+summary, but the load-bearing argumentative spine and the research
+agenda that follows from it.
+
+EVIDENCE DISCIPLINE:
+- "restated_thesis" should be derivable from the cumulative arc of the
+  chunks (which carry the thesis's evidence base).
+- "three_load_bearing_claims": three concrete claims the thesis depends
+  on. Each must list grounded_in_bibIds whose chunks substantively
+  support the claim.
+- "open_research_lines": follow-up research agendas that the thesis
+  opens up. Inference allowed — this is by definition forward-looking.
+
+Use ONLY bibIds present in chunks.
+
+Output ONLY JSON:
+{
+  "restated_thesis": "...",
+  "three_load_bearing_claims": [{ "claim": "...", "supporting_bibIds": ["..."] }],
+  "open_research_lines": ["..."]
+}`;
+
 function buildChunkBlock(chunks: PlannerInput["chunks"]): string {
   return chunks
     .map((c, i) => {
@@ -226,36 +383,80 @@ function buildChunkBlock(chunks: PlannerInput["chunks"]): string {
 }
 
 export async function buildSynthesisPlan(input: PlannerInput): Promise<PlannerResult> {
-  if (input.mode === "SPECIFIC" || input.chunks.length === 0) {
-    return { mode: input.mode, plan: null, failed: true, reason: "SPECIFIC or empty chunks" };
+  // Backend resolution: goal varsa goal'dan, yoksa mod'dan eski mantığa
+  // (geri-uyum: goal yoksa COMPARATIVE → COMPARATIVE, THEMATIC/SYNTHESIS
+  // → FULL, SPECIFIC → OFF).
+  const backend: PlannerBackend = input.goal
+    ? plannerBackendForGoal(input.goal)
+    : input.mode === "COMPARATIVE"
+      ? "COMPARATIVE"
+      : input.mode === "THEMATIC" || input.mode === "SYNTHESIS"
+        ? "FULL"
+        : "OFF";
+
+  if (backend === "OFF" || input.chunks.length === 0) {
+    return {
+      mode: input.mode,
+      plan: null,
+      backend,
+      failed: true,
+      reason: backend === "OFF" ? "DEFINE / SPECIFIC — no planner" : "empty chunks",
+    };
   }
-  // SYNTHESIS = chapter-end yorum subsection'ı. Schema açısından THEMATIC
-  // şemasını kullanır (schools / common / divergences / implications); fark
-  // Writer prompt'ta — analysisDepth high zorunluluğu.
-  const system = input.mode === "COMPARATIVE" ? COMPARATIVE_SYSTEM : THEMATIC_SYSTEM;
+
+  const system =
+    backend === "COMPARATIVE"
+      ? COMPARATIVE_SYSTEM
+      : backend === "LIGHT"
+        ? LIGHT_SYSTEM
+        : backend === "GAP"
+          ? GAP_SYSTEM
+          : backend === "CONCLUSION"
+            ? CONCLUSION_SYSTEM
+            : THEMATIC_SYSTEM;
+
   const userPrompt =
     `SUBSECTION TITLE: ${input.subsectionTitle}\n\n` +
     `SUBSECTION OBJECTIVE:\n${input.subsectionObjective}\n\n` +
     `RETRIEVED CHUNKS:\n${buildChunkBlock(input.chunks)}\n\n` +
     `Return the synthesis plan as JSON.`;
+
   try {
-    const res = await generateJSONWithUsage<ThematicPlan | ComparativePlan>(
-      userPrompt,
-      system,
-      { model: HAIKU },
-    );
+    const res = await generateJSONWithUsage<
+      ThematicPlan | ComparativePlan | LightPlan | GapPlan | ConclusionPlan
+    >(userPrompt, system, { model: HAIKU });
     if (!res.data) {
-      return { mode: input.mode, plan: null, failed: true, reason: "empty response" };
+      return { mode: input.mode, plan: null, backend, failed: true, reason: "empty response" };
     }
-    if (input.mode === "COMPARATIVE") {
-      return { mode: "COMPARATIVE", plan: res.data as ComparativePlan };
+    switch (backend) {
+      case "COMPARATIVE":
+        return { mode: "COMPARATIVE", plan: res.data as ComparativePlan, backend: "COMPARATIVE" };
+      case "LIGHT":
+        return { mode: input.mode, plan: res.data as LightPlan, backend: "LIGHT" };
+      case "GAP":
+        return { mode: input.mode, plan: res.data as GapPlan, backend: "GAP" };
+      case "CONCLUSION":
+        return { mode: input.mode, plan: res.data as ConclusionPlan, backend: "CONCLUSION" };
+      case "FULL":
+        return {
+          mode: input.mode === "SYNTHESIS" ? "SYNTHESIS" : "THEMATIC",
+          plan: res.data as ThematicPlan,
+          backend: "FULL",
+        };
+      default:
+        return {
+          mode: input.mode,
+          plan: null,
+          backend,
+          failed: true,
+          reason: "unsupported backend",
+        };
     }
-    // THEMATIC + SYNTHESIS share schema; surface effective mode for prompt block.
-    return { mode: input.mode === "SYNTHESIS" ? "SYNTHESIS" : "THEMATIC", plan: res.data as ThematicPlan };
   } catch (err) {
     return {
       mode: input.mode,
       plan: null,
+      backend,
       failed: true,
       reason: err instanceof Error ? err.message : String(err),
     };
@@ -273,13 +474,103 @@ export function formatPlanForPrompt(result: PlannerResult, analysisDepth = 5): s
   const lines: string[] = ["## SYNTHESIS PLAN (use this as your argumentative skeleton)"];
   lines.push("");
   lines.push(
-    `This is NOT a list of sources. This is a pre-built map of the intellectual conversation. ` +
-      `Build your paragraphs around the CONVERSATION (positions, agreements, divergences, shifts), ` +
-      `not around individual sources. Cite the listed bibIds with \`[cite:bibId,p=X]\` markers.`,
+    `This is NOT a list of sources. This is a pre-built map. ` +
+      `Build your paragraphs around the structures below, not around individual sources. ` +
+      `Cite the listed bibIds with \`[cite:bibId,p=X]\` markers.`,
   );
   lines.push("");
   lines.push(`**Analysis depth for this subsection: ${analysisDepth}/10.**`);
   lines.push("");
+
+  // LIGHT — CONTEXT
+  if (result.backend === "LIGHT") {
+    const p = result.plan as LightPlan;
+    lines.push("### Drivers (the forces shaping this context)");
+    p.drivers.forEach((d) => {
+      lines.push(`- **${d.label}** — ${d.description} — supported by: ${d.supporting_bibIds.join(", ")}`);
+    });
+    if (p.relationships && p.relationships.length > 0) {
+      lines.push("");
+      lines.push("### Relationships");
+      p.relationships.forEach((r) => {
+        lines.push(`- ${r.between.join(" ↔ ")}: ${r.nature} — ${r.supporting_bibIds.join(", ")}`);
+      });
+    }
+    if (p.historical_significance && p.historical_significance.trim().length > 0) {
+      lines.push("");
+      lines.push("### Why this context matters");
+      lines.push(p.historical_significance);
+    }
+    lines.push("");
+    lines.push(
+      "**Writer instructions (CONTEXT):**\n" +
+        "- Use the drivers and relationships above to write a connected context paragraph, NOT a list of facts.\n" +
+        "- Do NOT emit implication / 'this shows that' style sentences. Context's job is to set the stage.\n" +
+        "- Cite each driver / relationship's supporting bibIds with `[cite:bibId,p=X]`.\n" +
+        "- Close on the 'Why this context matters' framing — one sentence, no overreach.",
+    );
+    return lines.join("\n");
+  }
+
+  // GAP — LITERATURE_GAP
+  if (result.backend === "GAP") {
+    const p = result.plan as GapPlan;
+    lines.push("### Positions in the existing literature");
+    p.positions.forEach((pos) => {
+      lines.push(`- **${pos.stance}** — represented by: ${pos.representative_bibIds.join(", ")}`);
+    });
+    if (p.what_is_missing && p.what_is_missing.length > 0) {
+      lines.push("");
+      lines.push("### What is missing");
+      p.what_is_missing.forEach((m) => lines.push(`- ${m}`));
+    }
+    if (p.what_is_overdone && p.what_is_overdone.length > 0) {
+      lines.push("");
+      lines.push("### What is overdone");
+      p.what_is_overdone.forEach((m) => lines.push(`- ${m}`));
+    }
+    if (p.where_this_thesis_intervenes && p.where_this_thesis_intervenes.trim().length > 0) {
+      lines.push("");
+      lines.push("### Where this thesis intervenes");
+      lines.push(p.where_this_thesis_intervenes);
+    }
+    lines.push("");
+    lines.push(
+      "**Writer instructions (LITERATURE_GAP):**\n" +
+        "- Open by mapping the positions — don't summarize each author separately; group by stance.\n" +
+        "- Identify the missing / overdone moves with measured, fair language.\n" +
+        "- **Closing paragraph (REQUIRED):** state explicitly where THIS THESIS intervenes — one or two sentences naming the gap and the contribution. This is the analytic payoff.",
+    );
+    return lines.join("\n");
+  }
+
+  // CONCLUSION — THESIS_CONCLUSION
+  if (result.backend === "CONCLUSION") {
+    const p = result.plan as ConclusionPlan;
+    lines.push("### Restated thesis");
+    lines.push(p.restated_thesis);
+    if (p.three_load_bearing_claims && p.three_load_bearing_claims.length > 0) {
+      lines.push("");
+      lines.push("### Three load-bearing claims (the spine of the thesis)");
+      p.three_load_bearing_claims.forEach((c, i) => {
+        lines.push(`${i + 1}. **${c.claim}** — supported by: ${c.supporting_bibIds.join(", ")}`);
+      });
+    }
+    if (p.open_research_lines && p.open_research_lines.length > 0) {
+      lines.push("");
+      lines.push("### Open research lines (forward-looking agenda)");
+      p.open_research_lines.forEach((l) => lines.push(`- ${l}`));
+    }
+    lines.push("");
+    lines.push(
+      "**Writer instructions (THESIS_CONCLUSION):**\n" +
+        "- Open by restating the thesis in fresh words — NOT a summary of chapter findings.\n" +
+        "- Walk through the three load-bearing claims, citing the listed bibIds.\n" +
+        "- **Closing paragraph (REQUIRED):** name the open research lines explicitly as a forward-looking agenda. Do NOT end with a polite 'bridge to next chapter' sentence — this IS the last word.",
+    );
+    return lines.join("\n");
+  }
+
 
   if (result.mode === "THEMATIC" || result.mode === "SYNTHESIS") {
     const p = result.plan as ThematicPlan;

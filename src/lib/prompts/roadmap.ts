@@ -46,6 +46,19 @@ interface BookSubsection {
   writingStrategy: string  // How to approach writing this subsection
   estimatedPages: number   // Realistic page estimate (typically 2–5)
   synthesisMode: 'SPECIFIC' | 'THEMATIC' | 'COMPARATIVE' | 'SYNTHESIS'
+  sectionGoal: 'DEFINE' | 'CONTEXT' | 'COMPARE' | 'SYNTHESIZE' | 'LITERATURE_GAP' | 'THESIS_CONCLUSION'
+  // synthesisMode = subsection'ın epistemik YAPISI (form, "nasıl").
+  // sectionGoal  = subsection'ın bölüm içindeki GÖREVI (amaç, "neden").
+  // Bu iki ekseni KARIŞTIRMA. Aynı modda farklı goal'lar olur — örneğin
+  // mode=SYNTHESIS goal=SYNTHESIZE (karşılaştırma sonu sentez) ile
+  // mode=SYNTHESIS goal=THESIS_CONCLUSION (tüm tezin payoff'u) ayrı
+  // şeylerdir. Tipik eşleşmeler:
+  //   DEFINE             → SPECIFIC, depth 1-3
+  //   CONTEXT            → SPECIFIC veya THEMATIC, depth 3-5
+  //   COMPARE            → COMPARATIVE veya THEMATIC, depth 4-6
+  //   SYNTHESIZE         → SYNTHESIS veya THEMATIC, depth 6-8
+  //   LITERATURE_GAP     → THEMATIC veya SYNTHESIS, depth 5-7
+  //   THESIS_CONCLUSION  → SYNTHESIS, depth 8-10
   // Synthesis strategy — picked by YOU based on what this subsection
   // demands intellectually. Drives a downstream synthesis-planner agent.
   //   SPECIFIC    → 1-3 sources, single-text or single-author analysis,
@@ -104,12 +117,18 @@ interface BookStructure {
 - Section IDs must follow "chapter.section" (e.g., 1.1, 1.2).
 - Include an introductory chapter (Chapter 1) and a conclusion chapter as appropriate.
 - Source suggestions should be realistic for the topic — use well-known scholars and works where possible.
-- synthesisMode + analysisDepth are REQUIRED on every subsection.
-  • SPECIFIC + 1-3: descriptive (introduction, definition, narrow-text analysis).
-  • COMPARATIVE + 4-6: X-vs-Y framing with a closing analytic claim.
-  • THEMATIC + 5-7: 4+ sources, map the field with measured interpretation.
-  • SYNTHESIS + 7-10: chapter / part closing whose body IS the analytic payoff.
-  These pairings drive the downstream writer's register — getting the type right matters as much as getting the title right. Do NOT mark a routine subsection as SYNTHESIS just because it concludes a section; SYNTHESIS is reserved for subsections whose explicit purpose is meta-argument.
+- synthesisMode + sectionGoal + analysisDepth are REQUIRED on every subsection.
+  • synthesisMode = subsection'ın epistemik YAPISI (form). SPECIFIC / THEMATIC / COMPARATIVE / SYNTHESIS.
+  • sectionGoal   = subsection'ın bölüm içindeki GÖREVI (amaç). DEFINE / CONTEXT / COMPARE / SYNTHESIZE / LITERATURE_GAP / THESIS_CONCLUSION.
+  • Bu ikisini KARIŞTIRMA. Aynı modda farklı goal'lar olur. Goal'ı seçerken sor: "Bu subsection bölümün argümanı için NE iş yapıyor?"
+  • Tipik (mode, goal) eşleşmeleri ve önerilen depth aralıkları:
+    - DEFINE → (SPECIFIC, 1-3): terim/kavram tanımı, dar metin analizi.
+    - CONTEXT → (SPECIFIC veya THEMATIC, 3-5): tarihsel/entelektüel bağlam, light synthesis.
+    - COMPARE → (COMPARATIVE veya THEMATIC, 4-6): X vs Y veya 3-4 yaklaşımın karşılaştırılması.
+    - SYNTHESIZE → (SYNTHESIS veya THEMATIC, 6-8): bölümün kaynaklarını bir araya getirip ortak/farklı noktalar üzerinden tartışma kurma.
+    - LITERATURE_GAP → (THEMATIC veya SYNTHESIS, 5-7): literatür haritası + eksik/aşırı işlenmiş alanlar + tezin müdahale noktası.
+    - THESIS_CONCLUSION → (SYNTHESIS, 8-10): TÜM tezin payoff'u — yeniden ifade + yük taşıyan iddialar + açık araştırma hatları. Tez başına 0-2 kez kullanılır.
+  • SYNTHESIS modunu rutin section closer'lar için kullanma. SYNTHESIS subsection'ı = açıkça meta-argument. Aynı şekilde THESIS_CONCLUSION goal'u tez başına 1-2 subsection — her chapter sonu THESIS_CONCLUSION değil.
 - Return ONLY the JSON object. No markdown fences, no preamble.`
 }
 

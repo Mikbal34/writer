@@ -348,6 +348,25 @@ enum SynthesisMode {
   SYNTHESIS
 }
 
+// SectionGoal — subsection'ın bölüm içindeki GÖREVI. SynthesisMode
+// "nasıl yazılacak" (form), SectionGoal "neden yazılıyor" (amaç).
+// İki ayrı eksen; aynı mod'da farklı goal'lar olur. Goal planner'ın
+// output şemasını ve reviewer'ın başarı kriterlerini belirler.
+//   DEFINE              → terminoloji, kavram kurma; planner OFF
+//   CONTEXT             → tarihsel/entelektüel arka plan; planner LIGHT
+//   COMPARE             → X vs Y; planner COMPARATIVE şema
+//   SYNTHESIZE          → kaynakları birleştirme; planner FULL THEMATIC
+//   LITERATURE_GAP      → literatür haritası + boşluk; planner GAP şema
+//   THESIS_CONCLUSION   → tezin payoff'u; planner CONCLUSION şema
+enum SectionGoal {
+  DEFINE
+  CONTEXT
+  COMPARE
+  SYNTHESIZE
+  LITERATURE_GAP
+  THESIS_CONCLUSION
+}
+
 model Subsection {
   id              String           @id @default(cuid())
   sectionId       String
@@ -360,6 +379,7 @@ model Subsection {
   estimatedPages  Int?
   status          SubsectionStatus @default(pending)
   synthesisMode   SynthesisMode    @default(SPECIFIC)
+  sectionGoal     SectionGoal      @default(DEFINE)
   // 0-10. Writer'ın bu subsection'da ne kadar "yorum/çıkarım" yapacağı.
   // SPECIFIC → 1-3 (açıklama ağırlıklı). COMPARATIVE/THEMATIC → 4-7.
   // SYNTHESIS → 7-10 (implication-heavy). UI'da görünmez; roadmap atar.

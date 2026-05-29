@@ -149,14 +149,18 @@ function fmtScore(n: number | undefined): string {
 }
 
 async function main() {
-  const projectId = readFileSync(
-    "scripts/eval/writing-test-project-id.txt",
-    "utf-8",
-  ).trim();
-  console.log(`▶ Writing Eval — proje: ${projectId}\n`);
+  const idFile = process.env.PROJECT_ID_FILE ?? "scripts/eval/writing-test-project-id.txt";
+  const projectId = (process.env.PROJECT_ID ?? readFileSync(idFile, "utf-8")).trim();
+  console.log(`▶ Writing Eval — proje: ${projectId} (${idFile})\n`);
 
-  const subs = await loadSubsections(projectId);
-  console.log(`◇ Subsection: ${subs.length}`);
+  let subs = await loadSubsections(projectId);
+  // SUBSECTIONS env: comma-separated subsectionId filter (örn "1.1.1,1.1.4,1.1.6")
+  const filterRaw = process.env.SUBSECTIONS;
+  if (filterRaw) {
+    const wanted = new Set(filterRaw.split(",").map((s) => s.trim()));
+    subs = subs.filter((s) => wanted.has(s.subsectionId));
+  }
+  console.log(`◇ Subsection: ${subs.length}${filterRaw ? ` (filtered: ${filterRaw})` : ""}`);
   subs.forEach((s) => console.log(`  ${s.subsectionId} (${s.bibCount} kitap): ${s.title}`));
   console.log();
 
@@ -268,8 +272,26 @@ async function main() {
 
   const mdPath = `${dir}/writing-eval-${ts}.md`;
   writeFileSync(mdPath, mdLines.join("\n"));
+
+  // Combined chapter document — tüm subsection'ları sıralı ham metin
+  // olarak birleştir. Kullanıcı bunu okur, mimari değil "akademik kalite
+  // var mı" değerlendirmesi yapar.
+  const docLines: string[] = [];
+  docLines.push(`# ${subs[0]?.title.split(":")[0] ?? "Bölüm"}`);
+  docLines.push("");
+  for (const r of results) {
+    if (r.status !== "ok") continue;
+    docLines.push(`## ${r.subsection.subsectionId} ${r.subsection.title}`);
+    docLines.push("");
+    docLines.push(r.fullText);
+    docLines.push("");
+  }
+  const docPath = `${dir}/writing-eval-${ts}-CHAPTER.md`;
+  writeFileSync(docPath, docLines.join("\n"));
+
   console.log(`\n✓ Saved: ${jsonPath}`);
   console.log(`✓ Saved: ${mdPath}`);
+  console.log(`✓ Saved: ${docPath}  ← akademik bölüm tek doc, oku`);
 }
 
 main().catch((e) => {
