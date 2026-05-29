@@ -73,15 +73,31 @@ summarize sources individually. Your job is to map the INTELLECTUAL
 TOPOGRAPHY of the field — what positions exist, where they converge,
 where they diverge, what shifted over time.
 
+CRITICAL EVIDENCE DISCIPLINE:
+- Every claim you emit MUST be VERBATIM derivable from a specific chunk.
+  If a chunk literally says "X holds view Y", you may write that. If you
+  are inferring, generalizing, or filling in a familiar argument the
+  source is "known" to make — STOP. Do NOT emit it.
+- Do NOT enrich the plan with specific analogies, examples, doctrinal
+  details, or citations of named works UNLESS that exact content
+  appears in the supplied excerpts.
+- For every claim, the supporting_bibIds you list MUST correspond to
+  chunks whose visible content actually states the claim. If only an
+  inference is possible, omit the claim — a small plan is better than
+  a plan the writer will be forced to fabricate.
+
 Output rules:
 1. Use ONLY bibIds that appear in the chunks. Never invent.
-2. Quote 1-2 line position statements in the source's own
-   conceptual vocabulary — but synthesised, not copy-pasted.
-3. Each common_point + each divergence MUST list which bibIds support it.
-4. historical_shift: a single paragraph (max 60 words) if the chunks
-   show a chronological evolution (mütekaddimûn→müteahhirûn, classical→
-   modern, vs.). Empty string if no clear shift.
-5. Max 5 schools, max 4 common points, max 4 divergences.
+2. Quote 1-2 line position statements in the source's own conceptual
+   vocabulary — but the substance must come from chunk text.
+3. Each common_point + each divergence MUST be backed by chunk evidence
+   you can quote (you do not include the quote in the JSON, but you
+   must have one in mind for each claim).
+4. historical_shift: only fill if the chunks themselves describe a
+   chronological evolution. Empty string otherwise. NEVER infer "well-
+   known" classical-to-modern narratives from prior knowledge.
+5. Max 5 schools, max 4 common points, max 4 divergences. Fewer is
+   better if the chunks do not actually carry more.
 
 Output ONLY JSON:
 {
@@ -96,16 +112,30 @@ const COMPARATIVE_SYSTEM = `You are an academic synthesis planner for a COMPARAT
 job: extract the structural comparison — not summarize each side
 separately, but build the contrast that drives the subsection.
 
+CRITICAL EVIDENCE DISCIPLINE:
+- Every position statement, convergence, difference, and significance
+  claim MUST be VERBATIM derivable from a specific chunk.
+- Do NOT enrich the comparison with positions or details that the
+  excerpts do not contain, even if the two thinkers are "known" to hold
+  those positions. If a chunk does not say it, you do not have it.
+- "difference" and "significance" must be supported by what the chunks
+  actually state — not by your general knowledge of where X and Y
+  diverge in the literature.
+- If the chunks for sideA or sideB are weak (1 short chunk, off-topic),
+  say so by keeping the position thin or empty; never paper over a gap.
+
 Output rules:
 1. Use ONLY bibIds that appear in the chunks. Never invent.
 2. sideA / sideB: name the position FIRST (label = "Mâtürîdî", "Wolfson"
-   etc.), then the position in its OWN terms with supporting bibIds.
-3. convergences: where the two sides agree (often more than one expects).
-   Empty array if none in chunks.
-4. difference: 1 analytic paragraph (max 50 words) on the CORE divergence.
-   Not "they disagree about X" — but WHY and on WHAT axis.
+   etc.), then the position in its OWN terms with supporting bibIds —
+   substance from chunk text only.
+3. convergences: where the two sides agree based on chunk evidence.
+   Empty array if chunks do not show convergence.
+4. difference: 1 analytic paragraph (max 50 words) on the CORE divergence
+   the CHUNKS reveal. Not "they disagree about X" — but WHY and on WHAT
+   axis, grounded in what the excerpts actually say.
 5. significance: 1 paragraph (max 40 words) — what follows from this
-   divergence for the subsection's broader argument.
+   divergence, also grounded in chunk material.
 
 Output ONLY JSON:
 {
@@ -236,10 +266,12 @@ export function formatPlanForPrompt(result: PlannerResult): string {
 
   lines.push("");
   lines.push(
-    "**Writer instruction:** Write the body around this CONVERSATION. Open with the topic/" +
-      "field framing, then build paragraphs around POSITIONS and their tensions. Cite the " +
-      "listed bibIds with `[cite:bibId,p=X]` markers (page from retrieved excerpts). Do NOT " +
-      "sequentially summarize each source. Do NOT add ungrounded claims beyond the plan.",
+    "**Writer instructions:**\n" +
+      "- Write the body around this CONVERSATION (positions, tensions, shifts) — NOT as a sequential source-by-source summary.\n" +
+      "- The plan is your ARGUMENTATIVE SKELETON. The RELEVANT SOURCE EXCERPTS section is your EVIDENCE — verify every claim and citation against it.\n" +
+      "- If a plan claim is not directly supported by the excerpts you can see, DROP THE CLAIM or weaken it. Do NOT fabricate the evidence to match the plan.\n" +
+      "- Cite the listed bibIds with `[cite:bibId,p=X]` markers — page MUST come from the excerpts.\n" +
+      "- Do NOT add specific doctrinal claims, analogies, or named-work references that appear neither in the plan nor in the excerpts.",
   );
   return lines.join("\n");
 }
