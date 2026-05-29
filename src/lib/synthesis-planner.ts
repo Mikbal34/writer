@@ -23,7 +23,7 @@
  */
 import { generateJSONWithUsage, HAIKU } from "@/lib/claude";
 
-export type SynthesisMode = "SPECIFIC" | "THEMATIC" | "COMPARATIVE";
+export type SynthesisMode = "SPECIFIC" | "THEMATIC" | "COMPARATIVE" | "SYNTHESIS";
 
 export interface PlannerInput {
   subsectionTitle: string;
@@ -87,6 +87,7 @@ export interface ComparativePlan {
 
 export type PlannerResult =
   | { mode: "THEMATIC"; plan: ThematicPlan; failed?: false }
+  | { mode: "SYNTHESIS"; plan: ThematicPlan; failed?: false }
   | { mode: "COMPARATIVE"; plan: ComparativePlan; failed?: false }
   | { mode: SynthesisMode; plan: null; failed: true; reason: string };
 
@@ -228,6 +229,9 @@ export async function buildSynthesisPlan(input: PlannerInput): Promise<PlannerRe
   if (input.mode === "SPECIFIC" || input.chunks.length === 0) {
     return { mode: input.mode, plan: null, failed: true, reason: "SPECIFIC or empty chunks" };
   }
+  // SYNTHESIS = chapter-end yorum subsection'ı. Schema açısından THEMATIC
+  // şemasını kullanır (schools / common / divergences / implications); fark
+  // Writer prompt'ta — analysisDepth high zorunluluğu.
   const system = input.mode === "COMPARATIVE" ? COMPARATIVE_SYSTEM : THEMATIC_SYSTEM;
   const userPrompt =
     `SUBSECTION TITLE: ${input.subsectionTitle}\n\n` +
@@ -243,10 +247,11 @@ export async function buildSynthesisPlan(input: PlannerInput): Promise<PlannerRe
     if (!res.data) {
       return { mode: input.mode, plan: null, failed: true, reason: "empty response" };
     }
-    if (input.mode === "THEMATIC") {
-      return { mode: "THEMATIC", plan: res.data as ThematicPlan };
+    if (input.mode === "COMPARATIVE") {
+      return { mode: "COMPARATIVE", plan: res.data as ComparativePlan };
     }
-    return { mode: "COMPARATIVE", plan: res.data as ComparativePlan };
+    // THEMATIC + SYNTHESIS share schema; surface effective mode for prompt block.
+    return { mode: input.mode === "SYNTHESIS" ? "SYNTHESIS" : "THEMATIC", plan: res.data as ThematicPlan };
   } catch (err) {
     return {
       mode: input.mode,
@@ -263,7 +268,7 @@ export async function buildSynthesisPlan(input: PlannerInput): Promise<PlannerRe
  * baştan biliyor, kaynaklara "ne dediler" diye değil "tartışmayı nasıl
  * kurarım" diye bakıyor.
  */
-export function formatPlanForPrompt(result: PlannerResult): string {
+export function formatPlanForPrompt(result: PlannerResult, analysisDepth = 5): string {
   if (result.failed || !result.plan) return "";
   const lines: string[] = ["## SYNTHESIS PLAN (use this as your argumentative skeleton)"];
   lines.push("");
@@ -273,9 +278,20 @@ export function formatPlanForPrompt(result: PlannerResult): string {
       `not around individual sources. Cite the listed bibIds with \`[cite:bibId,p=X]\` markers.`,
   );
   lines.push("");
+  lines.push(`**Analysis depth for this subsection: ${analysisDepth}/10.**`);
+  lines.push("");
 
-  if (result.mode === "THEMATIC") {
+  if (result.mode === "THEMATIC" || result.mode === "SYNTHESIS") {
     const p = result.plan as ThematicPlan;
+    if (result.mode === "SYNTHESIS") {
+      lines.push(
+        "**This is a SYNTHESIS subsection** — its primary job is implication, not summary. " +
+          "Use the positions / common / divergences fields below as background and spend most of the " +
+          "subsection on the **Implications** block. Open with one framing paragraph, then build the body " +
+          "around WHY / SO WHAT / LITERATURE IMPACT cycles.",
+      );
+      lines.push("");
+    }
     lines.push("### Positions in the field");
     p.schools.forEach((s, i) => {
       lines.push(`${i + 1}. **${s.name}** — ${s.position}`);
@@ -349,6 +365,14 @@ export function formatPlanForPrompt(result: PlannerResult): string {
   }
 
   lines.push("");
+  const depthTier =
+    analysisDepth <= 3 ? "low" : analysisDepth <= 6 ? "mid" : "high";
+  const depthRule =
+    depthTier === "low"
+      ? "- **DEPTH LOW (≤3):** This subsection is explanatory. Stay descriptive. Write what each position holds and how the evidence supports it. Reserve interpretive language for AT MOST a single closing sentence. Do NOT pepper the body with 'this shows that', 'as a result', 'consequently', etc. — those phrases here sound AI-generated, not academic."
+      : depthTier === "mid"
+        ? "- **DEPTH MID (4-6):** Mix. ~60% description, ~30% structural comparison, ~10% closing implication. Use 1-2 implication sentences total — one in the body where the contrast is sharpest, one in the closing paragraph. Do not over-extend interpretive moves; the subsection's primary job is still mapping the conversation."
+        : "- **DEPTH HIGH (7-10):** This subsection is interpretive. Description should be compressed; spend the body on cause / consequence / literature_impact arguments. Each body paragraph should contain at least one analytic move (WHY, SO WHAT, IMPACT). The closing paragraph IS the implication — not a bridge to the next subsection, but the subsection's analytic payoff.";
   lines.push(
     "**Writer instructions:**\n" +
       "- Write the body around this CONVERSATION (positions, tensions, shifts) — NOT as a sequential source-by-source summary.\n" +
@@ -356,8 +380,8 @@ export function formatPlanForPrompt(result: PlannerResult): string {
       "- If a plan claim is not directly supported by the excerpts you can see, DROP THE CLAIM or weaken it. Do NOT fabricate the evidence to match the plan.\n" +
       "- Cite the listed bibIds with `[cite:bibId,p=X]` markers — page MUST come from the excerpts.\n" +
       "- Do NOT add specific doctrinal claims, analogies, or named-work references that appear neither in the plan nor in the excerpts.\n" +
-      "- **IMPLICATIONS ARE REQUIRED.** Your closing paragraph (the last 2-4 sentences of the subsection) MUST surface at least one of the listed implications — i.e. answer one of: WHY this looks the way it does, SO WHAT follows from it, or HOW it shapes later debates. Implications marked '[inference from contrast]' are allowed even though the chunk does not state them verbatim — they are the analytic move the subsection is supposed to make. Frame the implication as your own analytic claim, not a quote.\n" +
-      "- A subsection that ends without any implication sentence is incomplete, even if all positions are correctly summarised.",
+      depthRule +
+      "\n- Implications marked '[inference from contrast]' are allowed where they appear: they are an analytic move, not a citation. Frame as your own claim.",
   );
   return lines.join("\n");
 }

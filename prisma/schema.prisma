@@ -338,10 +338,14 @@ enum SubsectionStatus {
 //                 common_points + divergences + historical_shift üretir.
 //   COMPARATIVE : İki taraf karşılaştırma (X vs Y). Planner topic +
 //                 sideA + sideB + difference + significance üretir.
+//   SYNTHESIS   : Bölüm/chapter sonu özet-yorum subsection'ı. Planner
+//                 THEMATIC şemasını kullanır ama implication-heavy.
+//                 analysisDepth default 8-10.
 enum SynthesisMode {
   SPECIFIC
   THEMATIC
   COMPARATIVE
+  SYNTHESIS
 }
 
 model Subsection {
@@ -356,6 +360,10 @@ model Subsection {
   estimatedPages  Int?
   status          SubsectionStatus @default(pending)
   synthesisMode   SynthesisMode    @default(SPECIFIC)
+  // 0-10. Writer'ın bu subsection'da ne kadar "yorum/çıkarım" yapacağı.
+  // SPECIFIC → 1-3 (açıklama ağırlıklı). COMPARATIVE/THEMATIC → 4-7.
+  // SYNTHESIS → 7-10 (implication-heavy). UI'da görünmez; roadmap atar.
+  analysisDepth   Int              @default(3)
   content         String?          @db.Text
   wordCount       Int              @default(0)
   sortOrder       Int

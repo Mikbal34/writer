@@ -345,11 +345,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // noktada örtüşür, şu noktada ayrılır, dolayısıyla..." akışına geçer.
     // synthesisMode roadmap tarafından otomatik atanıyor (SPECIFIC default).
     const synthesisMode: SynthesisMode = subsection.synthesisMode ?? 'SPECIFIC'
+    const analysisDepth = Math.min(10, Math.max(0, subsection.analysisDepth ?? 3))
     let synthesisBlock = ''
     if (
       needsSources &&
       ragChunks.length > 0 &&
-      (synthesisMode === 'THEMATIC' || synthesisMode === 'COMPARATIVE')
+      (synthesisMode === 'THEMATIC' || synthesisMode === 'COMPARATIVE' || synthesisMode === 'SYNTHESIS')
     ) {
       const titleToBibId = new Map<string, string>()
       for (const s of writingCtx.sources) titleToBibId.set(s.title, s.bibliographyId)
@@ -371,8 +372,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         })),
       })
       if (!planResult.failed) {
-        synthesisBlock = '\n\n' + formatPlanForPrompt(planResult)
-        console.log(`[synthesis-planner] subsection=${subsectionId} mode=${synthesisMode} OK`)
+        synthesisBlock = '\n\n' + formatPlanForPrompt(planResult, analysisDepth)
+        console.log(`[synthesis-planner] subsection=${subsectionId} mode=${synthesisMode} depth=${analysisDepth} OK`)
       } else {
         console.warn(
           `[synthesis-planner] subsection=${subsectionId} mode=${synthesisMode} FAILED: ${planResult.reason}`,

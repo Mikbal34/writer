@@ -277,6 +277,29 @@ export function getSessionContextPrompt(
     parts.push(
       `Do not include the subsection heading — just the body text with structured citation markers \`[cite:bibId]\` or \`[cite:bibId,p=X]\` immediately after the punctuation that follows the cited claim. Do NOT emit \`[fn: ...]\` markers; the export pipeline turns each \`[cite:]\` into the format-correct footnote/in-text reference automatically.`
     )
+
+    // Anti-AI-flavor rule for low-depth descriptive subsections. When a
+    // Synthesis Plan is NOT injected (i.e. SPECIFIC mode), the writer
+    // can drift into interpretive padding that reads as AI-generated.
+    // This rule keeps SPECIFIC subsections crisp and descriptive.
+    const depth = (subsection as { analysisDepth?: number | null }).analysisDepth ?? 3
+    if (depth <= 3) {
+      parts.push(
+        `## Writing register (analysis depth ${depth}/10 — descriptive)\n` +
+          `This subsection is explanatory, not interpretive. Describe the position(s), supply the evidence, ` +
+          `move on. AVOID interpretive padding such as "this shows that…", "as a result…", "consequently…", ` +
+          `"in this context…", "thus we see that…". These phrases here mark the prose as AI-generated, not ` +
+          `academic. Reserve at most ONE analytic sentence for the closing — and only if it genuinely earns ` +
+          `its place. Otherwise, end on the last descriptive point and trust the reader.`
+      )
+    } else if (depth >= 7) {
+      parts.push(
+        `## Writing register (analysis depth ${depth}/10 — interpretive)\n` +
+          `This subsection's primary job is interpretation, not summary. Compress description; spend the ` +
+          `body on WHY / SO WHAT / LITERATURE IMPACT moves. Each main paragraph should carry at least one ` +
+          `analytic claim, and the closing paragraph should BE the implication — not a bridge sentence.`
+      )
+    }
   }
 
   return parts.join('\n')

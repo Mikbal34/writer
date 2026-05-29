@@ -147,9 +147,22 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
           })
 
           for (const [subIndex, bookSub] of bookSection.subsections.entries()) {
-            const sm = (bookSub as { synthesisMode?: string }).synthesisMode
+            const rawSm = (bookSub as { synthesisMode?: string }).synthesisMode
             const synthesisMode =
-              sm === 'THEMATIC' || sm === 'COMPARATIVE' ? sm : 'SPECIFIC'
+              rawSm === 'THEMATIC' || rawSm === 'COMPARATIVE' || rawSm === 'SYNTHESIS'
+                ? rawSm
+                : 'SPECIFIC'
+            const rawDepth = (bookSub as { analysisDepth?: number }).analysisDepth
+            const analysisDepth =
+              typeof rawDepth === 'number'
+                ? Math.min(10, Math.max(0, Math.round(rawDepth)))
+                : synthesisMode === 'SYNTHESIS'
+                  ? 8
+                  : synthesisMode === 'THEMATIC'
+                    ? 6
+                    : synthesisMode === 'COMPARATIVE'
+                      ? 5
+                      : 2
             const subsection = await tx.subsection.create({
               data: {
                 sectionId: section.id,
@@ -161,6 +174,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
                 writingStrategy: bookSub.writingStrategy,
                 estimatedPages: bookSub.estimatedPages,
                 synthesisMode,
+                analysisDepth,
                 sortOrder: subIndex,
                 status: 'pending',
               },
