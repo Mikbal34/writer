@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BookOpen,
   LayoutDashboard,
   Map,
   Library,
@@ -12,8 +11,6 @@ import {
   PenLine,
   Download,
   ChevronLeft,
-  Menu,
-  X,
   Paintbrush,
   BookmarkCheck,
 } from "lucide-react";
@@ -34,9 +31,8 @@ interface ProjectSidebarProps {
   projectStatus: string;
   projectType?: string;
   completionPct?: number;
-  // Set when this project is part of a multi-volume series; the
-  // sidebar header then shows a small "Seri Adı · Cilt N" line above
-  // the title.
+  /** When this project is part of a multi-volume series the sidebar
+   *  header shows "Seri Adı · Cilt N" above the title. */
   seriesName?: string | null;
   seriesOrder?: number | null;
 }
@@ -45,11 +41,10 @@ const STATUS_ORDER = ["roadmap", "sources", "writing", "completed"];
 
 function getSectionStatus(
   sectionKey: string,
-  projectStatus: string
+  projectStatus: string,
 ): "done" | "active" | "pending" {
   const sectionIdx = STATUS_ORDER.indexOf(sectionKey);
   const currentIdx = STATUS_ORDER.indexOf(projectStatus);
-
   if (sectionIdx < currentIdx) return "done";
   if (sectionIdx === currentIdx) return "active";
   return "pending";
@@ -65,11 +60,10 @@ export default function ProjectSidebar({
   seriesOrder = null,
 }: ProjectSidebarProps) {
   const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [activeOps, setActiveOps] = useState(0);
   const needsSources = projectType === "ACADEMIC";
 
-  // Poll for active operations
+  // Poll for active operations (write jobs running in the background).
   const checkActiveOps = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${projectId}/active-operations`);
@@ -77,7 +71,9 @@ export default function ProjectSidebar({
         const data = await res.json();
         setActiveOps(data.writing?.length ?? 0);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [projectId]);
 
   useEffect(() => {
@@ -86,9 +82,6 @@ export default function ProjectSidebar({
     return () => clearInterval(interval);
   }, [checkActiveOps]);
 
-  // Ordered as the natural workflow: set the project's voice first,
-  // plan the roadmap, gather sources, write, check citations, then
-  // (creative) design + (everyone) export. Dashboard stays on top.
   const allNavItems: NavItem[] = [
     {
       label: "Dashboard",
@@ -143,23 +136,29 @@ export default function ProjectSidebar({
 
   const navItems = allNavItems
     .filter((item) => needsSources || item.statusKey !== "sources")
-    .filter((item) => needsSources ? item.label !== "Art" && item.label !== "Design" : true);
+    .filter((item) =>
+      needsSources ? item.label !== "Art" && item.label !== "Design" : true,
+    );
 
-  const sidebarContent = (
+  return (
     <div className="flex flex-col h-full">
       {/* Project header */}
-      <div className="p-4 border-b border-sandy/40 hidden lg:block">
+      <div className="p-4 border-b border-sandy/40">
         <Link
           href="/"
-          className="flex items-center gap-2 mb-1 hover:opacity-70 transition-opacity"
+          className="flex items-center gap-1.5 mb-3 hover:opacity-70 transition-opacity"
         >
           <ChevronLeft className="w-3.5 h-3.5 text-ink-light" />
           <span className="font-ui text-xs text-muted-foreground tracking-wide">
-            All Projects
+            Tüm projeler
           </span>
         </Link>
-        <div className="mt-3 flex items-center gap-2.5">
-          <img src="/images/quilpen-icon.png" alt="Quilpen" className="w-9 h-9 rounded-lg" />
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/images/quilpen-icon.png"
+            alt="Quilpen"
+            className="w-9 h-9 rounded-lg shrink-0"
+          />
           <div className="min-w-0 flex-1">
             {seriesName && (
               <p className="font-ui text-[10px] text-gold-dark uppercase tracking-wider mb-0.5 truncate">
@@ -173,14 +172,14 @@ export default function ProjectSidebar({
               {projectTitle}
             </p>
             <p className="font-ui text-[10px] text-muted-foreground mt-0.5 capitalize">
-              {projectStatus}
+              {projectStatus} · %{completionPct}
             </p>
           </div>
         </div>
       </div>
 
       {/* Nav items */}
-      <div className="flex lg:flex-col lg:py-2 overflow-x-auto lg:overflow-y-auto flex-1 min-h-0">
+      <nav className="flex flex-col py-2 overflow-y-auto flex-1 min-h-0">
         {navItems.map((item) => {
           const isActive =
             item.href === `/projects/${projectId}`
@@ -189,30 +188,26 @@ export default function ProjectSidebar({
           const sectionStatus = getSectionStatus(item.statusKey, projectStatus);
 
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setMobileOpen(false)}
-            >
+            <Link key={item.href} href={item.href}>
               <div
                 className={cn(
-                  "flex items-center gap-2.5 px-5 py-2.5 lg:py-2 font-ui text-sm transition-all duration-200 relative whitespace-nowrap",
+                  "flex items-center gap-2.5 px-5 py-2 font-ui text-sm transition-all duration-200 relative",
                   isActive
                     ? "text-forest font-medium bg-forest/5"
-                    : "text-ink-light hover:text-ink hover:bg-sandy-soft/30"
+                    : "text-ink-light hover:text-ink hover:bg-sandy-soft/30",
                 )}
               >
                 {isActive && (
-                  <div
-                    className="absolute left-0 top-0 bottom-0 w-[2px] bg-forest hidden lg:block"
-                  />
+                  <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-forest" />
                 )}
                 <span>{item.icon}</span>
                 <span>{item.label}</span>
                 {item.label === "Write" && activeOps > 0 && (
                   <span className="ml-auto flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                    <span className="font-ui text-[10px] text-amber-600">{activeOps}</span>
+                    <span className="font-ui text-[10px] text-amber-600">
+                      {activeOps}
+                    </span>
                   </span>
                 )}
                 {item.label !== "Write" && sectionStatus === "done" && (
@@ -225,47 +220,12 @@ export default function ProjectSidebar({
             </Link>
           );
         })}
-      </div>
+      </nav>
 
       {/* Bottom credit balance */}
-      <div className="hidden lg:flex mt-auto p-4 items-center justify-between border-t border-sandy/40">
+      <div className="mt-auto p-4 flex items-center justify-between border-t border-sandy/40">
         <CreditBalance />
       </div>
     </div>
-  );
-
-  return (
-    <>
-      {/* Mobile toggle */}
-      <button
-        className="fixed top-4 left-4 z-50 md:hidden flex h-9 w-9 items-center justify-center rounded-md bg-page border border-sandy shadow-sm transition-colors hover:bg-sandy-soft/50"
-        onClick={() => setMobileOpen(!mobileOpen)}
-        aria-label="Toggle sidebar"
-      >
-        {mobileOpen ? (
-          <X className="h-4 w-4 text-ink" />
-        ) : (
-          <Menu className="h-4 w-4 text-ink" />
-        )}
-      </button>
-
-      {/* Mobile overlay */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/40 md:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-
-      {/* Sidebar — mobile drawer + desktop static */}
-      <nav
-        className={cn(
-          "fixed inset-y-0 left-0 z-40 lg:w-52 w-56 border-b lg:border-b-0 lg:border-r border-sandy/60 bg-page/50 flex lg:flex-col shrink-0 transition-transform duration-200 ease-in-out lg:static lg:translate-x-0",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        {sidebarContent}
-      </nav>
-    </>
   );
 }

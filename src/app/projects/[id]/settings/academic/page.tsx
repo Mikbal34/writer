@@ -366,10 +366,7 @@ export default function AcademicSettingsPage() {
 
   if (loading) {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ backgroundColor: "#F5F0E6" }}
-      >
+      <div className="h-full flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-forest" />
       </div>
     )
@@ -377,7 +374,7 @@ export default function AcademicSettingsPage() {
 
   if (!citationFormat) {
     return (
-      <div className="min-h-screen" style={{ backgroundColor: "#F5F0E6" }}>
+      <div className="h-full overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-8">
           <Link
             href={`/projects/${projectId}/export`}
@@ -398,7 +395,7 @@ export default function AcademicSettingsPage() {
   if (!meta) return null
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#F5F0E6" }}>
+    <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-8">
         <Link
           href={`/projects/${projectId}/export`}

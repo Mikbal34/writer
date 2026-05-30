@@ -3,10 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import ProjectSidebar from "@/components/shared/ProjectSidebar";
-import { FadeUpLarge } from "@/components/shared/Animations";
-
-const TEXTURE_URL =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310419663027387604/L3DyhJpdXQXWDPUTXv57iD/book-texture-bg-hJmgUJE5GQFpbmBrLLMri5.webp";
+import WorkspaceShell from "@/components/shared/WorkspaceShell";
 
 interface ProjectLayoutProps {
   children: React.ReactNode;
@@ -44,7 +41,7 @@ export default async function ProjectLayout({
     notFound();
   }
 
-  // Lightweight aggregate instead of fetching all chapters/sections/subsections
+  // Lightweight aggregate instead of fetching all chapters/sections/subsections.
   const [totalCount, completedCount] = await Promise.all([
     prisma.subsection.count({
       where: { section: { chapter: { projectId: id } } },
@@ -56,46 +53,27 @@ export default async function ProjectLayout({
   const completionPct =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
+  // Project pages share the same WorkspaceShell as the rest of the app —
+  // dark IconRail (left), ProjectSidebar in the 240-px context pane, and
+  // the page's own content in the main column. fullHeight=true keeps
+  // editor / chat splits scrolling inside their own panes without the
+  // shell's outer scroll competing.
   return (
-    <div
-      className="min-h-screen flex flex-col"
-      style={{
-        backgroundImage: `url(${TEXTURE_URL})`,
-        backgroundSize: "cover",
-        backgroundAttachment: "scroll",
-      }}
+    <WorkspaceShell
+      context={
+        <ProjectSidebar
+          projectId={project.id}
+          projectTitle={project.title}
+          projectStatus={project.status}
+          projectType={project.projectType}
+          completionPct={completionPct}
+          seriesName={project.series?.name ?? null}
+          seriesOrder={project.seriesOrder ?? null}
+        />
+      }
+      fullHeight
     >
-      <div className="flex-1 flex items-start justify-center p-4 md:p-6 lg:p-8">
-        <FadeUpLarge className="w-full max-w-[1400px] relative">
-          {/* Book shadow */}
-          <div className="absolute -inset-4 bg-ink/8 rounded-sm blur-2xl" />
-
-          {/* Book container */}
-          <div className="relative bg-page rounded-sm shadow-[0_4px_40px_rgba(60,36,21,0.15)] overflow-hidden">
-            {/* Top decorative edge */}
-            <div className="h-[3px] bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
-
-            <div className="flex flex-col lg:flex-row h-[93vh] overflow-hidden">
-              <ProjectSidebar
-                projectId={project.id}
-                projectTitle={project.title}
-                projectStatus={project.status}
-                projectType={project.projectType}
-                completionPct={completionPct}
-                seriesName={project.series?.name ?? null}
-                seriesOrder={project.seriesOrder ?? null}
-              />
-              <main className="flex-1 flex flex-col overflow-y-auto min-h-0">
-                <div className="md:hidden h-16" />{/* spacer for mobile menu button */}
-                {children}
-              </main>
-            </div>
-
-            {/* Bottom decorative edge */}
-            <div className="h-[3px] bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
-          </div>
-        </FadeUpLarge>
-      </div>
-    </div>
+      {children}
+    </WorkspaceShell>
   );
 }

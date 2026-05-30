@@ -35,7 +35,7 @@ export default function CitationSettingsPage() {
   }, [projectId, router]);
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#F5F0E6" }}>
+    <div className="h-full overflow-y-auto">
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Breadcrumbs — Atıf Formatı genelde Export sayfasından açılır,
             kullanıcı oradan geldiyse oraya dönmek doğru olur. */}
