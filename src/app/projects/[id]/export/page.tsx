@@ -23,6 +23,7 @@ import {
   PageNumber,
   PageTitle,
   SectionTitle,
+  SpineShadow,
 } from "@/components/shared/BookElements";
 import { FadeUp, FadeRight } from "@/components/shared/Animations";
 
@@ -211,7 +212,7 @@ export default function ExportPage() {
   return (
     <div className="h-full flex flex-col lg:flex-row">
       {/* LEFT PAGE — Export Settings (primary, wider) */}
-      <div className="flex-[1.4] p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0 lg:border-r border-sandy/40">
+      <div className="flex-[1.4] p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0">
         <FadeUp>
           <PageTitle
             title="Export"
@@ -565,6 +566,8 @@ export default function ExportPage() {
         )}
         <PageNumber number="vii" />
       </div>
+
+      <SpineShadow />
 
       {/* RIGHT PAGE — Export History (secondary, narrower) */}
       <div className="flex-1 p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0 border-t lg:border-t-0 border-sandy/40">

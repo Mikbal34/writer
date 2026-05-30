@@ -18,7 +18,7 @@ import {
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Ornament, PageTitle } from "@/components/shared/BookElements";
+import { Ornament, PageTitle, SpineShadow } from "@/components/shared/BookElements";
 import { FadeUp } from "@/components/shared/Animations";
 import CitationVerifyPanel, {
   type CitationRecord,
@@ -97,9 +97,9 @@ export default function CitationsPage() {
         <Ornament className="w-40 mx-auto text-sandy mt-1 mb-1" />
       </div>
 
-      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[360px_1fr] gap-0">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row">
         {/* Left: list */}
-        <aside className="border-r border-sandy/40 bg-page/60 flex flex-col min-h-0">
+        <aside className="md:w-[360px] md:shrink-0 flex flex-col min-h-0">
           <div className="p-3 border-b border-sandy/40">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-light" />
@@ -192,8 +192,10 @@ export default function CitationsPage() {
           </div>
         </aside>
 
+        <SpineShadow />
+
         {/* Right: verify panel */}
-        <section className="min-h-0">
+        <section className="flex-1 min-h-0">
           {active ? (
             <CitationVerifyPanel citation={active} />
           ) : (
