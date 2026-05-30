@@ -26,7 +26,6 @@ import { toast } from "sonner";
 import { type SourceItem } from "@/components/sources/SourceList";
 import KunyeForm from "@/components/sources/KunyeForm";
 import PdfFinderButton from "@/components/sources/PdfFinderButton";
-import LibraryPickerDialog from "@/components/library/LibraryPickerDialog";
 import { Ornament, PageNumber, PageTitle } from "@/components/shared/BookElements";
 import { FadeUp, FadeIn, StaggerItem } from "@/components/shared/Animations";
 
@@ -71,6 +70,21 @@ interface BibliographyEntry {
   } | null;
   attachments?: BibliographyAttachment[];
   _count?: { sourceMappings: number };
+  sourceMappings?: Array<{ priority: string }>;
+}
+
+// Importance — sourceMappings'in priority dağılımına göre 1-5 yıldız.
+// primary mapping = "ana kaynak", supporting = "destekleyici".
+// Hiç mapping yoksa "manuel" (★).
+function getImportance(bib: BibliographyEntry): { stars: number; label: string } {
+  const maps = bib.sourceMappings ?? [];
+  if (maps.length === 0) return { stars: 1, label: "Manuel" };
+  const primaryCount = maps.filter((m) => m.priority === "primary").length;
+  const total = maps.length;
+  if (primaryCount >= 2) return { stars: 5, label: "Ana kaynak" };
+  if (primaryCount === 1) return { stars: 4, label: "Önemli" };
+  if (total >= 2) return { stars: 3, label: "Destekleyici" };
+  return { stars: 2, label: "Yardımcı" };
 }
 
 function AttachmentChip({
@@ -169,7 +183,6 @@ export default function SourcesPage() {
   const [bibSearch, setBibSearch] = useState("");
   type BibFilter = "all" | "complete" | "incomplete" | "library" | "withPdf" | "noPdf";
   const [bibFilter, setBibFilter] = useState<BibFilter>("all");
-  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
 
   const fetchSources = useCallback(async () => {
     try {
@@ -269,13 +282,6 @@ export default function SourcesPage() {
         />
         <div className="flex gap-2">
           <button
-            onClick={() => setShowLibraryPicker(true)}
-            className="flex items-center gap-2 px-3 py-1.5 border border-sandy rounded-sm font-ui text-xs text-ink hover:bg-sandy-soft/30 transition-colors"
-          >
-            <BookMarked className="h-3.5 w-3.5" />
-            Add from Library
-          </button>
-          <button
             onClick={() => {
               setEditingBiblio(null);
               setShowKunyeDialog(true);
@@ -323,8 +329,8 @@ export default function SourcesPage() {
           onClick={() => setBibFilter(bibFilter === "library" ? "all" : "library")}
           className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full transition-colors ${
             bibFilter === "library"
-              ? "bg-emerald-100 text-emerald-700 font-medium"
-              : "text-muted-foreground hover:bg-emerald-50/60"
+              ? "bg-sandy-soft text-forest font-medium"
+              : "text-muted-foreground hover:bg-sandy-soft/40"
           }`}
           title="Kütüphanedeki kitaplarla eşleşmiş kaynaklar"
         >
@@ -335,10 +341,10 @@ export default function SourcesPage() {
           onClick={() => setBibFilter(bibFilter === "withPdf" ? "all" : "withPdf")}
           className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full transition-colors ${
             bibFilter === "withPdf"
-              ? "bg-sky-100 text-sky-700 font-medium"
-              : "text-muted-foreground hover:bg-sky-50/60"
+              ? "bg-sandy-soft text-ink font-medium"
+              : "text-muted-foreground hover:bg-sandy-soft/40"
           }`}
-          title="PDF'i erişilebilir kaynaklar (kütüphaneden ya da proje uploadından)"
+          title="PDF'i erişilebilir kaynaklar"
         >
           <Paperclip className="h-3 w-3" />
           {withPdfCount} PDF&apos;li
@@ -347,10 +353,10 @@ export default function SourcesPage() {
           onClick={() => setBibFilter(bibFilter === "noPdf" ? "all" : "noPdf")}
           className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full transition-colors ${
             bibFilter === "noPdf"
-              ? "bg-amber-100 text-amber-800 font-medium"
-              : "text-muted-foreground hover:bg-amber-50/60"
+              ? "bg-sandy-soft text-gold-dark font-medium"
+              : "text-muted-foreground hover:bg-sandy-soft/40"
           }`}
-          title="PDF erişimi olmayan kaynaklar — yazıya gömülemez, üzerinde aksiyon gerekir"
+          title="PDF erişimi olmayan kaynaklar — yazıya gömülemez"
         >
           <AlertTriangle className="h-3 w-3" />
           {noPdfCount} PDF eksik
@@ -420,60 +426,75 @@ export default function SourcesPage() {
                       <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/20 shrink-0" />
                     )}
 
-                    {/* Author + Title */}
+                    {/* Author + Title + meta inline */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline gap-2 flex-wrap">
                         <span className="font-body text-sm font-semibold text-ink">
                           {bib.authorSurname}
                           {bib.authorName ? `, ${bib.authorName}` : ""}
                         </span>
-                        <span className="text-muted-foreground">—</span>
+                        <span className="text-ink-light">—</span>
                         <span className="font-body text-sm italic text-ink-light truncate">
                           {bib.title}
                         </span>
+                        {bib.year && (
+                          <span className="font-ui text-xs text-ink-light/80 shrink-0">
+                            ({bib.year})
+                          </span>
+                        )}
                       </div>
                       {missingFields.length > 0 && (
-                        <span className="text-[10px] text-gold-dark">
+                        <span className="font-ui text-[10px] text-ink-light/70">
                           eksik: {missingFields.join(", ")}
                         </span>
                       )}
                     </div>
 
-                    {/* Year */}
-                    <span className="font-display text-sm text-muted-foreground shrink-0">
-                      {bib.year ?? "—"}
-                    </span>
+                    {/* Importance — yıldızlar (workspace gold tonu) */}
+                    {(() => {
+                      const imp = getImportance(bib);
+                      return (
+                        <div
+                          className="flex items-center gap-px shrink-0"
+                          title={`${imp.label} (${imp.stars}/5) — bu kaynak ${bib._count?.sourceMappings ?? 0} subsection'a bağlı.`}
+                        >
+                          {[1, 2, 3, 4, 5].map((i) => (
+                            <span
+                              key={i}
+                              className={
+                                i <= imp.stars
+                                  ? "text-gold text-xs leading-none"
+                                  : "text-sandy text-xs leading-none"
+                              }
+                            >
+                              ★
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
 
-                    {/* Type badge */}
-                    <span className="font-ui text-[10px] px-2 py-0.5 bg-sandy-soft text-ink-light rounded-sm tracking-wider shrink-0">
-                      {bib.entryType}
-                    </span>
-
-                    {/* Status badges — kütüphane bağı / PDF / PDF eksik */}
-                    <div className="flex items-center gap-1 shrink-0">
+                    {/* Status — tek satır sade ikon seti.
+                        Kütüphane bağı + PDF erişim durumu. */}
+                    <div className="flex items-center gap-1.5 shrink-0">
                       {inLib && (
-                        <span
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-sm text-[10px] font-ui"
-                          title="Bu kaynak senin kütüphanende — başka projelerde de kullanılabilir."
-                        >
-                          <LibraryIcon className="h-3 w-3" />
-                        </span>
+                        <LibraryIcon
+                          className="h-3.5 w-3.5 text-forest"
+                          aria-label="Kütüphane bağı var"
+                        />
                       )}
-                      {pdfOk && (
+                      {pdfOk ? (
+                        <Paperclip
+                          className="h-3.5 w-3.5 text-ink-light"
+                          aria-label="PDF erişimi var"
+                        />
+                      ) : (
                         <span
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-sky-100 text-sky-700 rounded-sm text-[10px] font-ui"
-                          title="PDF erişimi var — yazıya doğrudan alıntılanabilir."
-                        >
-                          <Paperclip className="h-3 w-3" />
-                        </span>
-                      )}
-                      {!pdfOk && (
-                        <span
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-sm text-[10px] font-ui font-medium"
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-gold-dark/30 text-gold-dark rounded-sm text-[10px] font-ui"
                           title="PDF erişimi yok — yazma sırasında bu kaynaktan alıntı yapılamaz."
                         >
                           <AlertTriangle className="h-3 w-3" />
-                          eksik
+                          PDF
                         </span>
                       )}
                     </div>
@@ -603,16 +624,6 @@ export default function SourcesPage() {
           />
         </DialogContent>
       </Dialog>
-
-      {/* Library Picker Dialog */}
-      <LibraryPickerDialog
-        open={showLibraryPicker}
-        onOpenChange={setShowLibraryPicker}
-        projectId={projectId}
-        onLinked={() => {
-          fetchBibliography();
-        }}
-      />
     </div>
   );
 }

@@ -55,6 +55,9 @@ export async function GET(req: NextRequest) {
         // available (filePath set) for the verification panel.
         libraryEntry: { select: { id: true, filePath: true, pdfStatus: true, fileType: true } },
         _count: { select: { sourceMappings: true } },
+        // Per-mapping priority — Sources UI bibliography'nin önemini
+        // (kaç primary / kaç supporting) yıldız rozetine çevirir.
+        sourceMappings: { select: { priority: true } },
       },
     })
 
