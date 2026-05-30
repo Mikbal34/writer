@@ -189,21 +189,12 @@ export default function ProjectIconRail({
 
   const railContent = (
     <>
-      {/* Back to projects + project monogram. Top of the rail is the
-          breadcrumb anchor: ChevronLeft + Q icon. Title surfaces on
-          hover as a tooltip — the rail is intentionally label-less. */}
-      <Link
-        href="/"
-        title="Tüm projeler"
-        className="h-[44px] flex items-center justify-center hover:opacity-90 transition-opacity mb-1"
-        onClick={() => setMobileOpen(false)}
-      >
-        <ChevronLeft className="w-4 h-4 text-white/70" />
-      </Link>
+      {/* Brand monogram on top (matches global IconRail), back-to-
+          projects chevron just beneath it. Tooltip surfaces title. */}
       <Link
         href={`/projects/${projectId}`}
         title={projectTitle}
-        className="h-[44px] flex items-center justify-center hover:opacity-90 transition-opacity mb-2"
+        className="h-[44px] flex items-center justify-center hover:opacity-90 transition-opacity mb-1"
       >
         <Image
           src="/images/quilpen-icon.png"
@@ -212,6 +203,14 @@ export default function ProjectIconRail({
           height={30}
           className="rounded-md"
         />
+      </Link>
+      <Link
+        href="/"
+        title="Tüm projeler"
+        className="h-[28px] flex items-center justify-center hover:opacity-90 transition-opacity mb-2 text-white/55 hover:text-white"
+        onClick={() => setMobileOpen(false)}
+      >
+        <ChevronLeft className="w-4 h-4" />
       </Link>
 
       {/* Project nav */}

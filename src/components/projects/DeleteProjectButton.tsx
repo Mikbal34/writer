@@ -134,9 +134,9 @@ export default function DeleteProjectButton({
           swallow(e);
           setOpen(true);
         }}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm border border-red-200 text-red-700 font-ui text-xs hover:bg-red-50 transition-colors"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-sm border border-sandy text-ink-light font-ui text-xs hover:text-red-700 hover:border-red-300 hover:bg-red-50/60 transition-colors"
       >
-        <Trash2 className="h-3 w-3" />
+        <Trash2 className="h-3.5 w-3.5" />
         Projeyi sil
       </button>
       <DeleteConfirm
