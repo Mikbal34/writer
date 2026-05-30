@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, BookOpen, Loader2 } from "lucide-react";
+import { ChevronLeft, Loader2 } from "lucide-react";
 import type { CitationFormat } from "@prisma/client";
 import CitationFormatPicker from "@/components/citations/CitationFormatPicker";
 import { FadeUp } from "@/components/shared/Animations";
+import { Ornament, PageTitle } from "@/components/shared/BookElements";
 
 export default function CitationSettingsPage() {
   const params = useParams();
@@ -35,8 +36,8 @@ export default function CitationSettingsPage() {
   }, [projectId, router]);
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="h-full overflow-y-auto px-6 lg:px-10 py-6 lg:py-8">
+      <div className="max-w-5xl mx-auto">
         {/* Breadcrumbs — Atıf Formatı genelde Export sayfasından açılır,
             kullanıcı oradan geldiyse oraya dönmek doğru olur. */}
         <Link
@@ -47,26 +48,14 @@ export default function CitationSettingsPage() {
           Export sayfasına dön
         </Link>
 
-        {/* Header */}
-        <FadeUp className="mb-6">
-          <div className="flex items-start gap-3">
-            <div
-              className="w-10 h-10 rounded-sm flex items-center justify-center shrink-0"
-              style={{ backgroundColor: "rgba(201,168,76,0.18)" }}
-            >
-              <BookOpen className="h-5 w-5" style={{ color: "#8a5a1a" }} />
-            </div>
-            <div>
-              <h1 className="font-display text-3xl font-bold text-ink">
-                Atıf Formatı
-              </h1>
-              <p className="font-body text-sm text-ink-light mt-1 max-w-2xl">
-                Enstitünün veya derginin istediği formatı seç. Değişiklik uygulandığında
-                yazılmış tüm metin ve kaynakça yeni formata dönüşür; export da aynı formatta çıkar.
-              </p>
-            </div>
-          </div>
+        {/* Header — recipe workspace pattern */}
+        <FadeUp>
+          <PageTitle
+            title="Atıf Formatı"
+            subtitle="Enstitünün veya derginin istediği formatı seç. Değişiklik uygulandığında yazılmış tüm metin ve kaynakça yeni formata dönüşür; export da aynı formatta çıkar."
+          />
         </FadeUp>
+        <Ornament className="w-40 mx-auto text-sandy mb-6" />
 
         {/* Picker */}
         {loading || !initialFormat ? (

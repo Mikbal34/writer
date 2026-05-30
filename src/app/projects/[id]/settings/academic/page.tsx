@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronLeft, GraduationCap, Loader2, Save } from "lucide-react"
+import { ChevronLeft, Loader2, Save } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { FadeUp } from "@/components/shared/Animations"
+import { Ornament, PageTitle } from "@/components/shared/BookElements"
 import {
   emptyMetaFor,
   isAcademicFormat,
@@ -374,15 +375,16 @@ export default function AcademicSettingsPage() {
 
   if (!citationFormat) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="h-full overflow-y-auto px-6 lg:px-10 py-6 lg:py-8">
+        <div className="max-w-3xl mx-auto">
           <Link
             href={`/projects/${projectId}/export`}
-            className="inline-flex items-center gap-1.5 text-sm text-ink-light hover:text-ink mb-6"
+            className="inline-flex items-center gap-1 font-ui text-xs text-ink-light hover:text-ink mb-4 transition-colors"
           >
-            <ChevronLeft className="h-4 w-4" /> Back to export
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Export sayfasına dön
           </Link>
-          <p className="font-body text-ink-light">
+          <p className="font-body text-sm text-ink-light">
             Academic metadata applies only to projects that use an academic
             citation format (APA, MLA, Chicago, Turabian, Harvard, IEEE,
             Vancouver, AMA, ISNAD).
@@ -395,39 +397,35 @@ export default function AcademicSettingsPage() {
   if (!meta) return null
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-6 py-8">
+    <div className="h-full overflow-y-auto px-6 lg:px-10 py-6 lg:py-8">
+      <div className="max-w-3xl mx-auto">
         <Link
           href={`/projects/${projectId}/export`}
-          className="inline-flex items-center gap-1.5 text-sm text-ink-light hover:text-ink mb-6"
+          className="inline-flex items-center gap-1 font-ui text-xs text-ink-light hover:text-ink mb-4 transition-colors"
         >
-          <ChevronLeft className="h-4 w-4" /> Back to export
+          <ChevronLeft className="h-3.5 w-3.5" />
+          Export sayfasına dön
         </Link>
 
         <FadeUp>
-          <div className="flex items-center gap-3 mb-2">
-            <GraduationCap className="h-6 w-6 text-gold-dark" />
-            <h1 className="font-display text-2xl font-bold text-ink">
-              Academic metadata · {citationFormat}
-            </h1>
-          </div>
-          <p className="font-body text-sm text-ink-light mb-8">
-            These fields populate the title page, abstract, running head, and
-            other structural parts of the export. {projectTitle}.
-          </p>
+          <PageTitle
+            title={`Akademik Metadata · ${citationFormat}`}
+            subtitle={`Bu alanlar export'taki kapak sayfası, özet, running head ve yapısal bölümleri doldurur. ${projectTitle}.`}
+          />
         </FadeUp>
+        <Ornament className="w-40 mx-auto text-sandy mb-6" />
 
-        <div className="bg-page border border-sandy rounded-sm p-6">
+        <div className="bg-elevated border border-sandy/60 rounded-sm p-5 md:p-6">
           <MetaFormRouter meta={meta} onChange={setMeta} {...handlers} />
 
-          <div className="flex justify-end pt-6 mt-6 border-t border-sandy">
+          <div className="flex justify-end pt-5 mt-5 border-t border-sandy/40">
             <Button onClick={save} disabled={saving} className="gap-2">
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Kaydediliyor…" : "Kaydet"}
             </Button>
           </div>
         </div>
