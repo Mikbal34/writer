@@ -10,6 +10,9 @@ import {
   Search,
   CheckCircle2,
   X,
+  Library as LibraryIcon,
+  Paperclip,
+  AlertTriangle,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -59,6 +62,13 @@ interface BibliographyEntry {
   doi: string | null;
   url: string | null;
   sourceId: string | null;
+  libraryEntryId: string | null;
+  libraryEntry?: {
+    id: string;
+    pdfStatus: string | null;
+    filePath: string | null;
+    fileType: string | null;
+  } | null;
   attachments?: BibliographyAttachment[];
   _count?: { sourceMappings: number };
 }
@@ -128,6 +138,25 @@ function isBibPartial(bib: BibliographyEntry): boolean {
   return !!(bib.authorSurname && bib.title) && !isBibComplete(bib);
 }
 
+// Kütüphane bağı var mı? Bibliography ya bir LibraryEntry'e bağlı
+// (libraryEntryId not null) ya da değil. Bağlıysa o kitap kullanıcının
+// global kütüphanesinde mevcut — başka projelerde de yeniden
+// kullanılabilir.
+function isInLibrary(bib: BibliographyEntry): boolean {
+  return !!bib.libraryEntryId;
+}
+
+// PDF erişimi var mı? İki kaynaktan biri:
+//  - Bağlı LibraryEntry'nin PDF'i ready durumda
+//  - Bibliography'e doğrudan attach edilmiş Source dosya
+function hasPdf(bib: BibliographyEntry): boolean {
+  const libPdf =
+    !!bib.libraryEntry &&
+    (bib.libraryEntry.pdfStatus === "ready" || !!bib.libraryEntry.filePath);
+  const localPdf = (bib.attachments?.length ?? 0) > 0;
+  return libPdf || localPdf;
+}
+
 export default function SourcesPage() {
   const params = useParams();
   const projectId = params.id as string;
@@ -138,7 +167,8 @@ export default function SourcesPage() {
   const [showKunyeDialog, setShowKunyeDialog] = useState(false);
   const [editingBiblio, setEditingBiblio] = useState<BibliographyEntry | null>(null);
   const [bibSearch, setBibSearch] = useState("");
-  const [bibFilter, setBibFilter] = useState<"all" | "complete" | "incomplete">("all");
+  type BibFilter = "all" | "complete" | "incomplete" | "library" | "withPdf" | "noPdf";
+  const [bibFilter, setBibFilter] = useState<BibFilter>("all");
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
 
   const fetchSources = useCallback(async () => {
@@ -200,8 +230,20 @@ export default function SourcesPage() {
   const completeCount = allBibliography.filter(isBibComplete).length;
   const partialCount = allBibliography.filter(isBibPartial).length;
   const missingCount = allBibliography.length - completeCount - partialCount;
+  const libraryCount = allBibliography.filter(isInLibrary).length;
+  const withPdfCount = allBibliography.filter(hasPdf).length;
+  const noPdfCount = allBibliography.length - withPdfCount;
 
-  const filteredBib = allBibliography.filter((bib) => {
+  // Default sıralama: PDF eksik olanlar önce — kullanıcının ilk gördüğü
+  // şey aksiyon gerektiren satırlar olsun. Sonra alfabetik.
+  const sortedBib = [...allBibliography].sort((a, b) => {
+    const aNeeds = !hasPdf(a) ? 0 : 1;
+    const bNeeds = !hasPdf(b) ? 0 : 1;
+    if (aNeeds !== bNeeds) return aNeeds - bNeeds;
+    return a.authorSurname.localeCompare(b.authorSurname, "tr");
+  });
+
+  const filteredBib = sortedBib.filter((bib) => {
     const matchesSearch =
       !bibSearch ||
       bib.authorSurname.toLowerCase().includes(bibSearch.toLowerCase()) ||
@@ -211,6 +253,9 @@ export default function SourcesPage() {
     if (!matchesSearch) return false;
     if (bibFilter === "complete") return isBibComplete(bib);
     if (bibFilter === "incomplete") return !isBibComplete(bib);
+    if (bibFilter === "library") return isInLibrary(bib);
+    if (bibFilter === "withPdf") return hasPdf(bib);
+    if (bibFilter === "noPdf") return !hasPdf(bib);
     return true;
   });
 
@@ -244,7 +289,7 @@ export default function SourcesPage() {
       </FadeUp>
 
       {/* Stats bar */}
-      <FadeIn delay={0.2} className="flex items-center gap-4 mb-4 flex-wrap">
+      <FadeIn delay={0.2} className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-1.5">
           <FileText className="h-3.5 w-3.5 text-ink-light" />
           <span className="font-display text-lg font-bold text-ink">{allBibliography.length}</span>
@@ -272,6 +317,43 @@ export default function SourcesPage() {
         >
           <span className="h-2 w-2 rounded-full bg-gold-dark" />
           {partialCount + missingCount} Incomplete
+        </button>
+        <div className="h-4 w-px bg-sandy" />
+        <button
+          onClick={() => setBibFilter(bibFilter === "library" ? "all" : "library")}
+          className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full transition-colors ${
+            bibFilter === "library"
+              ? "bg-emerald-100 text-emerald-700 font-medium"
+              : "text-muted-foreground hover:bg-emerald-50/60"
+          }`}
+          title="Kütüphanedeki kitaplarla eşleşmiş kaynaklar"
+        >
+          <LibraryIcon className="h-3 w-3" />
+          {libraryCount} Kütüphanede
+        </button>
+        <button
+          onClick={() => setBibFilter(bibFilter === "withPdf" ? "all" : "withPdf")}
+          className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full transition-colors ${
+            bibFilter === "withPdf"
+              ? "bg-sky-100 text-sky-700 font-medium"
+              : "text-muted-foreground hover:bg-sky-50/60"
+          }`}
+          title="PDF'i erişilebilir kaynaklar (kütüphaneden ya da proje uploadından)"
+        >
+          <Paperclip className="h-3 w-3" />
+          {withPdfCount} PDF&apos;li
+        </button>
+        <button
+          onClick={() => setBibFilter(bibFilter === "noPdf" ? "all" : "noPdf")}
+          className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full transition-colors ${
+            bibFilter === "noPdf"
+              ? "bg-amber-100 text-amber-800 font-medium"
+              : "text-muted-foreground hover:bg-amber-50/60"
+          }`}
+          title="PDF erişimi olmayan kaynaklar — yazıya gömülemez, üzerinde aksiyon gerekir"
+        >
+          <AlertTriangle className="h-3 w-3" />
+          {noPdfCount} PDF eksik
         </button>
         <div className="ml-auto relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -313,6 +395,8 @@ export default function SourcesPage() {
               if (!bib.publisher) missingFields.push("yayınevi");
               if (!bib.publishPlace) missingFields.push("yer");
               const attachments = bib.attachments ?? [];
+              const inLib = isInLibrary(bib);
+              const pdfOk = hasPdf(bib);
 
               return (
                 <StaggerItem
@@ -364,6 +448,47 @@ export default function SourcesPage() {
                     <span className="font-ui text-[10px] px-2 py-0.5 bg-sandy-soft text-ink-light rounded-sm tracking-wider shrink-0">
                       {bib.entryType}
                     </span>
+
+                    {/* Status badges — kütüphane bağı / PDF / PDF eksik */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {inLib && (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-sm text-[10px] font-ui"
+                          title="Bu kaynak senin kütüphanende — başka projelerde de kullanılabilir."
+                        >
+                          <LibraryIcon className="h-3 w-3" />
+                        </span>
+                      )}
+                      {pdfOk && (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-sky-100 text-sky-700 rounded-sm text-[10px] font-ui"
+                          title="PDF erişimi var — yazıya doğrudan alıntılanabilir."
+                        >
+                          <Paperclip className="h-3 w-3" />
+                        </span>
+                      )}
+                      {!pdfOk && (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-sm text-[10px] font-ui font-medium"
+                          title="PDF erişimi yok — yazma sırasında bu kaynaktan alıntı yapılamaz."
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          eksik
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Reverse promote — naked bibliography'i kütüphaneye taşı.
+                        Sadece kütüphanede DEĞİL olanlarda göster. */}
+                    {!inLib && (
+                      <PromoteToLibraryButton
+                        bibliographyId={bib.id}
+                        onPromoted={() => {
+                          fetchSources();
+                          fetchBibliography();
+                        }}
+                      />
+                    )}
 
                     {/* Paperclip upload — always clickable, adds another PDF */}
                     <PdfFinderButton
@@ -475,5 +600,54 @@ export default function SourcesPage() {
         }}
       />
     </div>
+  );
+}
+
+function PromoteToLibraryButton({
+  bibliographyId,
+  onPromoted,
+}: {
+  bibliographyId: string;
+  onPromoted: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  async function handleClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/library/from-bibliography/${bibliographyId}`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? "Kütüphaneye eklenemedi");
+        return;
+      }
+      if (data.matched) {
+        toast.success("Kütüphanede zaten vardı — bağlantı kuruldu");
+      } else {
+        toast.success("Kütüphaneye eklendi (PDF'i kütüphane sayfasından yükleyebilirsin)");
+      }
+      onPromoted();
+    } catch {
+      toast.error("Bağlantı hatası");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={busy}
+      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-emerald-100 text-emerald-600 disabled:opacity-50"
+      title="Kütüphaneye ekle — başka projelerde de kullanılabilir hale gelir"
+    >
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <LibraryIcon className="h-3.5 w-3.5" />
+      )}
+    </button>
   );
 }
