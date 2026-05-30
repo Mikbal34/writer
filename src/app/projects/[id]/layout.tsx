@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import ProjectSidebar from "@/components/shared/ProjectSidebar";
+import ProjectIconRail from "@/components/shared/ProjectIconRail";
 import WorkspaceShell from "@/components/shared/WorkspaceShell";
 
 interface ProjectLayoutProps {
@@ -31,9 +31,6 @@ export default async function ProjectLayout({
       title: true,
       status: true,
       projectType: true,
-      seriesId: true,
-      seriesOrder: true,
-      series: { select: { id: true, name: true } },
     },
   });
 
@@ -41,7 +38,6 @@ export default async function ProjectLayout({
     notFound();
   }
 
-  // Lightweight aggregate instead of fetching all chapters/sections/subsections.
   const [totalCount, completedCount] = await Promise.all([
     prisma.subsection.count({
       where: { section: { chapter: { projectId: id } } },
@@ -53,22 +49,19 @@ export default async function ProjectLayout({
   const completionPct =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-  // Project pages share the same WorkspaceShell as the rest of the app —
-  // dark IconRail (left), ProjectSidebar in the 240-px context pane, and
-  // the page's own content in the main column. fullHeight=true keeps
-  // editor / chat splits scrolling inside their own panes without the
-  // shell's outer scroll competing.
+  // Project pages use a single green IconRail (project-specific nav) and
+  // no context pane — sidebar duplication is gone. ProjectIconRail
+  // shows Dashboard / Roadmap / Sources / Write / Atıflar / Export
+  // alongside the standard credit + account + logout footer.
   return (
     <WorkspaceShell
-      context={
-        <ProjectSidebar
+      rail={
+        <ProjectIconRail
           projectId={project.id}
           projectTitle={project.title}
           projectStatus={project.status}
           projectType={project.projectType}
           completionPct={completionPct}
-          seriesName={project.series?.name ?? null}
-          seriesOrder={project.seriesOrder ?? null}
         />
       }
       fullHeight

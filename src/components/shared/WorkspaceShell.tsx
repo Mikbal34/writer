@@ -5,6 +5,13 @@ import { cn } from "@/lib/utils";
 interface WorkspaceShellProps {
   children: React.ReactNode;
   /**
+   * Override the default IconRail with a context-specific one.
+   * Project pages, for example, pass a green ProjectIconRail that
+   * lists the project's nav (Dashboard, Roadmap, Sources, Write…)
+   * instead of the global top-level rail. Omit to use the default.
+   */
+  rail?: React.ReactNode;
+  /**
    * Strip the main column's default bg-elevated rounded card. Pages
    * that build their own multi-card layout inside main (the library
    * with its shelf + detail panel) opt in so their inner cards sit
@@ -57,10 +64,11 @@ export default function WorkspaceShell({
   fullHeight,
   contextWidth,
   bareMain,
+  rail,
 }: WorkspaceShellProps) {
   return (
     <div className="h-screen flex bg-page text-ink overflow-hidden gap-3.5 p-3.5">
-      <IconRail />
+      {rail ?? <IconRail />}
 
       {context !== undefined && (
         <aside
