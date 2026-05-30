@@ -118,7 +118,7 @@ function buildTools(isCreationMode: boolean, needsSources: boolean): ToolDefinit
   if (needsSources) {
     tools.push({
       name: 'get_library_entries',
-      description: 'Search the user\'s source library. Returns ONLY entries that already have an attached PDF — metadata-only entries are excluded because they cannot be grounded during writing. Use this to find existing sources before suggesting new ones. Call without query to list recent entries.',
+      description: 'Search the user\'s source library. Returns ONLY entries that already have an attached PDF — metadata-only entries are excluded because they cannot be grounded during writing. Each result has an "id" (UUID); when you later add this source to a subsection, you MUST include that id as "libraryEntryId" in the source object so the link is deterministic (no fuzzy matching). Call without query to list recent entries.',
       input_schema: {
         type: 'object' as const,
         properties: {
@@ -306,7 +306,7 @@ function buildSystemPrompt(
   // --- STATIC PART (cacheable — same across all requests) ---
   const sourceCommandDocs = needsSources ? `
 - {"action": "update_source", "sourceMappingDbId": "...", "fields": {"howToUse?": "...", "whereToFind?": "...", "extractionGuide?": "...", "relevance?": "...", "priority?": "primary|supporting"}}
-- {"action": "add_source", "subsectionDbId": "...", "source": {"author": "Surname, Name", "work": "Work Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}}
+- {"action": "add_source", "subsectionDbId": "...", "source": {"libraryEntryId?": "uuid-from-get_library_entries", "author": "Surname, Name", "work": "Work Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}}
 - {"action": "remove_source", "sourceMappingDbId": "..."}` : ''
 
   const sourceRules = needsSources ? `
@@ -314,19 +314,20 @@ function buildSystemPrompt(
 SOURCE RULES:
 - In add_source commands AND in nested "sources" arrays on subsections, ALL of the following fields MUST be filled, none can be left empty: relevance, howToUse, whereToFind, extractionGuide. If information is missing, write your best estimate.
 - When adding sources, PREFER sources from the user's library first. Use get_library_entries tool to search the library before suggesting your own sources.
+- LIBRARY LINK DISCIPLINE: Any source that comes from a get_library_entries result MUST carry its "libraryEntryId" (the "id" field from that result). The author/title alone are not enough — they get matched fuzzily, and slight punctuation differences ("Transcendent God: Rational World" vs "Transcendent God, Rational World") silently fail. Always copy the id back. For sources NOT in the library, simply omit the field.
 - CRITICAL: When you create new subsections (via add_subsection, or nested under add_section/add_chapter), include the sources INLINE on each subsection using the "sources" array. Do NOT defer source attachment to a separate follow-up turn — attach them in the SAME batch as their subsection. The user expects sources to appear together with the new structure, not after a second prompt.
 - Use add_source as a separate command ONLY when adding sources to a subsection that already exists in the roadmap.` : ''
 
   const commandDocs = `
 Available commands:
 - {"action": "update_subsection", "subsectionDbId": "...", "fields": {"title?": "...", "description?": "...", "whatToWrite?": "...", "keyPoints?": [...], "writingStrategy?": "...", "estimatedPages?": N, "synthesisMode?": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "sectionGoal?": "DEFINE|CONTEXT|COMPARE|SYNTHESIZE|LITERATURE_GAP|THESIS_CONCLUSION", "analysisDepth?": 0-10}}
-- {"action": "add_subsection", "sectionDbId": "...", "subsection": {"subsectionId": "1.1.4", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "sectionGoal": "DEFINE|CONTEXT|COMPARE|SYNTHESIZE|LITERATURE_GAP|THESIS_CONCLUSION", "analysisDepth": 0-10${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}}
+- {"action": "add_subsection", "sectionDbId": "...", "subsection": {"subsectionId": "1.1.4", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "sectionGoal": "DEFINE|CONTEXT|COMPARE|SYNTHESIZE|LITERATURE_GAP|THESIS_CONCLUSION", "analysisDepth": 0-10${needsSources ? ', "sources": [{"libraryEntryId?": "uuid-from-get_library_entries", "author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}}
 - {"action": "remove_subsection", "subsectionDbId": "..."}
 - {"action": "update_section", "sectionDbId": "...", "fields": {"title?": "...", "keyConcepts?": [...]}}
 - {"action": "add_section", "chapterDbId": "...", "section": {"sectionId": "1.3", "title": "...", "keyConcepts": [...]}, "subsections": [{"subsectionId": "1.3.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "sectionGoal": "DEFINE|CONTEXT|COMPARE|SYNTHESIZE|LITERATURE_GAP|THESIS_CONCLUSION", "analysisDepth": 0-10}]}
 - {"action": "remove_section", "sectionDbId": "..."}
 - {"action": "update_chapter", "chapterDbId": "...", "fields": {"title?": "...", "purpose?": "...", "estimatedPages?": N}}
-- {"action": "add_chapter", "chapter": {"number": N, "title": "...", "purpose": "...", "estimatedPages": N}, "tempId": "__temp_ch_1", "sections": [{"sectionId": "1.1", "title": "...", "keyConcepts": [...], "tempId": "__temp_sec_1_1", "subsections": [{"subsectionId": "1.1.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "sectionGoal": "DEFINE|CONTEXT|COMPARE|SYNTHESIZE|LITERATURE_GAP|THESIS_CONCLUSION", "analysisDepth": 0-10${needsSources ? ', "sources": [{"author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}]}]}
+- {"action": "add_chapter", "chapter": {"number": N, "title": "...", "purpose": "...", "estimatedPages": N}, "tempId": "__temp_ch_1", "sections": [{"sectionId": "1.1", "title": "...", "keyConcepts": [...], "tempId": "__temp_sec_1_1", "subsections": [{"subsectionId": "1.1.1", "title": "...", "description": "...", "whatToWrite": "...", "keyPoints": [...], "writingStrategy": "...", "estimatedPages": N, "synthesisMode": "SPECIFIC|THEMATIC|COMPARATIVE|SYNTHESIS", "sectionGoal": "DEFINE|CONTEXT|COMPARE|SYNTHESIZE|LITERATURE_GAP|THESIS_CONCLUSION", "analysisDepth": 0-10${needsSources ? ', "sources": [{"libraryEntryId?": "uuid-from-get_library_entries", "author": "Surname, Name", "work": "Title", "sourceType": "classical|modern", "priority": "primary|supporting", "relevance": "...", "howToUse": "...", "whereToFind": "...", "extractionGuide": "..."}]' : ''}}]}]}
 - {"action": "remove_chapter", "chapterDbId": "..."}
 - {"action": "move_section", "sectionDbId": "...", "targetChapterDbId": "..."}${sourceCommandDocs}
 - {"action": "update_project", "fields": {"topic?": "...", "purpose?": "...", "audience?": "...", "styleProfile?": {"narrativePOV?": "...", "genre?": "...", "dialogueStyle?": "...", "pacing?": "...", "moodAtmosphere?": "...", "targetAgeGroup?": "...", "narrativeStyle?": "...", "tone?": "..."}}}${sourceRules}`
@@ -662,7 +663,19 @@ async function createNestedSources(
     const author = src.author as string | undefined
     const work = src.work as string | undefined
     if (!author || !work) continue
-    const biblio = await findOrCreateBibliography(tx, projectId, author, work, undefined, userId)
+    const explicitLibraryEntryId =
+      typeof src.libraryEntryId === 'string' && src.libraryEntryId.length > 0
+        ? (src.libraryEntryId as string)
+        : undefined
+    const biblio = await findOrCreateBibliography(
+      tx,
+      projectId,
+      author,
+      work,
+      undefined,
+      userId,
+      explicitLibraryEntryId,
+    )
     await tx.sourceMapping.upsert({
       where: {
         subsectionId_bibliographyId: {
@@ -1041,13 +1054,18 @@ async function applyCommands(
           else break // subsection not found, skip
         }
 
+        const explicitLibraryEntryId =
+          typeof src.libraryEntryId === 'string' && src.libraryEntryId.length > 0
+            ? (src.libraryEntryId as string)
+            : undefined
         const biblio = await findOrCreateBibliography(
           tx,
           projectId,
           src.author as string,
           src.work as string,
           undefined,
-          userId
+          userId,
+          explicitLibraryEntryId,
         )
         await tx.sourceMapping.upsert({
           where: {

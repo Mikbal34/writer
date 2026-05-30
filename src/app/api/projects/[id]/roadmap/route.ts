@@ -195,7 +195,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
             // Save source suggestions from roadmap as bibliography entries + mappings
             const sources = bookSub.sources ?? { classical: [], modern: [] }
-            const allSources: Array<{ author: string; work: string; relevance?: string; priority?: string; howToUse?: string; whereToFind?: string; extractionGuide?: string; type: string }> = [
+            const allSources: Array<{ author: string; work: string; relevance?: string; priority?: string; howToUse?: string; whereToFind?: string; extractionGuide?: string; libraryEntryId?: string; type: string }> = [
               ...(sources.classical ?? []).map(s => ({ ...s, type: 'classical' as const })),
               ...(sources.modern ?? []).map(s => ({ ...s, type: 'modern' as const })),
             ]
@@ -203,7 +203,15 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
             for (const src of allSources) {
               if (!src.author || !src.work) continue
 
-              const biblio = await findOrCreateBibliography(tx, id, src.author, src.work)
+              const biblio = await findOrCreateBibliography(
+                tx,
+                id,
+                src.author,
+                src.work,
+                undefined,
+                session.user.id,
+                src.libraryEntryId,
+              )
 
               // Create source mapping
               await tx.sourceMapping.upsert({

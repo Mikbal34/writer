@@ -1,10 +1,97 @@
 import type { Prisma } from '@prisma/client'
 
+type LibMeta = Partial<{
+  entryType: 'kitap' | 'makale' | 'nesir' | 'ceviri' | 'tez' | 'ansiklopedi' | 'web'
+  authorName: string | null
+  shortTitle: string | null
+  editor: string | null
+  translator: string | null
+  publisher: string | null
+  publishPlace: string | null
+  year: string | null
+  volume: string | null
+  edition: string | null
+  journalName: string | null
+  journalVolume: string | null
+  journalIssue: string | null
+  pageRange: string | null
+  doi: string | null
+  url: string | null
+  accessDate: string | null
+}>
+
+// Normalize a title or surname for fuzzy comparison: lowercase, strip
+// combining marks (so "İzutsu" ≈ "Izutsu"), strip punctuation, collapse
+// whitespace. Used as a fallback when the LLM didn't pass an explicit
+// libraryEntryId and strict equality missed (e.g. "Transcendent God:
+// Rational World" vs "Transcendent God, Rational World").
+export function normalizeForMatch(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function pickLibMeta(libraryEntry: {
+  entryType: LibMeta['entryType']
+  authorName: string | null
+  shortTitle: string | null
+  editor: string | null
+  translator: string | null
+  publisher: string | null
+  publishPlace: string | null
+  year: string | null
+  volume: string | null
+  edition: string | null
+  journalName: string | null
+  journalVolume: string | null
+  journalIssue: string | null
+  pageRange: string | null
+  doi: string | null
+  url: string | null
+  accessDate: string | null
+}, fallbackName: string | null): LibMeta {
+  return {
+    entryType: libraryEntry.entryType,
+    authorName: libraryEntry.authorName ?? fallbackName,
+    shortTitle: libraryEntry.shortTitle,
+    editor: libraryEntry.editor,
+    translator: libraryEntry.translator,
+    publisher: libraryEntry.publisher,
+    publishPlace: libraryEntry.publishPlace,
+    year: libraryEntry.year,
+    volume: libraryEntry.volume,
+    edition: libraryEntry.edition,
+    journalName: libraryEntry.journalName,
+    journalVolume: libraryEntry.journalVolume,
+    journalIssue: libraryEntry.journalIssue,
+    pageRange: libraryEntry.pageRange,
+    doi: libraryEntry.doi,
+    url: libraryEntry.url,
+    accessDate: libraryEntry.accessDate,
+  }
+}
+
 /**
  * Find or create a Bibliography entry for the given project.
  * Author string is expected as "Surname, Name" or just "Surname".
- * If userId is provided, also checks the user's library for a matching entry
- * and links it via libraryEntryId.
+ *
+ * Library linking strategy (in priority order):
+ *   1. `explicitLibraryEntryId` — caller (LLM via get_library_entries id)
+ *      knows the exact LibraryEntry. Most trustworthy.
+ *   2. Exact match on (userId, authorSurname, title).
+ *   3. Normalized fuzzy match (case/punctuation insensitive).
+ *
+ * When a library entry is found, ALL its metadata is copied into the
+ * bibliography row — the link alone is not enough; writing prompts and
+ * the Sources UI read these columns directly.
+ *
+ * If an existing bibliography is found but has no libraryEntryId, and
+ * a match is now available, it gets upgraded in-place (non-destructive:
+ * only null fields are filled in).
  */
 export async function findOrCreateBibliography(
   tx: Prisma.TransactionClient,
@@ -12,7 +99,8 @@ export async function findOrCreateBibliography(
   author: string,
   work: string,
   sourceId?: string,
-  userId?: string
+  userId?: string,
+  explicitLibraryEntryId?: string,
 ) {
   const authorParts = author.split(',').map((s) => s.trim())
   const surname = authorParts[0] ?? author
@@ -22,63 +110,55 @@ export async function findOrCreateBibliography(
     where: { projectId, title: work, authorSurname: surname },
   })
 
-  if (!biblio) {
-    // Check user's library for a matching entry. When found, COPY the
-    // full metadata (year/publisher/publishPlace/editor/translator/…)
-    // into the new bibliography row — the link alone is not enough,
-    // the writing prompts and the Sources UI read these columns
-    // directly. Without this copy, library-derived references showed
-    // up as "eksik: yıl, yayınevi" even though the library knew.
-    let libraryEntryId: string | null = null
-    let libMeta: Partial<{
-      entryType: 'kitap' | 'makale' | 'nesir' | 'ceviri' | 'tez' | 'ansiklopedi' | 'web'
-      authorName: string | null
-      shortTitle: string | null
-      editor: string | null
-      translator: string | null
-      publisher: string | null
-      publishPlace: string | null
-      year: string | null
-      volume: string | null
-      edition: string | null
-      journalName: string | null
-      journalVolume: string | null
-      journalIssue: string | null
-      pageRange: string | null
-      doi: string | null
-      url: string | null
-      accessDate: string | null
-    }> = {}
-    if (userId) {
-      const libraryEntry = await tx.libraryEntry.findFirst({
-        where: {
-          userId,
-          authorSurname: surname,
-          title: work,
-        },
+  async function resolveLibraryMatch(): Promise<{ id: string; meta: LibMeta } | null> {
+    if (!userId) return null
+
+    // Tier 1 — explicit id from the caller (LLM-driven).
+    if (explicitLibraryEntryId) {
+      const entry = await tx.libraryEntry.findFirst({
+        where: { id: explicitLibraryEntryId, userId },
       })
-      if (libraryEntry) {
-        libraryEntryId = libraryEntry.id
-        libMeta = {
-          entryType: libraryEntry.entryType,
-          authorName: libraryEntry.authorName ?? name,
-          shortTitle: libraryEntry.shortTitle,
-          editor: libraryEntry.editor,
-          translator: libraryEntry.translator,
-          publisher: libraryEntry.publisher,
-          publishPlace: libraryEntry.publishPlace,
-          year: libraryEntry.year,
-          volume: libraryEntry.volume,
-          edition: libraryEntry.edition,
-          journalName: libraryEntry.journalName,
-          journalVolume: libraryEntry.journalVolume,
-          journalIssue: libraryEntry.journalIssue,
-          pageRange: libraryEntry.pageRange,
-          doi: libraryEntry.doi,
-          url: libraryEntry.url,
-          accessDate: libraryEntry.accessDate,
-        }
-      }
+      if (entry) return { id: entry.id, meta: pickLibMeta(entry, name) }
+    }
+
+    // Tier 2 — strict equality.
+    const exact = await tx.libraryEntry.findFirst({
+      where: { userId, authorSurname: surname, title: work },
+    })
+    if (exact) return { id: exact.id, meta: pickLibMeta(exact, name) }
+
+    // Tier 3 — normalized fuzzy match. Pull a narrowed candidate set
+    // (surname prefix, case-insensitive) and compare normalized titles
+    // in-memory; the candidate count is small enough per user that this
+    // stays cheap without a trigram index.
+    const normSurname = normalizeForMatch(surname)
+    const normTitle = normalizeForMatch(work)
+    if (!normSurname || !normTitle) return null
+
+    const prefix = surname.slice(0, Math.min(4, surname.length))
+    const candidates = await tx.libraryEntry.findMany({
+      where: {
+        userId,
+        authorSurname: { contains: prefix, mode: 'insensitive' },
+      },
+      take: 200,
+    })
+    const hit = candidates.find(
+      (c) =>
+        normalizeForMatch(c.authorSurname) === normSurname &&
+        normalizeForMatch(c.title) === normTitle,
+    )
+    if (hit) return { id: hit.id, meta: pickLibMeta(hit, name) }
+    return null
+  }
+
+  if (!biblio) {
+    let libraryEntryId: string | null = null
+    let libMeta: LibMeta = {}
+    const match = await resolveLibraryMatch()
+    if (match) {
+      libraryEntryId = match.id
+      libMeta = match.meta
     }
 
     biblio = await tx.bibliography.create({
@@ -107,11 +187,52 @@ export async function findOrCreateBibliography(
         ...(libMeta.accessDate !== undefined && { accessDate: libMeta.accessDate }),
       },
     })
-  } else if (sourceId && !biblio.sourceId) {
-    biblio = await tx.bibliography.update({
-      where: { id: biblio.id },
-      data: { sourceId },
-    })
+  } else {
+    // Existing biblio — opportunistically (a) attach sourceId if missing,
+    // (b) link a LibraryEntry if this row was created before library
+    // linking worked or the user has since added the source to their
+    // library. Metadata fill is non-destructive: only null columns are
+    // populated, so manually-entered values are never overwritten.
+    const updateData: Prisma.BibliographyUpdateInput = {}
+    if (sourceId && !biblio.sourceId) {
+      updateData.source = { connect: { id: sourceId } }
+    }
+
+    if (!biblio.libraryEntryId) {
+      const match = await resolveLibraryMatch()
+      if (match) {
+        updateData.libraryEntry = { connect: { id: match.id } }
+        const m = match.meta
+        const fillIfNull = <K extends keyof LibMeta>(field: K, current: unknown) => {
+          if (current == null && m[field] !== undefined && m[field] !== null) {
+            ;(updateData as Record<string, unknown>)[field as string] = m[field]
+          }
+        }
+        fillIfNull('authorName', biblio.authorName)
+        fillIfNull('shortTitle', biblio.shortTitle)
+        fillIfNull('editor', biblio.editor)
+        fillIfNull('translator', biblio.translator)
+        fillIfNull('publisher', biblio.publisher)
+        fillIfNull('publishPlace', biblio.publishPlace)
+        fillIfNull('year', biblio.year)
+        fillIfNull('volume', biblio.volume)
+        fillIfNull('edition', biblio.edition)
+        fillIfNull('journalName', biblio.journalName)
+        fillIfNull('journalVolume', biblio.journalVolume)
+        fillIfNull('journalIssue', biblio.journalIssue)
+        fillIfNull('pageRange', biblio.pageRange)
+        fillIfNull('doi', biblio.doi)
+        fillIfNull('url', biblio.url)
+        fillIfNull('accessDate', biblio.accessDate)
+      }
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      biblio = await tx.bibliography.update({
+        where: { id: biblio.id },
+        data: updateData,
+      })
+    }
   }
 
   return biblio
