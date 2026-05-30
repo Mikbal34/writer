@@ -86,22 +86,22 @@ export default function CitationsPage() {
   );
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-6 lg:px-10 pt-6 lg:pt-8 pb-2">
-        <FadeUp>
-          <PageTitle
-            title="Atıf Doğrulama"
-            subtitle="Yazıdaki her atıfın gerçekten kaynak sayfada yer alıp almadığını kontrol et."
-          />
-        </FadeUp>
-        <Ornament className="w-40 mx-auto text-sandy mt-1 mb-1" />
-      </div>
-
-      <div className="flex-1 min-h-0 flex flex-col md:flex-row">
-        {/* Left: list */}
-        <aside className="md:w-[360px] md:shrink-0 flex flex-col min-h-0">
-          <div className="p-3 border-b border-sandy/40">
-            <div className="relative">
+    <div className="h-full flex flex-col md:flex-row">
+      {/* Left: title + search + list (header sayfanın tamamına değil,
+          sadece sol panelin başına yerleşir — Atıf Doğrulama ekranın
+          "asıl iş alanı" sol tarafta, sağ panel seçilen atıfı gösterir.) */}
+      <aside className="md:w-[440px] md:shrink-0 flex flex-col min-h-0">
+        <div className="px-5 pt-6 pb-3">
+          <FadeUp>
+            <PageTitle
+              title="Atıf Doğrulama"
+              subtitle="Yazıdaki her atıfın gerçekten kaynak sayfada yer alıp almadığını kontrol et."
+            />
+          </FadeUp>
+          <Ornament className="w-32 mx-auto text-sandy mt-1 mb-1" />
+        </div>
+        <div className="p-3 border-y border-sandy/40">
+          <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-light" />
               <input
                 type="text"
@@ -204,7 +204,6 @@ export default function CitationsPage() {
             </div>
           )}
         </section>
-      </div>
     </div>
   );
 }
