@@ -490,11 +490,16 @@ export default function SourcesPage() {
                       />
                     )}
 
-                    {/* Paperclip upload — always clickable, adds another PDF */}
+                    {/* Paperclip upload — always clickable, adds another PDF.
+                        Library PDF varsa görsel olarak soluklaşır + tooltip değişir. */}
                     <PdfFinderButton
                       bibliographyId={bib.id}
                       projectId={projectId}
                       hasSource={attachments.length > 0}
+                      libraryHasPdf={
+                        !!bib.libraryEntry &&
+                        (bib.libraryEntry.pdfStatus === "ready" || !!bib.libraryEntry.filePath)
+                      }
                       onSourceLinked={() => {
                         fetchSources();
                         fetchBibliography();
@@ -550,6 +555,15 @@ export default function SourcesPage() {
           <KunyeForm
             projectId={projectId}
             bibliographyId={editingBiblio?.id}
+            linkedLibraryEntry={
+              editingBiblio?.libraryEntryId
+                ? {
+                    id: editingBiblio.libraryEntryId,
+                    title: editingBiblio.title,
+                    authorSurname: editingBiblio.authorSurname,
+                  }
+                : null
+            }
             initialData={
               editingBiblio
                 ? {

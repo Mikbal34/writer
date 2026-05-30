@@ -11,6 +11,10 @@ interface PdfFinderButtonProps {
   bibliographyId: string;
   projectId: string;
   hasSource?: boolean;
+  /** Library bağı varsa ve kütüphanedeki kitabın PDF'i mevcutsa,
+   *  ana upload davranışı "Projeye ek PDF" (secondary) olur ve
+   *  tooltip kütüphane kaynağına işaret eder. */
+  libraryHasPdf?: boolean;
   onSourceLinked: () => void;
 }
 
@@ -18,6 +22,7 @@ export default function PdfFinderButton({
   bibliographyId,
   projectId,
   hasSource = false,
+  libraryHasPdf = false,
   onSourceLinked,
 }: PdfFinderButtonProps) {
   const [state, setState] = useState<UploadState>("idle");
@@ -75,15 +80,28 @@ export default function PdfFinderButton({
       {state === "idle" && (
         <button
           onClick={handleClick}
-          title={hasSource ? "Başka PDF ekle" : "PDF yükle"}
-          className="w-8 h-8 rounded-sm flex items-center justify-center hover:bg-sandy-soft/50 transition-colors shrink-0"
+          title={
+            libraryHasPdf
+              ? "Kaynak PDF: Kütüphaneden bağlı ✓ — projeye ek PDF eklemek için tıkla (gerekli değilse atla)"
+              : hasSource
+                ? "Başka PDF ekle"
+                : "PDF yükle"
+          }
+          className={cn(
+            "w-8 h-8 rounded-sm flex items-center justify-center transition-colors shrink-0",
+            libraryHasPdf
+              ? "opacity-40 hover:opacity-80 hover:bg-sandy-soft/30"
+              : "hover:bg-sandy-soft/50",
+          )}
         >
           <Paperclip
             className={cn(
               "w-4 h-4 transition-colors",
-              hasSource
-                ? "text-forest"
-                : "text-ink-light group-hover:text-forest"
+              libraryHasPdf
+                ? "text-emerald-700"
+                : hasSource
+                  ? "text-forest"
+                  : "text-ink-light group-hover:text-forest"
             )}
           />
         </button>

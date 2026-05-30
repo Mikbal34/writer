@@ -100,6 +100,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       doi,
       url,
       metadata,
+      syncToLibrary,
     } = body as Partial<{
       sourceId: string | null
       entryType: EntryType
@@ -121,6 +122,8 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       doi: string | null
       url: string | null
       metadata: Record<string, unknown> | null
+      /** True → bibliography update'i bağlı LibraryEntry'e de uygula. */
+      syncToLibrary: boolean
     }>
 
     if (entryType !== undefined && !VALID_ENTRY_TYPES.includes(entryType)) {
@@ -159,6 +162,18 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       where: { id },
       data: updateData as any,
     })
+
+    // Library sync — kullanıcı checkbox açtıysa ve bibliography bir
+    // LibraryEntry'e bağlıysa, aynı metadata'yı kütüphane orijinaline
+    // de yansıt. Diğer projelerin bağlı bibliography'leri kendi
+    // metadata'larını korur (sadece master kayıt değişir).
+    if (syncToLibrary && updated.libraryEntryId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await prisma.libraryEntry.update({
+        where: { id: updated.libraryEntryId },
+        data: updateData as any,
+      })
+    }
 
     return NextResponse.json(updated)
   } catch (err) {

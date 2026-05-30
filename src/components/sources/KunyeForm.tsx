@@ -13,7 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Save, Sparkles, X } from "lucide-react";
+import { Loader2, Save, Sparkles, X, Library as LibraryIcon } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 
 type EntryType = "kitap" | "makale" | "nesir" | "ceviri" | "tez" | "ansiklopedi" | "web";
@@ -75,6 +76,12 @@ interface KunyeFormProps {
   sourceId?: string;
   initialData?: Partial<KunyeFormData>;
   bibliographyId?: string;
+  /** Bağlı kütüphane kaydı — varsa kullanıcı sync seçeneği görür. */
+  linkedLibraryEntry?: {
+    id: string;
+    title?: string | null;
+    authorSurname?: string | null;
+  } | null;
   onSave?: () => void;
   onCancel?: () => void;
 }
@@ -106,6 +113,7 @@ export default function KunyeForm({
   sourceId,
   initialData,
   bibliographyId,
+  linkedLibraryEntry,
   onSave,
   onCancel,
 }: KunyeFormProps) {
@@ -115,6 +123,11 @@ export default function KunyeForm({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
+  // Library-bound bibliography'lerde edit varsayılan olarak SADECE bu
+  // projeyi etkiler. Checkbox açılırsa LibraryEntry de aynı update'i
+  // alır — diğer projelerdeki bağlı bibliography'ler korunur, sadece
+  // kütüphane orijinali değişir.
+  const [syncToLibrary, setSyncToLibrary] = useState(false);
 
   function update(field: keyof KunyeFormData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -142,7 +155,12 @@ export default function KunyeForm({
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, projectId, sourceId }),
+        body: JSON.stringify({
+          ...form,
+          projectId,
+          sourceId,
+          ...(syncToLibrary && linkedLibraryEntry?.id ? { syncToLibrary: true } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -212,6 +230,48 @@ export default function KunyeForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Library-linked banner — sadece bağlı bibliography'lerde göster. */}
+      {linkedLibraryEntry && bibliographyId && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+          <div className="flex items-start gap-2">
+            <LibraryIcon className="h-4 w-4 text-emerald-700 mt-0.5 shrink-0" />
+            <div className="flex-1 text-xs leading-relaxed text-emerald-900/90">
+              <p>
+                <span className="font-semibold">📚 Library Linked.</span>{" "}
+                Bu kaynak kütüphanendeki bir kayda bağlı. Yaptığın değişiklikler
+                <strong> sadece bu projeyi</strong> etkiler — kütüphanedeki orijinal kayıt
+                ve diğer projelerdeki bağlı kaynaklar değişmez.
+              </p>
+              <p className="mt-1 text-emerald-800/80">
+                Kütüphane kaydını düzenlemek için{" "}
+                <Link
+                  href="/library"
+                  className="underline hover:no-underline font-medium"
+                >
+                  Library → bu kitap
+                </Link>{" "}
+                yolundan gir.
+              </p>
+            </div>
+          </div>
+          <label className="flex items-start gap-2 cursor-pointer select-none pl-6">
+            <input
+              type="checkbox"
+              checked={syncToLibrary}
+              onChange={(e) => setSyncToLibrary(e.target.checked)}
+              className="mt-0.5 accent-emerald-700"
+            />
+            <span className="text-xs text-emerald-900/90">
+              <span className="font-medium">Bu değişikliği kütüphaneye de uygula</span>
+              <span className="block text-[11px] text-emerald-800/70">
+                İşaretli olursa kütüphane orijinali aynı update'i alır; diğer projelerin bağlı
+                bibliography'leri kendi metadata'larını korur.
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
+
       {/* Entry type */}
       <Field id="entryType" label="Entry Type" required>
         <Select
