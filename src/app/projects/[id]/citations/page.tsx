@@ -87,32 +87,8 @@ export default function CitationsPage() {
 
   return (
     <div className="h-full flex flex-col md:flex-row">
-      {/* Left: verify panel — seçilen atıfın doğrulama içeriği ana
-          canvas olarak solda gösterilir. Sağda navigasyon (title +
-          search + list) kalır; okuma odağı doğrulanan atıfta. */}
-      <section className="flex-1 min-h-0">
-        {active ? (
-          <CitationVerifyPanel citation={active} />
-        ) : (
-          <div className="h-full flex items-center justify-center font-body text-sm text-ink-light">
-            Sağdan bir atıf seç.
-          </div>
-        )}
-      </section>
-
-      <SpineShadow />
-
-      {/* Right: title + search + list */}
+      {/* Left: search + list (no title) */}
       <aside className="md:w-[440px] md:shrink-0 flex flex-col min-h-0">
-        <div className="px-5 pt-6 pb-3">
-          <FadeUp>
-            <PageTitle
-              title="Atıf Doğrulama"
-              subtitle="Yazıdaki her atıfın gerçekten kaynak sayfada yer alıp almadığını kontrol et."
-            />
-          </FadeUp>
-          <Ornament className="w-32 mx-auto text-sandy mt-1 mb-1" />
-        </div>
         <div className="p-3 border-y border-sandy/40">
           <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-light" />
@@ -204,6 +180,30 @@ export default function CitationsPage() {
             )}
           </div>
         </aside>
+
+      <SpineShadow />
+
+      {/* Right: title at top + verify panel underneath */}
+      <section className="flex-1 min-h-0 flex flex-col">
+        <div className="px-6 lg:px-10 pt-6 lg:pt-8 pb-2 shrink-0">
+          <FadeUp>
+            <PageTitle
+              title="Atıf Doğrulama"
+              subtitle="Yazıdaki her atıfın gerçekten kaynak sayfada yer alıp almadığını kontrol et."
+            />
+          </FadeUp>
+          <Ornament className="w-40 mx-auto text-sandy mt-1 mb-1" />
+        </div>
+        <div className="flex-1 min-h-0">
+          {active ? (
+            <CitationVerifyPanel citation={active} />
+          ) : (
+            <div className="h-full flex items-center justify-center font-body text-sm text-ink-light">
+              Soldan bir atıf seç.
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

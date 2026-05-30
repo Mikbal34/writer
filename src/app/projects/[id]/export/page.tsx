@@ -20,7 +20,6 @@ import {
 import { toast } from "sonner";
 import {
   Ornament,
-  PageNumber,
   PageTitle,
   SectionTitle,
   SpineShadow,
@@ -245,7 +244,7 @@ export default function ExportPage() {
           <>
 
           {/* Export Scope */}
-          <div className="space-y-1.5 mb-3">
+          <div className="space-y-1.5 mb-2">
             <label className="font-ui text-xs uppercase tracking-widest text-ink-light">
               Scope
             </label>
@@ -292,7 +291,7 @@ export default function ExportPage() {
 
           {/* Chapter selector */}
           {(scope === "chapter" || scope === "subsection") && chapters.length > 0 && (
-            <div className="space-y-1.5 mb-3">
+            <div className="space-y-1.5 mb-2">
               <label
                 htmlFor="chapter-select"
                 className="font-ui text-xs uppercase tracking-widest text-ink-light"
@@ -319,7 +318,7 @@ export default function ExportPage() {
 
           {/* Subsection selector */}
           {scope === "subsection" && selectedChapter && selectedChapter.subsections.length > 0 && (
-            <div className="space-y-1.5 mb-3">
+            <div className="space-y-1.5 mb-2">
               <label
                 htmlFor="sub-select"
                 className="font-ui text-xs uppercase tracking-widest text-ink-light"
@@ -343,7 +342,7 @@ export default function ExportPage() {
           )}
 
           {/* File Format */}
-          <div className="space-y-1.5 mb-3">
+          <div className="space-y-1.5 mb-2">
             <label className="font-ui text-xs uppercase tracking-widest text-ink-light">
               File Format
             </label>
@@ -383,7 +382,7 @@ export default function ExportPage() {
 
           {/* Print-ready toggle — only relevant for PDF */}
           {fileType === "pdf" && (
-            <div className="space-y-1.5 mb-3">
+            <div className="space-y-1.5 mb-2">
               <label
                 className="flex items-start gap-3 p-3 rounded-sm border border-sandy/60 hover:border-sandy cursor-pointer transition-colors"
               >
@@ -408,10 +407,10 @@ export default function ExportPage() {
 
           {/* Citation format shortcut — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-            <div className="border-t border-sandy/40 pt-3 mb-3">
+            <div className="border-t border-sandy/40 pt-2 mb-2">
               <a
                 href={`/projects/${projectId}/settings/citations`}
-                className="flex items-center justify-between p-3 rounded-sm border border-sandy hover:border-gold hover:bg-page transition-colors"
+                className="flex items-center justify-between p-2.5 rounded-sm border border-sandy hover:border-gold hover:bg-page transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <div
@@ -436,10 +435,10 @@ export default function ExportPage() {
 
           {/* Academic metadata shortcut — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-            <div className="border-t border-sandy/40 pt-3 mb-3">
+            <div className="border-t border-sandy/40 pt-2 mb-2">
               <a
                 href={`/projects/${projectId}/settings/academic`}
-                className="flex items-center justify-between p-3 rounded-sm border border-sandy hover:border-gold hover:bg-page transition-colors"
+                className="flex items-center justify-between p-2.5 rounded-sm border border-sandy hover:border-gold hover:bg-page transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <div
@@ -464,7 +463,7 @@ export default function ExportPage() {
 
           {/* Structural toggle — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-            <div className="border-t border-sandy/40 pt-3 mb-3">
+            <div className="border-t border-sandy/40 pt-2 mb-2">
               <button
                 type="button"
                 onClick={() => setIncludeStructural((v) => !v)}
@@ -489,7 +488,7 @@ export default function ExportPage() {
 
           {/* Bibliography toggle — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-          <div className="border-t border-sandy/40 pt-3 mb-3">
+          <div className="border-t border-sandy/40 pt-2 mb-2">
             <button
               type="button"
               onClick={() => setIncludeBibliography((v) => !v)}
@@ -514,7 +513,7 @@ export default function ExportPage() {
 
           {/* Illustrations toggle — only for non-academic */}
           {projectTypeState !== "ACADEMIC" && hasIllustrations && (
-            <div className="border-t border-sandy/40 pt-3 mb-3">
+            <div className="border-t border-sandy/40 pt-2 mb-2">
               <button
                 type="button"
                 onClick={() => setIncludeIllustrations((v) => !v)}
@@ -564,7 +563,7 @@ export default function ExportPage() {
             {error}
           </div>
         )}
-        <PageNumber number="vii" />
+        
       </div>
 
       <SpineShadow />
@@ -674,7 +673,7 @@ export default function ExportPage() {
         </div>
 
         <div className="flex-1" />
-        <PageNumber number="viii" />
+        
       </div>
     </div>
   );
