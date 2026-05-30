@@ -212,17 +212,17 @@ export default function ExportPage() {
   return (
     <div className="h-full flex flex-col lg:flex-row">
       {/* LEFT PAGE — Export Settings (primary, wider) */}
-      <div className="flex-[1.4] p-5 md:p-7 flex flex-col overflow-y-auto min-h-0">
+      <div className="flex-[1.4] p-4 md:p-6 flex flex-col overflow-y-auto min-h-0">
         <FadeUp>
           <PageTitle
             title="Export"
             subtitle="Generate DOCX or PDF files from your writing."
           />
         </FadeUp>
-        <Ornament className="w-40 mx-auto text-sandy mb-5" />
+        <Ornament className="w-40 mx-auto text-sandy mb-3" />
 
-        <FadeUp delay={0.2} className="border border-sandy/60 rounded-sm bg-elevated p-5 md:p-6">
-          <SectionTitle className="mb-4">Export Settings</SectionTitle>
+        <FadeUp delay={0.2} className="border border-sandy/60 rounded-sm bg-elevated p-4 md:p-5">
+          <SectionTitle className="mb-3">Export Settings</SectionTitle>
 
           {isLoading ? (
             <div className="space-y-4 animate-pulse">
@@ -245,7 +245,7 @@ export default function ExportPage() {
           <>
 
           {/* Export Scope */}
-          <div className="space-y-1.5 mb-4">
+          <div className="space-y-1.5 mb-3">
             <label className="font-ui text-xs uppercase tracking-widest text-ink-light">
               Scope
             </label>
@@ -292,7 +292,7 @@ export default function ExportPage() {
 
           {/* Chapter selector */}
           {(scope === "chapter" || scope === "subsection") && chapters.length > 0 && (
-            <div className="space-y-1.5 mb-4">
+            <div className="space-y-1.5 mb-3">
               <label
                 htmlFor="chapter-select"
                 className="font-ui text-xs uppercase tracking-widest text-ink-light"
@@ -319,7 +319,7 @@ export default function ExportPage() {
 
           {/* Subsection selector */}
           {scope === "subsection" && selectedChapter && selectedChapter.subsections.length > 0 && (
-            <div className="space-y-1.5 mb-4">
+            <div className="space-y-1.5 mb-3">
               <label
                 htmlFor="sub-select"
                 className="font-ui text-xs uppercase tracking-widest text-ink-light"
@@ -343,7 +343,7 @@ export default function ExportPage() {
           )}
 
           {/* File Format */}
-          <div className="space-y-1.5 mb-4">
+          <div className="space-y-1.5 mb-3">
             <label className="font-ui text-xs uppercase tracking-widest text-ink-light">
               File Format
             </label>
@@ -383,7 +383,7 @@ export default function ExportPage() {
 
           {/* Print-ready toggle — only relevant for PDF */}
           {fileType === "pdf" && (
-            <div className="space-y-1.5 mb-4">
+            <div className="space-y-1.5 mb-3">
               <label
                 className="flex items-start gap-3 p-3 rounded-sm border border-sandy/60 hover:border-sandy cursor-pointer transition-colors"
               >
@@ -408,7 +408,7 @@ export default function ExportPage() {
 
           {/* Citation format shortcut — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-            <div className="border-t border-sandy/40 pt-4 mb-6">
+            <div className="border-t border-sandy/40 pt-3 mb-3">
               <a
                 href={`/projects/${projectId}/settings/citations`}
                 className="flex items-center justify-between p-3 rounded-sm border border-sandy hover:border-gold hover:bg-page transition-colors"
@@ -436,7 +436,7 @@ export default function ExportPage() {
 
           {/* Academic metadata shortcut — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-            <div className="border-t border-sandy/40 pt-4 mb-4">
+            <div className="border-t border-sandy/40 pt-3 mb-3">
               <a
                 href={`/projects/${projectId}/settings/academic`}
                 className="flex items-center justify-between p-3 rounded-sm border border-sandy hover:border-gold hover:bg-page transition-colors"
@@ -464,7 +464,7 @@ export default function ExportPage() {
 
           {/* Structural toggle — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-            <div className="border-t border-sandy/40 pt-4 mb-4">
+            <div className="border-t border-sandy/40 pt-3 mb-3">
               <button
                 type="button"
                 onClick={() => setIncludeStructural((v) => !v)}
@@ -489,7 +489,7 @@ export default function ExportPage() {
 
           {/* Bibliography toggle — only for ACADEMIC projects */}
           {projectTypeState === "ACADEMIC" && (
-          <div className="border-t border-sandy/40 pt-4 mb-6">
+          <div className="border-t border-sandy/40 pt-3 mb-3">
             <button
               type="button"
               onClick={() => setIncludeBibliography((v) => !v)}
@@ -514,7 +514,7 @@ export default function ExportPage() {
 
           {/* Illustrations toggle — only for non-academic */}
           {projectTypeState !== "ACADEMIC" && hasIllustrations && (
-            <div className="border-t border-sandy/40 pt-4 mb-6">
+            <div className="border-t border-sandy/40 pt-3 mb-3">
               <button
                 type="button"
                 onClick={() => setIncludeIllustrations((v) => !v)}
@@ -570,9 +570,9 @@ export default function ExportPage() {
       <SpineShadow />
 
       {/* RIGHT PAGE — Export History (secondary, narrower) */}
-      <div className="flex-1 p-5 md:p-7 flex flex-col overflow-y-auto min-h-0 border-t lg:border-t-0 border-sandy/40">
+      <div className="flex-1 p-4 md:p-6 flex flex-col overflow-y-auto min-h-0 border-t lg:border-t-0 border-sandy/40">
         <FadeRight delay={0.3}>
-          <SectionTitle className="mb-4">
+          <SectionTitle className="mb-3">
             <BookMarked className="h-4 w-4 text-ink-light" />
             History
           </SectionTitle>
