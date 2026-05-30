@@ -212,17 +212,17 @@ export default function ExportPage() {
   return (
     <div className="h-full flex flex-col lg:flex-row">
       {/* LEFT PAGE — Export Settings (primary, wider) */}
-      <div className="flex-[1.4] p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0">
+      <div className="flex-[1.4] p-5 md:p-7 flex flex-col overflow-y-auto min-h-0">
         <FadeUp>
           <PageTitle
             title="Export"
             subtitle="Generate DOCX or PDF files from your writing."
           />
         </FadeUp>
-        <Ornament className="w-40 mx-auto text-sandy mb-8" />
+        <Ornament className="w-40 mx-auto text-sandy mb-5" />
 
-        <FadeUp delay={0.2} className="border border-sandy/60 rounded-sm bg-page/80 p-6 md:p-8">
-          <SectionTitle className="mb-6">Export Settings</SectionTitle>
+        <FadeUp delay={0.2} className="border border-sandy/60 rounded-sm bg-elevated p-5 md:p-6">
+          <SectionTitle className="mb-4">Export Settings</SectionTitle>
 
           {isLoading ? (
             <div className="space-y-4 animate-pulse">
@@ -245,7 +245,7 @@ export default function ExportPage() {
           <>
 
           {/* Export Scope */}
-          <div className="space-y-2 mb-5">
+          <div className="space-y-1.5 mb-4">
             <label className="font-ui text-xs uppercase tracking-widest text-ink-light">
               Scope
             </label>
@@ -292,7 +292,7 @@ export default function ExportPage() {
 
           {/* Chapter selector */}
           {(scope === "chapter" || scope === "subsection") && chapters.length > 0 && (
-            <div className="space-y-2 mb-5">
+            <div className="space-y-1.5 mb-4">
               <label
                 htmlFor="chapter-select"
                 className="font-ui text-xs uppercase tracking-widest text-ink-light"
@@ -319,7 +319,7 @@ export default function ExportPage() {
 
           {/* Subsection selector */}
           {scope === "subsection" && selectedChapter && selectedChapter.subsections.length > 0 && (
-            <div className="space-y-2 mb-5">
+            <div className="space-y-1.5 mb-4">
               <label
                 htmlFor="sub-select"
                 className="font-ui text-xs uppercase tracking-widest text-ink-light"
@@ -343,7 +343,7 @@ export default function ExportPage() {
           )}
 
           {/* File Format */}
-          <div className="space-y-2 mb-5">
+          <div className="space-y-1.5 mb-4">
             <label className="font-ui text-xs uppercase tracking-widest text-ink-light">
               File Format
             </label>
@@ -383,7 +383,7 @@ export default function ExportPage() {
 
           {/* Print-ready toggle — only relevant for PDF */}
           {fileType === "pdf" && (
-            <div className="space-y-2 mb-5">
+            <div className="space-y-1.5 mb-4">
               <label
                 className="flex items-start gap-3 p-3 rounded-sm border border-sandy/60 hover:border-sandy cursor-pointer transition-colors"
               >
@@ -570,15 +570,15 @@ export default function ExportPage() {
       <SpineShadow />
 
       {/* RIGHT PAGE — Export History (secondary, narrower) */}
-      <div className="flex-1 p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0 border-t lg:border-t-0 border-sandy/40">
+      <div className="flex-1 p-5 md:p-7 flex flex-col overflow-y-auto min-h-0 border-t lg:border-t-0 border-sandy/40">
         <FadeRight delay={0.3}>
-          <SectionTitle className="mb-6">
+          <SectionTitle className="mb-4">
             <BookMarked className="h-4 w-4 text-ink-light" />
             History
           </SectionTitle>
         </FadeRight>
 
-        <div className="border border-sandy/60 rounded-sm bg-page/80 overflow-hidden">
+        <div className="border border-sandy/60 rounded-sm bg-elevated overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center py-10 gap-2">
               <Loader2 className="h-5 w-5 animate-spin text-forest" />
