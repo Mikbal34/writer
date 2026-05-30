@@ -143,11 +143,20 @@ export async function findOrCreateBibliography(
       },
       take: 200,
     })
-    const hit = candidates.find(
-      (c) =>
-        normalizeForMatch(c.authorSurname) === normSurname &&
-        normalizeForMatch(c.title) === normTitle,
-    )
+    const hit = candidates.find((c) => {
+      if (normalizeForMatch(c.authorSurname) !== normSurname) return false
+      const ct = normalizeForMatch(c.title)
+      if (ct === normTitle) return true
+      // Prefix containment — the shorter title is a leading prefix of the
+      // longer one (token-boundary aware). Catches the common case where
+      // the LLM drops the subtitle: bib "Transcendent God, Rational World"
+      // vs library "Transcendent God, Rational World: A Māturīdī Theology".
+      // Both sides must have ≥3 tokens to keep accidental short-title
+      // collisions out (e.g. "Tafsir" matching "Tafsir al-Razi").
+      const minTokens = (s: string) => s.split(' ').length >= 3
+      if (!minTokens(ct) || !minTokens(normTitle)) return false
+      return ct.startsWith(normTitle + ' ') || normTitle.startsWith(ct + ' ')
+    })
     if (hit) return { id: hit.id, meta: pickLibMeta(hit, name) }
     return null
   }

@@ -127,20 +127,38 @@ async function main() {
       where: { userId },
     })
     const exactIndex = new Map<string, typeof libEntries[number]>()
-    const normIndex = new Map<string, typeof libEntries[number]>()
+    // Group library entries by normalized surname so prefix lookup is O(per-surname).
+    const bySurname = new Map<string, typeof libEntries>()
     for (const e of libEntries) {
       exactIndex.set(`${e.authorSurname}|||${e.title}`, e)
-      const key = `${normalizeForMatch(e.authorSurname)}|||${normalizeForMatch(e.title)}`
-      if (key) normIndex.set(key, e)
+      const ns = normalizeForMatch(e.authorSurname)
+      if (!ns) continue
+      const arr = bySurname.get(ns) ?? []
+      arr.push(e)
+      bySurname.set(ns, arr)
     }
 
     for (const bib of bibs) {
       const exactKey = `${bib.authorSurname}|||${bib.title}`
-      const normKey = `${normalizeForMatch(bib.authorSurname)}|||${normalizeForMatch(bib.title)}`
-
       const exact = exactIndex.get(exactKey)
-      const match = exact ?? (normKey ? normIndex.get(normKey) : undefined)
 
+      let fuzzy: typeof libEntries[number] | undefined
+      if (!exact) {
+        const ns = normalizeForMatch(bib.authorSurname)
+        const nt = normalizeForMatch(bib.title)
+        if (ns && nt) {
+          const minTokens = (s: string) => s.split(' ').length >= 3
+          const candidates = bySurname.get(ns) ?? []
+          fuzzy = candidates.find((c) => {
+            const ct = normalizeForMatch(c.title)
+            if (ct === nt) return true
+            if (!minTokens(ct) || !minTokens(nt)) return false
+            return ct.startsWith(nt + ' ') || nt.startsWith(ct + ' ')
+          })
+        }
+      }
+
+      const match = exact ?? fuzzy
       if (!match) {
         unchanged++
         continue
