@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, Target, ClipboardList, Library } from "lucide-react";
+import { BookOpen, Target, ClipboardList, Library, ChevronDown, ChevronRight, Settings2 } from "lucide-react";
 import type { SourceMapping, Bibliography } from "@prisma/client";
 
 interface SourceMappingWithBibliography extends SourceMapping {
@@ -15,6 +16,10 @@ interface SubsectionDetailProps {
   keyPoints: string[];
   writingStrategy: string | null;
   sourceMappings: SourceMappingWithBibliography[];
+  /** V4 roadmap metadata — gizli advanced bölümde gösterilir. */
+  synthesisMode?: string | null;
+  sectionGoal?: string | null;
+  analysisDepth?: number | null;
 }
 
 export default function SubsectionDetail({
@@ -22,6 +27,9 @@ export default function SubsectionDetail({
   keyPoints,
   writingStrategy,
   sourceMappings,
+  synthesisMode,
+  sectionGoal,
+  analysisDepth,
 }: SubsectionDetailProps) {
   const classicalSources = sourceMappings.filter(
     (sm) => sm.sourceType === "classical"
@@ -30,7 +38,9 @@ export default function SubsectionDetail({
     (sm) => sm.sourceType === "modern"
   );
 
-  const hasContent = whatToWrite || keyPoints.length > 0 || writingStrategy || sourceMappings.length > 0;
+  const hasAdvanced = Boolean(synthesisMode || sectionGoal || typeof analysisDepth === "number");
+  const hasContent =
+    whatToWrite || keyPoints.length > 0 || writingStrategy || sourceMappings.length > 0 || hasAdvanced;
 
   if (!hasContent) {
     return (
@@ -121,6 +131,91 @@ export default function SubsectionDetail({
               </TabsContent>
             )}
           </Tabs>
+        </div>
+      )}
+
+      {/* Advanced Metadata — gizli, sade kullanıcıyı dağıtmaz; güç kullanıcısı açar.
+          Roadmap üretiminin akademik niyetini (mode/goal/depth) görünür kılar. */}
+      {hasAdvanced && (
+        <AdvancedMetadata
+          synthesisMode={synthesisMode ?? null}
+          sectionGoal={sectionGoal ?? null}
+          analysisDepth={typeof analysisDepth === "number" ? analysisDepth : null}
+        />
+      )}
+    </div>
+  );
+}
+
+function AdvancedMetadata({
+  synthesisMode,
+  sectionGoal,
+  analysisDepth,
+}: {
+  synthesisMode: string | null;
+  sectionGoal: string | null;
+  analysisDepth: number | null;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const modeTooltip: Record<string, string> = {
+    SPECIFIC: "Tek-konulu / dar-kapsamlı: tanım, açıklama, kavram kurma.",
+    THEMATIC: "Birden çok kaynağı tema üzerinden sentezler.",
+    COMPARATIVE: "İki tarafı (X vs Y) karşılaştırır.",
+    SYNTHESIS: "Bölüm/tezin sonunda büyük resmi kurar.",
+  };
+  const goalTooltip: Record<string, string> = {
+    DEFINE: "Terim/kavram tanımı, dar metin analizi.",
+    CONTEXT: "Tarihsel/entelektüel arka plan.",
+    COMPARE: "Karşıt görüşler arasındaki farkı ortaya koyar.",
+    SYNTHESIZE: "Kaynakları birleştirir, ortak/farklı noktalar üretir.",
+    LITERATURE_GAP: "Literatürdeki eksiği gösterir, tezin müdahalesini konumlar.",
+    THESIS_CONCLUSION: "Tezin payoff'u — yük taşıyan iddialar + araştırma agenda'sı.",
+  };
+
+  return (
+    <div className="pt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 font-ui text-[11px] text-muted-foreground/80 hover:text-muted-foreground transition-colors"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <Settings2 className="h-3 w-3" />
+        Advanced Metadata
+      </button>
+      {open && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {synthesisMode && (
+            <Badge
+              variant="outline"
+              className="text-[10px] font-ui font-normal py-0 h-5 px-1.5"
+              title={modeTooltip[synthesisMode] ?? synthesisMode}
+            >
+              <span className="text-muted-foreground/80 mr-1">mode</span>
+              {synthesisMode}
+            </Badge>
+          )}
+          {sectionGoal && (
+            <Badge
+              variant="outline"
+              className="text-[10px] font-ui font-normal py-0 h-5 px-1.5"
+              title={goalTooltip[sectionGoal] ?? sectionGoal}
+            >
+              <span className="text-muted-foreground/80 mr-1">goal</span>
+              {sectionGoal}
+            </Badge>
+          )}
+          {analysisDepth !== null && (
+            <Badge
+              variant="outline"
+              className="text-[10px] font-ui font-normal py-0 h-5 px-1.5"
+              title="Yorum yoğunluğu: 1-3 betimleyici, 4-6 analitik, 7-10 yorum-ağırlıklı."
+            >
+              <span className="text-muted-foreground/80 mr-1">depth</span>
+              {analysisDepth}/10
+            </Badge>
+          )}
         </div>
       )}
     </div>

@@ -49,6 +49,9 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
                     wordCount: true,
                     sortOrder: true,
                     sectionId: true,
+                    synthesisMode: true,
+                    sectionGoal: true,
+                    analysisDepth: true,
                     sourceMappings: {
                       include: { bibliography: true },
                     },

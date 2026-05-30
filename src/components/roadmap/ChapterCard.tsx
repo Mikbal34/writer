@@ -31,6 +31,9 @@ interface SubsectionNode {
  estimatedPages: number | null;
  status: string;
  wordCount: number;
+ synthesisMode?: string | null;
+ sectionGoal?: string | null;
+ analysisDepth?: number | null;
  sourceMappings?: SourceMappingWithBibliography[];
 }
 
@@ -349,6 +352,9 @@ export default function ChapterCard({
                keyPoints={sub.keyPoints ?? []}
                writingStrategy={sub.writingStrategy ?? null}
                sourceMappings={sub.sourceMappings ?? []}
+               synthesisMode={sub.synthesisMode ?? null}
+               sectionGoal={sub.sectionGoal ?? null}
+               analysisDepth={sub.analysisDepth ?? null}
               />
              )}
             </div>
