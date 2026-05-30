@@ -210,7 +210,7 @@ export default function ExportPage() {
     (scope === "subsection" && !selectedSubsectionId);
 
   return (
-    <div className="flex-1 flex flex-col lg:flex-row">
+    <div className="h-full flex flex-col lg:flex-row">
       {/* LEFT PAGE — Export Settings */}
       <div className="flex-1 p-6 md:p-8 lg:p-10 flex flex-col overflow-y-auto min-h-0">
         <FadeUp>

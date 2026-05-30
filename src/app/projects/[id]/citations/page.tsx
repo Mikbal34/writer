@@ -11,7 +11,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  BookmarkCheck,
   Loader2,
   BookOpen,
   FileText,
@@ -19,7 +18,7 @@ import {
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Ornament } from "@/components/shared/BookElements";
+import { Ornament, PageTitle } from "@/components/shared/BookElements";
 import { FadeUp } from "@/components/shared/Animations";
 import CitationVerifyPanel, {
   type CitationRecord,
@@ -88,20 +87,15 @@ export default function CitationsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <FadeUp className="px-6 pt-8 pb-3 text-center">
-        <div className="flex items-center justify-center gap-3 mb-3">
-          <div className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-gold/60" />
-          <BookmarkCheck className="h-5 w-5 text-gold" />
-          <div className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-gold/60" />
-        </div>
-        <h1 className="font-display text-2xl font-bold text-ink tracking-tight">
-          Atıf Doğrulama
-        </h1>
-        <p className="font-body text-xs text-ink-light mt-1.5">
-          Yazıdaki her atıfın gerçekten kaynak sayfada yer alıp almadığını kontrol et.
-        </p>
-        <Ornament className="w-32 mx-auto text-sandy mt-3" />
-      </FadeUp>
+      <div className="px-6 lg:px-10 pt-6 lg:pt-8 pb-2">
+        <FadeUp>
+          <PageTitle
+            title="Atıf Doğrulama"
+            subtitle="Yazıdaki her atıfın gerçekten kaynak sayfada yer alıp almadığını kontrol et."
+          />
+        </FadeUp>
+        <Ornament className="w-40 mx-auto text-sandy mt-1 mb-1" />
+      </div>
 
       <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[360px_1fr] gap-0 border-t border-sandy/40">
         {/* Left: list */}
