@@ -97,7 +97,7 @@ export default function CitationsPage() {
         <Ornament className="w-40 mx-auto text-sandy mt-1 mb-1" />
       </div>
 
-      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[360px_1fr] gap-0 border-t border-sandy/40">
+      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[360px_1fr] gap-0">
         {/* Left: list */}
         <aside className="border-r border-sandy/40 bg-page/60 flex flex-col min-h-0">
           <div className="p-3 border-b border-sandy/40">
