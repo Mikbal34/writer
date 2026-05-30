@@ -32,6 +32,34 @@ const SOURCE_DENSITY_OPTIONS: { value: SourceDensity; label: string; desc: strin
  { value: "high", label: "Comprehensive", desc: "4-5 sources per subsection", estimate: "~180-225 sources total for a typical book", credits: "~1400" },
 ];
 
+// Status mapper — backend step/tool eventlerini akademisyenin anlayacağı
+// Türkçe + emoji etiketlerine çevirir. "thinking" gelir gelmez tool adına
+// göre etiket atanır. Daha anlamlı status bar = daha güvenli his.
+function mapStatusEvent(step?: string, tool?: string): string | null {
+ if (step === "thinking" && tool === "get_library_entries") return "📚 Kütüphane taranıyor";
+ if (step === "thinking" && tool === "get_chapter_detail") return "🔍 Yapı inceleniyor";
+ if (step === "thinking") return "🧠 Düşünüyor";
+ if (step === "applying") return "⚙ Roadmap'e işleniyor";
+ if (step === "applied") return null;
+ return null;
+}
+
+// Suggestion chips — context'e göre dinamik. Boş roadmap'te "başlat"
+// odaklı, dolu roadmap'te "optimize" odaklı. Tıklanınca chat input'a
+// set edilip otomatik gönderilir.
+const EMPTY_SUGGESTIONS: Array<{ icon: string; text: string }> = [
+ { icon: "📚", text: "Kütüphanemi tara ve uygun kaynaklara göre tez planı öner" },
+ { icon: "🧠", text: "Konu için kapsamlı bir tez roadmap'i oluştur" },
+ { icon: "🔍", text: "Kütüphanemdeki kaynakları analiz et ve eksik alanları belirle" },
+];
+
+const FILLED_SUGGESTIONS: Array<{ icon: string; text: string }> = [
+ { icon: "⚖", text: "Bölümlerin karşılaştırmalı yoğunluğunu artır" },
+ { icon: "🎯", text: "Tezin sonuç bölümünü güçlendir, sentez/argüman bağlarını netleştir" },
+ { icon: "📊", text: "Sayfa dengesini gözden geçir ve kaynak dağılımını optimize et" },
+ { icon: "✨", text: "Roadmap'i baştan üret, semantik metadata'yı doğru ata" },
+];
+
 interface RoadmapChatProps {
  projectId: string;
  onRoadmapUpdate: () => void;
@@ -193,11 +221,11 @@ export default function RoadmapChat({
   [isStreaming, loadSession]
  );
 
- async function handleSend() {
-  const trimmed = input.trim();
-  if (!trimmed || isStreaming) return;
+ async function handleSend(overrideMessage?: string) {
+  const source = (overrideMessage ?? input).trim();
+  if (!source || isStreaming) return;
 
-  const userMessage: Message = { role: "user", content: trimmed };
+  const userMessage: Message = { role: "user", content: source };
   const newMessages = [...messages, userMessage];
   setMessages(newMessages);
   setInput("");
@@ -256,11 +284,8 @@ export default function RoadmapChat({
       const parsed = JSON.parse(data);
 
       if (parsed.step) {
-       if (parsed.step === "applying") {
-        setStreamingStep("Applying changes...");
-       } else if (parsed.step === "applied") {
-        setStreamingStep(null);
-       }
+       const label = mapStatusEvent(parsed.step, parsed.tool);
+       setStreamingStep(label);
       }
 
       if (parsed.chunk) {
@@ -269,7 +294,7 @@ export default function RoadmapChat({
 
        // Detect <roadmap_commands> tag during streaming
        if (fullContent.includes("<roadmap_commands>") && !fullContent.includes("</roadmap_commands>")) {
-        setStreamingStep("Preparing roadmap commands...");
+        setStreamingStep("🛠 Komutlar hazırlanıyor");
        }
 
        setMessages((prev) => {
@@ -432,12 +457,27 @@ export default function RoadmapChat({
       </div>
      )}
      {!isLoadingHistory && messages.length === 0 && (
-      <div className="text-center py-12 text-muted-foreground">
-       <img src="/images/quilpen-icon.png" alt="Quilpen" className="h-12 w-12 mx-auto mb-3 opacity-60 rounded-lg" />
-       <p className="font-body text-sm">Send a message to make changes to the roadmap.</p>
-       <p className="font-body text-xs mt-1 opacity-70">
-        Example: &quot;Change the writing strategy of 1.1.1&quot;
+      <div className="text-center py-10">
+       <img src="/images/quilpen-icon.png" alt="Quilpen" className="h-12 w-12 mx-auto mb-3 opacity-70 rounded-lg" />
+       <p className="font-body text-sm text-foreground/80">
+        {hasRoadmap
+         ? "Roadmap'i optimize edebilir, yeniden yapılandırabilir veya AI'a soru sorabilirsin."
+         : "AI seninle birlikte tezini kurabilir. Aşağıdaki hızlı başlangıçlardan birini seç veya kendi mesajını yaz."}
        </p>
+       <div className="mt-5 grid grid-cols-1 gap-2 text-left max-w-md mx-auto">
+        {(hasRoadmap ? FILLED_SUGGESTIONS : EMPTY_SUGGESTIONS).map((sug, i) => (
+         <button
+          key={i}
+          type="button"
+          onClick={() => handleSend(sug.text)}
+          disabled={isStreaming}
+          className="rounded-md border border-border/60 bg-background hover:bg-muted/40 transition-colors px-3 py-2.5 flex items-start gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+         >
+          <span className="text-base shrink-0 mt-0.5">{sug.icon}</span>
+          <span className="font-body text-sm text-foreground/90 leading-snug">{sug.text}</span>
+         </button>
+        ))}
+       </div>
       </div>
      )}
      {messages.map((msg, i) => (
@@ -529,6 +569,26 @@ export default function RoadmapChat({
     </div>
    )}
 
+   {/* Suggestion chips (input üstü) — mesaj history doluyken context-aware
+       hızlı eylemler. Boşken zaten empty-state CTA cards gösteriyor. */}
+   {!showDensitySelector && !isStreaming && messages.length > 0 && (
+    <div className="border-t px-4 py-2 shrink-0 bg-page/40">
+     <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+      {(hasRoadmap ? FILLED_SUGGESTIONS : EMPTY_SUGGESTIONS).slice(0, 4).map((sug, i) => (
+       <button
+        key={i}
+        type="button"
+        onClick={() => handleSend(sug.text)}
+        className="shrink-0 rounded-full border border-border/60 bg-background hover:bg-muted/40 transition-colors px-2.5 py-1 font-ui text-[11px] text-foreground/80 flex items-center gap-1.5"
+       >
+        <span>{sug.icon}</span>
+        <span className="truncate max-w-[200px]">{sug.text}</span>
+       </button>
+      ))}
+     </div>
+    </div>
+   )}
+
    {/* Input */}
    <div className="border-t px-4 py-3 shrink-0">
     <div className="flex gap-2 items-end">
@@ -537,14 +597,14 @@ export default function RoadmapChat({
       value={input}
       onChange={(e) => setInput(e.target.value)}
       onKeyDown={handleKeyDown}
-      placeholder="Type a message to modify the roadmap..."
+      placeholder="Roadmap'i değiştirecek bir mesaj yaz veya yukarıdaki öneriden seç..."
       className="min-h-[40px] max-h-[120px] resize-none font-body text-sm"
       rows={1}
       disabled={isStreaming}
      />
      <Button
       size="icon"
-      onClick={handleSend}
+      onClick={() => handleSend()}
       disabled={!input.trim() || isStreaming}
       className="shrink-0 h-10 w-10"
      >
