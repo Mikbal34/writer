@@ -87,9 +87,22 @@ export default function CitationsPage() {
 
   return (
     <div className="h-full flex flex-col md:flex-row">
-      {/* Left: title + search + list (header sayfanın tamamına değil,
-          sadece sol panelin başına yerleşir — Atıf Doğrulama ekranın
-          "asıl iş alanı" sol tarafta, sağ panel seçilen atıfı gösterir.) */}
+      {/* Left: verify panel — seçilen atıfın doğrulama içeriği ana
+          canvas olarak solda gösterilir. Sağda navigasyon (title +
+          search + list) kalır; okuma odağı doğrulanan atıfta. */}
+      <section className="flex-1 min-h-0">
+        {active ? (
+          <CitationVerifyPanel citation={active} />
+        ) : (
+          <div className="h-full flex items-center justify-center font-body text-sm text-ink-light">
+            Sağdan bir atıf seç.
+          </div>
+        )}
+      </section>
+
+      <SpineShadow />
+
+      {/* Right: title + search + list */}
       <aside className="md:w-[440px] md:shrink-0 flex flex-col min-h-0">
         <div className="px-5 pt-6 pb-3">
           <FadeUp>
@@ -191,19 +204,6 @@ export default function CitationsPage() {
             )}
           </div>
         </aside>
-
-        <SpineShadow />
-
-        {/* Right: verify panel */}
-        <section className="flex-1 min-h-0">
-          {active ? (
-            <CitationVerifyPanel citation={active} />
-          ) : (
-            <div className="h-full flex items-center justify-center font-body text-sm text-ink-light">
-              Solda bir atıf seç.
-            </div>
-          )}
-        </section>
     </div>
   );
 }
