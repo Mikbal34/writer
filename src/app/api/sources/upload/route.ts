@@ -18,10 +18,6 @@ function toEntryTypeOrDefault(value: string | null | undefined): EntryType {
   if (value && VALID_ENTRY_TYPES.has(value as EntryType)) return value as EntryType
   return EntryType.kitap
 }
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
-
 const ALLOWED_TYPES: Record<string, string> = {
   'application/pdf': 'pdf',
   'text/plain': 'txt',
@@ -151,48 +147,38 @@ export async function POST(req: NextRequest) {
 
     // ---- Step 1: extract first-pages text for metadata seeding -------
     //
-    // Python /process needs an on-disk filePath. We write a temp file
-    // inside the OS tmpdir (NOT the project uploads/ dir — those days
-    // are over), call /process, read the extracted text, then `rm -f`
-    // the temp file. The R2-canonical copy lives elsewhere (step 5).
-    //
-    // We only need the first ~8K chars of text for Haiku metadata
-    // extraction; the chunks returned from /process are discarded
-    // because the worker will re-extract from R2 during ingest.
+    // Python /process-bytes accepts a multipart upload directly — no
+    // shared disk volume needed between web and python containers.
+    // We only need the first ~8K chars of text for metadata extraction;
+    // the chunks returned here are discarded because the worker will
+    // re-extract from R2 during the ingest job.
     let firstPagesText = ''
-    let tempDir: string | null = null
     try {
-      tempDir = await mkdtemp(path.join(tmpdir(), 'srcupload-'))
-      const tempPath = path.join(tempDir, 'upload.pdf')
-      await writeFile(tempPath, bytes)
-
       const pythonServiceUrl =
         process.env.PYTHON_SERVICE_URL ?? 'http://localhost:8001'
       const tempSourceId = `meta-${Date.now()}-${session.user.id.slice(0, 8)}`
-      const response = await fetch(`${pythonServiceUrl}/process`, {
+      const form = new FormData()
+      form.append('sourceId', tempSourceId)
+      form.append(
+        'file',
+        new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }),
+        file.name || 'upload.pdf',
+      )
+      const response = await fetch(`${pythonServiceUrl}/process-bytes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceId: tempSourceId,
-          filePath: tempPath,
-          fileType: 'pdf',
-        }),
-        signal: AbortSignal.timeout(60_000),
+        body: form,
+        signal: AbortSignal.timeout(120_000),
       })
       if (response.ok) {
         const data = (await response.json()) as { extractedText?: string }
         firstPagesText = (data.extractedText ?? '').slice(0, 8000)
       } else {
         console.warn(
-          `[sources/upload] Python /process returned ${response.status}; metadata extraction will fall back to existing bib (if any) or filename`,
+          `[sources/upload] Python /process-bytes returned ${response.status}; metadata extraction will fall back to existing bib (if any) or filename`,
         )
       }
     } catch (err) {
-      console.warn('[sources/upload] Python /process failed; using fallback metadata:', err)
-    } finally {
-      if (tempDir) {
-        await rm(tempDir, { recursive: true, force: true }).catch(() => {})
-      }
+      console.warn('[sources/upload] Python /process-bytes failed; using fallback metadata:', err)
     }
 
     // ---- Step 2: bibliography metadata extraction --------------------

@@ -18,9 +18,6 @@
 import { Pool } from 'pg'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
 import { getBytesFromFilePath } from '../../src/lib/r2-storage'
 import { extractBibliographyFromText } from '../../src/lib/bibliography-extract'
 
@@ -97,31 +94,28 @@ async function main() {
     console.log(`  reason : ${reason}`)
     console.log(`  before : publisher="${(e.publisher ?? '').slice(0, 70)}"`)
 
-    // 1. Pull bytes from R2 → temp file → Python /process → text.
+    // 1. Pull bytes from R2 → Python /process-bytes multipart → text.
     if (!e.filePath) {
       console.log('  skip: no filePath')
       continue
     }
     let firstPagesText = ''
-    let tempDir: string | null = null
     try {
       const bytes = await getBytesFromFilePath(e.filePath)
-      tempDir = await mkdtemp(path.join(tmpdir(), 're-extract-'))
-      const tempPath = path.join(tempDir, 'work.pdf')
-      await writeFile(tempPath, bytes)
-
-      const response = await fetch(`${pythonServiceUrl}/process`, {
+      const form = new FormData()
+      form.append('sourceId', `re-extract-${e.id}`)
+      form.append(
+        'file',
+        new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }),
+        'work.pdf',
+      )
+      const response = await fetch(`${pythonServiceUrl}/process-bytes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceId: `re-extract-${e.id}`,
-          filePath: tempPath,
-          fileType: 'pdf',
-        }),
-        signal: AbortSignal.timeout(60_000),
+        body: form,
+        signal: AbortSignal.timeout(120_000),
       })
       if (!response.ok) {
-        console.log(`  skip: python /process HTTP ${response.status}`)
+        console.log(`  skip: python /process-bytes HTTP ${response.status}`)
         continue
       }
       const data = (await response.json()) as { extractedText?: string }
@@ -129,8 +123,6 @@ async function main() {
     } catch (err) {
       console.log(`  skip: text extraction failed (${(err as Error).message})`)
       continue
-    } finally {
-      if (tempDir) await rm(tempDir, { recursive: true, force: true }).catch(() => {})
     }
 
     if (firstPagesText.trim().length < 200) {
