@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { generateJSONWithUsage, HAIKU } from '@/lib/claude'
+import { extractBibliographyFromText, type BibliographyExtraction } from '@/lib/bibliography-extract'
 import { checkCredits, deductCredits } from '@/lib/credits'
 import { savePdfBytesR2 } from '@/lib/r2-storage'
 import { enqueueIngest } from '@/lib/queue'
@@ -31,27 +31,6 @@ const ALLOWED_TYPES: Record<string, string> = {
 
 const MAX_FILE_SIZE_MB = 100
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
-
-interface BibliographyExtraction {
-  entryType: 'kitap' | 'makale' | 'nesir' | 'ceviri' | 'tez' | 'ansiklopedi' | 'web'
-  authorSurname: string
-  authorName: string | null
-  title: string
-  shortTitle: string | null
-  editor: string | null
-  translator: string | null
-  publisher: string | null
-  publishPlace: string | null
-  year: string | null
-  volume: string | null
-  edition: string | null
-  journalName: string | null
-  journalVolume: string | null
-  journalIssue: string | null
-  pageRange: string | null
-  doi: string | null
-  url: string | null
-}
 
 const BIB_METADATA_FIELDS = [
   'authorName',
@@ -216,53 +195,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ---- Step 2: Haiku metadata extraction (if we have text) ---------
+    // ---- Step 2: bibliography metadata extraction --------------------
+    // Two-pass: Haiku first, Sonnet fallback when the output trips a
+    // quality red flag (long publisher with embedded address, article
+    // missing journal metadata, …). See lib/bibliography-extract.ts.
     let aiMeta: BibliographyExtraction | null = null
     let aiTokens = { input: 0, output: 0 }
+    let aiModelUsed: 'haiku' | 'sonnet' = 'haiku'
     if (firstPagesText.trim().length > 200) {
       try {
-        const aiResult = await generateJSONWithUsage<BibliographyExtraction>(
-          `Analyze the text extracted from the first pages of the following PDF and return bibliography information as JSON.
-
-Text:
----
-${firstPagesText}
----
-
-Return in the following JSON format:
-{
-  "entryType": "kitap" | "makale" | "nesir" | "ceviri" | "tez" | "ansiklopedi" | "web",
-  "authorSurname": "Author's surname",
-  "authorName": "Author's first name or null",
-  "title": "Full title of the work",
-  "shortTitle": "Short title or null",
-  "editor": "Editor or null",
-  "translator": "Translator or null",
-  "publisher": "Publisher or null",
-  "publishPlace": "Place of publication or null",
-  "year": "Publication year or null",
-  "volume": "Volume information or null",
-  "edition": "Edition number or null",
-  "journalName": "Journal name or null",
-  "journalVolume": "Journal volume or null",
-  "journalIssue": "Journal issue or null",
-  "pageRange": "Page range or null",
-  "doi": "DOI or null",
-  "url": "URL or null"
-}
-
-Rules:
-- Leave fields you cannot extract from the text as null.
-- Determine the entryType based on the type of text (academic article → "makale", book → "kitap", etc.).
-- If no author name is found, write "Unknown".
-- Return only JSON, nothing else.`,
-          'You are a bibliography extraction assistant. Extract bibliographic metadata from the given text. Always respond with valid JSON only.',
-          { model: HAIKU }
-        )
-        aiMeta = aiResult.data
-        aiTokens = { input: aiResult.inputTokens, output: aiResult.outputTokens }
+        const extracted = await extractBibliographyFromText(firstPagesText)
+        aiMeta = extracted.data
+        aiTokens = { input: extracted.inputTokens, output: extracted.outputTokens }
+        aiModelUsed = extracted.modelUsed
+        if (extracted.fallbackReason) {
+          console.log(
+            `[sources/upload] Sonnet fallback used — reason: ${extracted.fallbackReason}`,
+          )
+        }
       } catch (err) {
-        console.error('[sources/upload] Haiku metadata extraction failed:', err)
+        console.error('[sources/upload] metadata extraction failed:', err)
       }
     }
 
@@ -401,7 +353,7 @@ Rules:
           'source_upload_extract',
           aiTokens.input,
           aiTokens.output,
-          'haiku',
+          aiModelUsed,
           { libraryEntryId: entry.id, projectId },
         )
       } catch (creditErr) {
