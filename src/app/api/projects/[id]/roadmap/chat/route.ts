@@ -7,6 +7,7 @@ import { compressHistory, type ChatType } from '@/lib/conversation'
 import { checkCredits, deductCredits } from '@/lib/credits'
 import { getFormatSettings } from '@/lib/constants'
 import { findOrCreateBibliography } from '@/lib/bibliography'
+import { embedQuery } from '@/lib/library-pipeline'
 import { startJob, completeJob, failJob } from '@/lib/jobs'
 import {
   validateRoadmapBatch,
@@ -118,14 +119,51 @@ function buildTools(isCreationMode: boolean, needsSources: boolean): ToolDefinit
   if (needsSources) {
     tools.push({
       name: 'get_library_entries',
-      description: 'Search the user\'s source library. Returns ONLY entries that already have an attached PDF — metadata-only entries are excluded because they cannot be grounded during writing. Each result has an "id" (UUID); when you later add this source to a subsection, you MUST include that id as "libraryEntryId" in the source object so the link is deterministic (no fuzzy matching). Call without query to list recent entries.',
+      description:
+        "Catalog tool — list the user's library entries (only those with usable PDF content). " +
+        'Two modes: ' +
+        '(1) without `query` → adaptive full catalog ' +
+        '(small libraries return everything with abstracts; larger libraries return compact metadata; >1000 returns recent 500 + a note to narrow with `query`). ' +
+        '(2) with `query` → keyword match on author/title (top 50). ' +
+        'Each result has an `id`; when you later add this source to a subsection you MUST include that id as `libraryEntryId` so the link is deterministic (no fuzzy matching). ' +
+        'Use this once at the start of a planning conversation to see what the user actually owns, then call `library_topic_search` per subsection for deep topic-based discovery.',
       input_schema: {
         type: 'object' as const,
         properties: {
-          query: { type: 'string', description: 'Search term (author name or title keyword). Omit to list recent entries.' },
-          limit: { type: 'number', description: 'Max results to return (default 20, max 50)' },
+          query: { type: 'string', description: 'Optional keyword (author/title). Omit for full catalog.' },
+          limit: { type: 'number', description: 'Override default. Default depends on library size; max 100 with query.' },
         },
         required: [],
+      },
+    })
+    tools.push({
+      name: 'library_topic_search',
+      description:
+        'Semantic topic search — ranks the user\'s library entries by how relevant their CONTENT is to a topic, not just their title. ' +
+        'Uses Voyage embeddings + pgvector against the chunk-level index. ' +
+        'Returns top entries with the highest-scoring snippet from each. ' +
+        'Use this per subsection to find books/articles that genuinely discuss a topic, even when the title gives no hint (e.g. "tasavvuf" → finds Süleyman Uludağ\'s "Sufi Felsefesi" via content match, not just title keyword). ' +
+        'Snippet shows the user WHY each entry was picked — quote it back when explaining your source choice. ' +
+        'Pass the `id` of any entry you decide to add to a subsection as `libraryEntryId` in the source object.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          topic: {
+            type: 'string',
+            description:
+              'Topic to match against library content. Be specific — a full phrase like "Mâtürîdî kelâmında âlemin hudûsu" beats a single word.',
+          },
+          topEntries: {
+            type: 'number',
+            description: 'Max distinct entries to return (default 10, max 30).',
+          },
+          topChunks: {
+            type: 'number',
+            description:
+              'How many chunks to scan internally before deduplicating to entries (default 40, max 200). Larger = wider candidate pool.',
+          },
+        },
+        required: ['topic'],
       },
     })
   }
@@ -236,34 +274,81 @@ async function handleToolCallFn(
 
   if (toolName === 'get_library_entries') {
     const query = toolInput.query as string | undefined
-    const limit = Math.min((toolInput.limit as number) || 20, 50)
+    const explicitLimit = toolInput.limit as number | undefined
 
     // Only surface library entries that have usable PDF content somewhere
     // — either a standalone file, a stored filePath, or at least one cilt
     // ready on a multi-volume parent (parents themselves carry no PDF).
     // Metadata-only entries stay filtered out to avoid hallucinated cites.
-    const where: Record<string, unknown> = {
+    const baseWhere = {
       userId,
       OR: [
         { pdfStatus: 'ready' },
         { filePath: { not: null } },
         { volumes: { some: { pdfStatus: 'ready' } } },
       ],
-    }
+    } satisfies Prisma.LibraryEntryWhereInput
+
+    // --- Keyword path: explicit query → top-N matching entries.
     if (query) {
-      where.AND = [
-        {
-          OR: [
-            { authorSurname: { contains: query, mode: 'insensitive' } },
-            { authorName: { contains: query, mode: 'insensitive' } },
-            { title: { contains: query, mode: 'insensitive' } },
+      const limit = Math.min(explicitLimit ?? 50, 100)
+      const entries = await prisma.libraryEntry.findMany({
+        where: {
+          AND: [
+            baseWhere,
+            {
+              OR: [
+                { authorSurname: { contains: query, mode: 'insensitive' } },
+                { authorName: { contains: query, mode: 'insensitive' } },
+                { title: { contains: query, mode: 'insensitive' } },
+              ],
+            },
           ],
         },
-      ]
+        select: {
+          id: true,
+          authorSurname: true,
+          authorName: true,
+          title: true,
+          year: true,
+          entryType: true,
+          abstract: true,
+        },
+        take: limit,
+        orderBy: { updatedAt: 'desc' },
+      })
+      return JSON.stringify({ mode: 'keyword', total: entries.length, entries })
     }
 
+    // --- Catalog path: no query → adaptive full list.
+    // Sized by the user's actual library count so small libraries see
+    // everything in one call and large libraries don't blow the context
+    // window. Brackets:
+    //   ≤300  → full metadata incl. abstract  (~30-40 KB tokens worst case)
+    //   ≤1000 → compact (no abstract)         (~50-80 KB)
+    //   >1000 → recent 500, ask user to narrow with `query`
+    const total = await prisma.libraryEntry.count({ where: baseWhere })
+
+    let take: number
+    let includeAbstract: boolean
+    let note: string | undefined
+    if (total <= 300) {
+      take = total
+      includeAbstract = true
+    } else if (total <= 1000) {
+      take = total
+      includeAbstract = false
+      note =
+        'Compact format (no abstract) — library is moderately large. Pass a `query` for richer results on a specific topic.'
+    } else {
+      take = 500
+      includeAbstract = false
+      note = `Library has ${total} entries — only the 500 most recent are shown. Pass a \`query\` (author/title keyword) or use library_topic_search for semantic discovery.`
+    }
+    if (explicitLimit && explicitLimit < take) take = explicitLimit
+
     const entries = await prisma.libraryEntry.findMany({
-      where,
+      where: baseWhere,
       select: {
         id: true,
         authorSurname: true,
@@ -271,13 +356,123 @@ async function handleToolCallFn(
         title: true,
         year: true,
         entryType: true,
-        abstract: true,
+        ...(includeAbstract && { abstract: true }),
       },
-      take: limit,
+      take,
       orderBy: { updatedAt: 'desc' },
     })
+    return JSON.stringify({
+      mode: 'catalog',
+      total,
+      returned: entries.length,
+      ...(note && { note }),
+      entries,
+    })
+  }
 
-    return JSON.stringify(entries)
+  if (toolName === 'library_topic_search') {
+    const topic = (toolInput.topic as string | undefined)?.trim()
+    if (!topic) {
+      return JSON.stringify({ error: 'topic is required' })
+    }
+    const topEntries = Math.min((toolInput.topEntries as number) || 10, 30)
+    const topChunks = Math.min((toolInput.topChunks as number) || 40, 200)
+
+    const queryVec = await embedQuery(topic)
+    if (!queryVec) {
+      return JSON.stringify({
+        error: 'Topic embedding failed — try get_library_entries with a keyword query instead.',
+      })
+    }
+
+    // Cosine similarity against LibraryChunk; restrict to entries the
+    // user owns AND that have a real PDF (matches get_library_entries
+    // filter). The HNSW index makes this near-constant time.
+    const rows = await prisma.$queryRaw<
+      Array<{
+        chunk_id: string
+        library_entry_id: string
+        page_number: number | null
+        content: string
+        score: number
+        author_surname: string
+        author_name: string | null
+        title: string
+        year: string | null
+        entry_type: string
+      }>
+    >`
+      SELECT
+        lc.id                 AS chunk_id,
+        lc."libraryEntryId"   AS library_entry_id,
+        lc."pageNumber"       AS page_number,
+        lc.content            AS content,
+        (1 - (lc.embedding <=> ${JSON.stringify(queryVec)}::vector))::float8 AS score,
+        le."authorSurname"    AS author_surname,
+        le."authorName"       AS author_name,
+        le.title              AS title,
+        le.year               AS year,
+        le."entryType"::text  AS entry_type
+      FROM "LibraryChunk" lc
+      JOIN "LibraryEntry" le ON le.id = lc."libraryEntryId"
+      WHERE le."userId" = ${userId}
+        AND lc.embedding IS NOT NULL
+        AND (le."pdfStatus" = 'ready' OR le."filePath" IS NOT NULL)
+      ORDER BY lc.embedding <=> ${JSON.stringify(queryVec)}::vector
+      LIMIT ${topChunks}
+    `
+
+    // Dedup chunks → entries; keep the highest-scoring snippet per entry.
+    const byEntry = new Map<
+      string,
+      {
+        id: string
+        authorSurname: string
+        authorName: string | null
+        title: string
+        year: string | null
+        entryType: string
+        score: number
+        snippet: string
+        pageNumber: number | null
+        matchCount: number
+      }
+    >()
+    for (const r of rows) {
+      const existing = byEntry.get(r.library_entry_id)
+      if (existing) {
+        existing.matchCount++
+        if (r.score > existing.score) {
+          existing.score = r.score
+          existing.snippet = r.content.slice(0, 240)
+          existing.pageNumber = r.page_number
+        }
+      } else {
+        byEntry.set(r.library_entry_id, {
+          id: r.library_entry_id,
+          authorSurname: r.author_surname,
+          authorName: r.author_name,
+          title: r.title,
+          year: r.year,
+          entryType: r.entry_type,
+          score: r.score,
+          snippet: r.content.slice(0, 240),
+          pageNumber: r.page_number,
+          matchCount: 1,
+        })
+      }
+    }
+    const ranked = Array.from(byEntry.values())
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topEntries)
+
+    return JSON.stringify({
+      mode: 'topic_search',
+      topic,
+      chunksScanned: rows.length,
+      entriesReturned: ranked.length,
+      entries: ranked,
+    })
   }
 
   return JSON.stringify({ error: `Unknown tool: ${toolName}` })
@@ -334,12 +529,18 @@ Available commands:
 
   const toolsSection = needsSources
     ? `TOOLS:
-- Use get_library_entries to search the user's source library before adding sources. Always check the library first.
-${isCreationMode ? '' : '- Use get_chapter_detail to retrieve full details of a specific chapter when you need to modify it. Only fetch chapters you need.\n'}
+- get_library_entries — CATALOG view. Call ONCE at the start of any roadmap-creation or source-add conversation (without query) to see exactly what books/articles the user actually owns. Small libraries return in full; large libraries hint you to narrow.
+- library_topic_search — SEMANTIC view. Per subsection (or per topic the user discusses), call this with the subsection's topic to find books whose CONTENT actually discusses it — even when the title gives no clue. The returned snippets show why each entry matched; use them to justify your picks to the user.
+${isCreationMode ? '' : '- get_chapter_detail to retrieve full details of a specific chapter when you need to modify it. Only fetch chapters you need.\n'}
+LIBRARY SEARCH STRATEGY:
+- Roadmap creation: first get_library_entries (full catalog) → then per subsection library_topic_search → fall back to suggesting external sources only for gaps the library cannot fill.
+- "Add sources to subsection X about topic Y": library_topic_search({topic: Y}) first, pick the best matches, then add_source with each match's libraryEntryId.
+- When you cite a library hit, quote a few words of the snippet so the user sees the content match, not just the title.
+
 TOOL DISCIPLINE (CRITICAL — read carefully):
-- When you tell the user you will search the library ("Şimdi tarayacağım", "Kütüphaneye bakıyorum", "Let me search", "I'll look up", etc.), you MUST emit the get_library_entries tool_use call IN THE SAME RESPONSE — not in the next one.
+- When you tell the user you will search the library ("Şimdi tarayacağım", "Kütüphaneye bakıyorum", "Let me search", "I'll look up", etc.), you MUST emit the tool_use call IN THE SAME RESPONSE — not in the next one.
 - NEVER promise a search in plain text and then end the turn without the actual tool call. That breaks the user's flow and forces them to ask again.
-- If the user says "tara", "ara", "bul", "search", "find", "aratır mısın", "kütüphanede ne var" — call get_library_entries IMMEDIATELY in your next response. Do NOT prefix with prose like "Tabii, hemen tarıyorum…" — go straight to the tool call.
+- If the user says "tara", "ara", "bul", "search", "find", "aratır mısın", "kütüphanede ne var" — call the appropriate library tool IMMEDIATELY in your next response. Do NOT prefix with prose like "Tabii, hemen tarıyorum…" — go straight to the tool call.
 - If your previous reply said you would search but the actual search did not happen, your next reply MUST start with the tool call before any text.
 `
     : isCreationMode ? '' : `TOOLS:
