@@ -466,6 +466,14 @@ model Bibliography {
   chunks         SourceChunk[]
   attachments    BibliographyAttachment[]
   createdAt      DateTime                 @default(now())
+
+  // One bibliography row per (project, libraryEntry) pair — prevents
+  // the LLM from re-adding the same library entry under two slightly
+  // different titles ("Wolfson — Kelam Felsefeleri" vs the same with
+  // its subtitle). Multiple NULL libraryEntryId rows per project stay
+  // allowed (Postgres default NULLS DISTINCT) so manual/orphan
+  // bibliographies aren't blocked.
+  @@unique([projectId, libraryEntryId])
 }
 
 model BibliographyAttachment {
