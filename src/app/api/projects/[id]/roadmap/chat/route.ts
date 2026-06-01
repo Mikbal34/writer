@@ -8,6 +8,7 @@ import { checkCredits, deductCredits } from '@/lib/credits'
 import { getFormatSettings } from '@/lib/constants'
 import { findOrCreateBibliography } from '@/lib/bibliography'
 import { embedQuery } from '@/lib/library-pipeline'
+import { createCommandsStreamParser } from '@/lib/streaming-commands-parser'
 import { startJob, completeJob, failJob } from '@/lib/jobs'
 import {
   validateRoadmapBatch,
@@ -1755,15 +1756,56 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Detached LLM worker — survives client disconnect.
     const workPromise = (async () => {
       try {
+        // Streaming parse of <roadmap_commands>[…] — every time a full
+        // top-level `{…}` object closes we apply it immediately so
+        // chapters paint into the right pane *while* the LLM is still
+        // writing the rest of the block. This kills the "frozen for
+        // 2 minutes" feeling: the user sees real chapters within
+        // 15-30 s of the LLM starting to emit JSON.
+        const streamParser = createCommandsStreamParser()
+        const streamedCommands: Array<Record<string, unknown>> = []
+        const streamingEnrichment: NewSubsectionRef[] = []
+        let applyQueue: Promise<unknown> = Promise.resolve()
+
         const result = await streamChatWithTools(
           compressedMessages,
           systemPrompt,
           tools,
           (toolName, toolInput) => handleToolCallFn(toolName, toolInput, projectId, session.user.id),
-          (chunk) => enqueueEvent({ chunk }),
+          (chunk) => {
+            enqueueEvent({ chunk })
+            // Feed the parser; any commands that completed in this
+            // chunk get queued for apply. The queue serialises the
+            // applies so two chunks that each close an object don't
+            // race against each other on Prisma.
+            const newCmds = streamParser.feed(chunk)
+            if (newCmds.length > 0) {
+              streamedCommands.push(...newCmds)
+              applyQueue = applyQueue.then(async () => {
+                try {
+                  const part = await applyCommands(
+                    prisma,
+                    projectId,
+                    newCmds,
+                    session.user.id,
+                    enqueueEvent,
+                  )
+                  streamingEnrichment.push(...part.newSubsections)
+                } catch (err) {
+                  console.error(
+                    '[roadmap/chat] streaming apply failed for chunk:',
+                    err,
+                  )
+                }
+              })
+            }
+          },
           (toolName) => enqueueEvent({ step: 'thinking', tool: toolName }),
-          { cacheTools: true, ...(initialToolChoice && { initialToolChoice }) }
+          { cacheTools: true, ...(initialToolChoice && { initialToolChoice }) },
         )
+
+        // Drain the apply queue before the post-stream pass.
+        await applyQueue
 
         const { newBalance, creditsUsed } = await deductCredits(
           session.user.id,
@@ -1775,18 +1817,30 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           { read: result.cacheReadTokens, creation: result.cacheCreationTokens }
         )
 
-        const commands = parseCommands(result.fullText)
-        let commandsApplied = false
+        // Decide which command list to treat as authoritative:
+        //   - If the streaming parser captured anything, those have
+        //     already been applied chapter-by-chapter — just need
+        //     post-stream validation + enrichment.
+        //   - Otherwise fall through to the legacy batch parse of the
+        //     closed <roadmap_commands> block (regex on fullText).
+        const usedStreaming = streamedCommands.length > 0
+        const commands = usedStreaming
+          ? streamedCommands
+          : parseCommands(result.fullText)
+        let commandsApplied = usedStreaming
+        let enrichmentList: NewSubsectionRef[] = streamingEnrichment
 
         if (commands.length > 0) {
-          // Quality gate — extract all subsection metadata from the batch
-          // and run the V4 validator. Reject blocks the transaction and
-          // surfaces actionable feedback so the user sees why nothing
-          // was saved.
           const batchSubs = extractSubsectionsFromCommands(commands)
           const validation = validateRoadmapBatch(batchSubs)
 
-          if (!validation.ok) {
+          // Validation strategy:
+          //   - When commands were streamed (already applied) we can no
+          //     longer reject — the rows are committed. Surface the
+          //     verdict as a warning so the user can fix manually.
+          //   - When falling back to batch apply we still hard-reject:
+          //     nothing is in the DB yet.
+          if (!validation.ok && !usedStreaming) {
             const feedback = formatValidationFeedback(validation)
             console.warn(
               `[roadmap/chat] Validation REJECTED. subs=${batchSubs.length} rejects=${validation.rejects.length} warns=${validation.warnings.length}`,
@@ -1796,38 +1850,42 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             })
             enqueueEvent({ step: 'applied' })
           } else {
-            if (validation.warnings.length > 0) {
+            const warnings = [
+              ...validation.warnings,
+              ...(usedStreaming && validation.rejects.length > 0
+                ? validation.rejects
+                : []),
+            ]
+            if (warnings.length > 0) {
               console.warn(
-                `[roadmap/chat] Validation warnings: ${validation.warnings.join(' | ')}`,
+                `[roadmap/chat] Validation warnings: ${warnings.join(' | ')}`,
               )
-              enqueueEvent({
-                chunk: `\n\n[Uyarı] ${validation.warnings.join(' ')}`,
-              })
+              enqueueEvent({ chunk: `\n\n[Uyarı] ${warnings.join(' ')}` })
             }
-            enqueueEvent({ step: 'applying' })
-            try {
-              // applyCommands now runs each create/update as an
-              // auto-committed statement (no big $transaction) so the
-              // UI can paint chapters as they land instead of waiting
-              // for the full 1-2 minute Voyage-enriched batch.
-              const applyResult = await applyCommands(
-                prisma,
-                projectId,
-                commands,
-                session.user.id,
-                enqueueEvent,
-              )
-              commandsApplied = true
 
-              // Library enrichment runs AFTER all commands have
-              // committed. Each subsection emits an enrichment_progress
-              // event so the UI can show "Sources 8/24". Errors here
-              // do not roll back the roadmap — the source mapping is
-              // additive supporting metadata, not load-bearing.
-              const total = applyResult.newSubsections.length
+            try {
+              if (!usedStreaming) {
+                // Legacy fallback path — no streaming, do the whole
+                // batch in one shot here.
+                enqueueEvent({ step: 'applying' })
+                const applyResult = await applyCommands(
+                  prisma,
+                  projectId,
+                  commands,
+                  session.user.id,
+                  enqueueEvent,
+                )
+                commandsApplied = true
+                enrichmentList = applyResult.newSubsections
+              }
+
+              // Library enrichment runs after all commands have
+              // committed (streamed or batched). Each subsection emits
+              // an enriching event so the UI can show "Sources 8/24".
+              const total = enrichmentList.length
               if (total > 0) {
                 enqueueEvent({ step: 'enriching', current: 0, total })
-                for (const [i, sub] of applyResult.newSubsections.entries()) {
+                for (const [i, sub] of enrichmentList.entries()) {
                   try {
                     await autoEnrichSubsectionWithLibrary(
                       prisma,
@@ -1854,9 +1912,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
                   })
                 }
               }
-              // Bust the App Router cache for every page under /projects/[id]
-              // (write, preview, design, sources, …) so they re-fetch the
-              // freshly mutated chapter/section/subsection rows on next nav.
+              // Bust the App Router cache for every page under
+              // /projects/[id] (write, preview, design, sources, …).
               revalidatePath(`/projects/${projectId}`, 'layout')
             } catch (cmdErr) {
               console.error('[roadmap/chat] Failed to apply commands:', cmdErr)
