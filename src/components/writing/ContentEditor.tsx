@@ -34,6 +34,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { markersToHtml } from "@/lib/citations/marker-to-html";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
@@ -103,7 +104,12 @@ function countWords(text: string): number {
 function markdownToHtml(md: string): string {
   if (!md) return "";
 
-  let html = md;
+  // First pass: convert structured `[cite:bibId,p=X]` (and tolerant
+  // variants like `[cite:bibId|s.X]`) into `<span data-cite-bib-id>`
+  // pills before any other markdown rule runs. This is what Tiptap's
+  // CitationMark extension parses; otherwise the markers survive as
+  // literal text in the editor and confuse the user.
+  let html = markersToHtml(md);
 
   // Tables: detect markdown tables and convert
   html = html.replace(

@@ -548,6 +548,14 @@ FORBIDDEN under any circumstance:
 - \`[fn: …]\` markers (any content)
 - Inline bibliographic strings like "Wolfson, *The Philosophy of the Kalam* (Cambridge: Harvard University Press, 1976), 261." Even one such string voids the entire output.
 - Markdown emphasis inside markers.
+- ⛔ \`|\` (pipe) as a separator. The ONLY separator is \`,\` (comma).
+   ✗  \`[cite:cmpvc7mxs0002jdpw48hxv9eg|s.86]\`
+   ✗  \`[cite:cmpvc7mxs0002jdpw48hxv9eg|p=86]\`
+   ✓  \`[cite:cmpvc7mxs0002jdpw48hxv9eg,p=86]\`
+- ⛔ Turkish-style \`s.\` / \`sayfa\` key on the page parameter; the key is always \`p=\` (with an equals sign), regardless of the project's display language.
+   ✗  \`[cite:bibId,s.45]\`     ✗  \`[cite:bibId,sayfa=45]\`
+   ✓  \`[cite:bibId,p=45]\`
+- ⛔ Anything other than the four shapes listed above. The marker grammar is closed.
 
 If you genuinely cannot cite a claim, omit the citation marker entirely and rephrase the claim more cautiously. Uncited careful claims are acceptable; inline künye text is not.`
 }

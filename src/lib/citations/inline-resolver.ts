@@ -49,36 +49,66 @@ export function createResolverState(): InlineResolverState {
   }
 }
 
-interface ParsedMarker {
+export interface ParsedMarker {
   bibId: string
   page?: string
   volume?: string
 }
 
-/** Parse a single `[cite:…]` marker body (between colons/brackets). */
-function parseMarker(body: string): ParsedMarker | null {
-  const parts = body.split(',').map((p) => p.trim()).filter(Boolean)
+/**
+ * Parse a `[cite:…]` marker body. Tolerant of the variants the LLM
+ * occasionally hallucinates despite the prompt:
+ *
+ *   canonical: [cite:bibId,p=45]            ← documented form
+ *   pipe:      [cite:bibId|s.45]            ← Turkish "s." convention
+ *   pipe-pkey: [cite:bibId|p=45]
+ *   loose s:   [cite:bibId,s=45]
+ *   loose sf:  [cite:bibId,sayfa=45]
+ *
+ * All variants normalise back to the same {bibId, page, volume} shape so
+ * the editor pill renderer and the export resolver agree.
+ */
+export function parseMarker(body: string): ParsedMarker | null {
+  // Normalise common LLM mistakes before splitting:
+  //   pipe separator → comma
+  //   "s." or "S." right before digits → p= key
+  let normalised = body.replace(/\|/g, ',')
+  normalised = normalised.replace(/\b[sS]\.\s*(?=\d)/g, 'p=')
+  // Turkish key variants → canonical
+  normalised = normalised.replace(/\bsayfa\s*=/gi, 'p=')
+  normalised = normalised.replace(/\bcilt\s*=/gi, 'v=')
+
+  const parts = normalised.split(',').map((p) => p.trim()).filter(Boolean)
   if (parts.length === 0) return null
   const bibId = parts[0]
   if (!bibId) return null
   const parsed: ParsedMarker = { bibId }
   for (const kv of parts.slice(1)) {
-    const [key, rawValue] = kv.split('=').map((s) => s.trim())
-    if (!key || !rawValue) continue
-    switch (key.toLowerCase()) {
-      case 'p':
-      case 'page':
-        parsed.page = rawValue
-        break
-      case 'pp':
-      case 'pages':
-        parsed.page = rawValue
-        break
-      case 'v':
-      case 'vol':
-      case 'volume':
-        parsed.volume = rawValue
-        break
+    if (kv.includes('=')) {
+      const [key, rawValue] = kv.split('=').map((s) => s.trim())
+      if (!key || !rawValue) continue
+      switch (key.toLowerCase()) {
+        case 'p':
+        case 'page':
+        case 's':
+          parsed.page = rawValue
+          break
+        case 'pp':
+        case 'pages':
+          parsed.page = rawValue
+          break
+        case 'v':
+        case 'vol':
+        case 'volume':
+        case 'c':
+          parsed.volume = rawValue
+          break
+      }
+    } else if (/^\d+(-\d+)?$/.test(kv)) {
+      // Bare number after the bibId — interpret as page.
+      // Catches `[cite:bibId,45]` and `[cite:bibId|45]` (normalised
+      // from pipe).
+      if (!parsed.page) parsed.page = kv
     }
   }
   return parsed
