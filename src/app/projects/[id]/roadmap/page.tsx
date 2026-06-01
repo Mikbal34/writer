@@ -25,6 +25,7 @@ export default function RoadmapPage() {
 
   const [chapters, setChapters] = useState<ChapterWithSections[]>([]);
   const [projectType, setProjectType] = useState<string>("ACADEMIC");
+  const [projectLanguage, setProjectLanguage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +52,7 @@ export default function RoadmapPage() {
       const data = await res.json();
       setChapters(data.chapters ?? []);
       if (data.projectType) setProjectType(data.projectType);
+      if (data.language !== undefined) setProjectLanguage(data.language);
       // Drop the App Router cache for sibling pages (write, preview, …)
       // so the next navigation re-renders against the new structure.
       router.refresh();
@@ -179,7 +181,7 @@ export default function RoadmapPage() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="chat" className="flex-1 min-h-0 mt-0">
-            <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} hasRoadmap={chapters.length > 0} projectType={projectType} />
+            <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} hasRoadmap={chapters.length > 0} projectType={projectType} projectLanguage={projectLanguage} />
           </TabsContent>
           <TabsContent value="roadmap" className="flex-1 min-h-0 overflow-y-auto mt-0">
             {roadmapContent}
@@ -197,7 +199,7 @@ export default function RoadmapPage() {
         defaultLayout={{ chat: 40, roadmap: 60 }}
       >
         <Panel id="chat" minSize="20%" maxSize="60%">
-          <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} hasRoadmap={chapters.length > 0} projectType={projectType} />
+          <RoadmapChat projectId={projectId} onRoadmapUpdate={fetchRoadmap} hasRoadmap={chapters.length > 0} projectType={projectType} projectLanguage={projectLanguage} />
         </Panel>
         <PanelResizeHandle
           style={{ width: 6, flexShrink: 0 }}

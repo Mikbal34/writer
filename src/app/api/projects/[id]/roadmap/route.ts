@@ -68,7 +68,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ chapters: project.chapters, projectType: project.projectType })
+    return NextResponse.json({
+      chapters: project.chapters,
+      projectType: project.projectType,
+      language: project.language,
+    })
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

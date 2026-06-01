@@ -44,15 +44,11 @@ function mapStatusEvent(step?: string, tool?: string): string | null {
  return null;
 }
 
-// Suggestion chips — context'e göre dinamik. Boş roadmap'te "başlat"
-// odaklı, dolu roadmap'te "optimize" odaklı. Tıklanınca chat input'a
-// set edilip otomatik gönderilir.
-const EMPTY_SUGGESTIONS: Array<{ icon: string; text: string }> = [
- { icon: "📚", text: "Kütüphanemi tara ve uygun kaynaklara göre tez planı öner" },
- { icon: "🧠", text: "Konu için kapsamlı bir tez roadmap'i oluştur" },
- { icon: "🔍", text: "Kütüphanemdeki kaynakları analiz et ve eksik alanları belirle" },
-];
-
+// Suggestion chips for the FILLED state (existing roadmap → optimize).
+// The EMPTY state used to have its own chips ("Kütüphanemi tara…",
+// "Roadmap oluştur…"); those got replaced by a proper welcome message
+// (see WELCOME_MESSAGES below) so the first thing a new user sees is
+// what the roadmap actually does, not a wall of preset commands.
 const FILLED_SUGGESTIONS: Array<{ icon: string; text: string }> = [
  { icon: "⚖", text: "Bölümlerin karşılaştırmalı yoğunluğunu artır" },
  { icon: "🎯", text: "Tezin sonuç bölümünü güçlendir, sentez/argüman bağlarını netleştir" },
@@ -60,11 +56,48 @@ const FILLED_SUGGESTIONS: Array<{ icon: string; text: string }> = [
  { icon: "✨", text: "Roadmap'i baştan üret, semantik metadata'yı doğru ata" },
 ];
 
+// Empty-state welcome message. Two languages for now; anything else
+// falls back to English. The intent: tell the user (in one short
+// paragraph + 4 bullets) what the roadmap step does — scan their
+// library, suggest external sources for gaps, draft the chapter tree,
+// spell out per-subsection writing briefs — and invite them to start.
+type WelcomeMessage = { heading: string; intro: string; bullets: string[]; outro: string }
+const WELCOME_MESSAGES: Record<string, WelcomeMessage> = {
+ tr: {
+  heading: "Yazma niyetinden kitabın yapısına",
+  intro: "Roadmap, ne yazmak istediğini söylediğin yer. Sen niyetini paylaş, ben:",
+  bullets: [
+   "Kütüphaneni tarayıp konuyla ilgili kaynakları çıkarırım",
+   "Kütüphanende olmayanları dışarıdan öneririm",
+   "Bölüm yapısını oluştururum",
+   "Her bölüm için ne yazılacağını netleştiririm",
+  ],
+  outro: "Sonra ince ayarı birlikte yapıp yazmaya geçeriz. Şimdi ne üzerine konuşalım?",
+ },
+ en: {
+  heading: "From writing intent to book structure",
+  intro: "The roadmap is where you tell me what you want to write. You share the intent, I:",
+  bullets: [
+   "Scan your library for relevant sources",
+   "Suggest external ones for any gaps",
+   "Draft the chapter structure",
+   "Spell out what each section should cover",
+  ],
+  outro: "Then we fine-tune together and move on to writing. What shall we explore?",
+ },
+}
+
+function resolveWelcome(projectLanguage: string | null | undefined): WelcomeMessage {
+ const code = (projectLanguage ?? "tr").toLowerCase().slice(0, 2)
+ return WELCOME_MESSAGES[code] ?? WELCOME_MESSAGES.en
+}
+
 interface RoadmapChatProps {
  projectId: string;
  onRoadmapUpdate: () => void;
  hasRoadmap?: boolean;
  projectType?: string;
+ projectLanguage?: string | null;
  className?: string;
 }
 
@@ -115,6 +148,7 @@ export default function RoadmapChat({
  onRoadmapUpdate,
  hasRoadmap = false,
  projectType = "ACADEMIC",
+ projectLanguage = null,
  className,
 }: RoadmapChatProps) {
  const needsSources = projectType === "ACADEMIC";
@@ -457,28 +491,58 @@ export default function RoadmapChat({
       </div>
      )}
      {!isLoadingHistory && messages.length === 0 && (
-      <div className="text-center py-10">
-       <img src="/images/quilpen-icon.png" alt="Quilpen" className="h-12 w-12 mx-auto mb-3 opacity-70 rounded-lg" />
-       <p className="font-body text-sm text-foreground/80">
-        {hasRoadmap
-         ? "Roadmap'i optimize edebilir, yeniden yapılandırabilir veya AI'a soru sorabilirsin."
-         : "AI seninle birlikte tezini kurabilir. Aşağıdaki hızlı başlangıçlardan birini seç veya kendi mesajını yaz."}
-       </p>
-       <div className="mt-5 grid grid-cols-1 gap-2 text-left max-w-md mx-auto">
-        {(hasRoadmap ? FILLED_SUGGESTIONS : EMPTY_SUGGESTIONS).map((sug, i) => (
-         <button
-          key={i}
-          type="button"
-          onClick={() => handleSend(sug.text)}
-          disabled={isStreaming}
-          className="rounded-md border border-border/60 bg-background hover:bg-muted/40 transition-colors px-3 py-2.5 flex items-start gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
-         >
-          <span className="text-base shrink-0 mt-0.5">{sug.icon}</span>
-          <span className="font-body text-sm text-foreground/90 leading-snug">{sug.text}</span>
-         </button>
-        ))}
+      hasRoadmap ? (
+       <div className="text-center py-10">
+        <img src="/images/quilpen-icon.png" alt="Quilpen" className="h-12 w-12 mx-auto mb-3 opacity-70 rounded-lg" />
+        <p className="font-body text-sm text-foreground/80">
+         Roadmap&apos;i optimize edebilir, yeniden yapılandırabilir veya AI&apos;a soru sorabilirsin.
+        </p>
+        <div className="mt-5 grid grid-cols-1 gap-2 text-left max-w-md mx-auto">
+         {FILLED_SUGGESTIONS.map((sug, i) => (
+          <button
+           key={i}
+           type="button"
+           onClick={() => handleSend(sug.text)}
+           disabled={isStreaming}
+           className="rounded-md border border-border/60 bg-background hover:bg-muted/40 transition-colors px-3 py-2.5 flex items-start gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+           <span className="text-base shrink-0 mt-0.5">{sug.icon}</span>
+           <span className="font-body text-sm text-foreground/90 leading-snug">{sug.text}</span>
+          </button>
+         ))}
+        </div>
        </div>
-      </div>
+      ) : (
+       (() => {
+        const w = resolveWelcome(projectLanguage)
+        return (
+         <div className="py-8 max-w-lg mx-auto">
+          <div className="flex items-start gap-3">
+           <img src="/images/quilpen-icon.png" alt="Quilpen" className="h-10 w-10 shrink-0 opacity-80 rounded-lg" />
+           <div className="flex-1 min-w-0">
+            <h3 className="font-display text-base text-foreground mb-1.5">
+             {w.heading}
+            </h3>
+            <p className="font-body text-sm text-foreground/85 leading-relaxed">
+             {w.intro}
+            </p>
+            <ul className="mt-3 space-y-1.5 font-body text-sm text-foreground/80">
+             {w.bullets.map((b, i) => (
+              <li key={i} className="flex gap-2 leading-snug">
+               <span className="text-gold-dark shrink-0">•</span>
+               <span>{b}</span>
+              </li>
+             ))}
+            </ul>
+            <p className="mt-3.5 font-body text-sm text-foreground/85 leading-relaxed">
+             {w.outro}
+            </p>
+           </div>
+          </div>
+         </div>
+        )
+       })()
+      )
      )}
      {messages.map((msg, i) => (
       <StaggerItem key={i} index={i} baseDelay={0.1} stagger={0.05}>
@@ -570,11 +634,13 @@ export default function RoadmapChat({
    )}
 
    {/* Suggestion chips (input üstü) — mesaj history doluyken context-aware
-       hızlı eylemler. Boşken zaten empty-state CTA cards gösteriyor. */}
-   {!showDensitySelector && !isStreaming && messages.length > 0 && (
+       hızlı eylemler. Sadece dolu roadmap'lerde gösterilir (optimize
+       chip'leri); boş roadmap'te kullanıcı zaten konuyu yazıyor, hızlı
+       komut chip'i gereksiz gürültü. */}
+   {hasRoadmap && !showDensitySelector && !isStreaming && messages.length > 0 && (
     <div className="border-t px-4 py-2 shrink-0 bg-page/40">
      <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-      {(hasRoadmap ? FILLED_SUGGESTIONS : EMPTY_SUGGESTIONS).slice(0, 4).map((sug, i) => (
+      {FILLED_SUGGESTIONS.slice(0, 4).map((sug, i) => (
        <button
         key={i}
         type="button"
