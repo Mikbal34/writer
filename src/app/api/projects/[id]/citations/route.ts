@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { quoteHashOf } from '@/lib/citation-verifier'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -176,9 +177,43 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         })
     const bibById = new Map(bibs.map((b) => [b.id, b]))
 
+    // Load any cached verification rows in one shot — the UI shows
+    // these as green/yellow/red badges in the citation list.
+    const verifications = await prisma.citationVerification.findMany({
+      where: { projectId },
+      select: {
+        subsectionId: true,
+        bibliographyId: true,
+        page: true,
+        quoteHash: true,
+        status: true,
+        matchScore: true,
+        matchMethod: true,
+        matchedPage: true,
+        userOverride: true,
+        verifiedAt: true,
+      },
+    })
+    const verificationKey = (
+      subsectionId: string,
+      bibId: string,
+      page: number | null,
+      quote: string | null,
+    ) =>
+      `${subsectionId}|${bibId}|${page ?? -1}|${quoteHashOf(quote)}`
+    const verificationByKey = new Map(
+      verifications.map((v) => [
+        `${v.subsectionId}|${v.bibliographyId}|${v.page}|${v.quoteHash}`,
+        v,
+      ]),
+    )
+
     const citations = allMarkers
       .map((m, idx) => {
         const bib = bibById.get(m.bibId)
+        const verification = verificationByKey.get(
+          verificationKey(m.subsectionId, m.bibId, m.page, m.quote),
+        )
         return {
           // Stable key so the UI can list-key on it; not persisted.
           key: `${m.subsectionId}::${idx}`,
@@ -208,6 +243,16 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
                 hasChunks:
                   bib.libraryEntry?.pdfStatus === 'ready' ||
                   (bib.libraryEntry?.volumes?.length ?? 0) > 0,
+              }
+            : null,
+          verification: verification
+            ? {
+                status: verification.status,
+                matchScore: verification.matchScore,
+                matchMethod: verification.matchMethod,
+                matchedPage: verification.matchedPage,
+                userOverride: verification.userOverride,
+                verifiedAt: verification.verifiedAt,
               }
             : null,
         }

@@ -232,6 +232,7 @@ model Project {
   characters         Character[]
   projectImages      ProjectImage[]
   illustrationChats  IllustrationChatMessage[]
+  citationVerifications CitationVerification[]
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
 
@@ -269,6 +270,51 @@ model ProjectAcademicMeta {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([format])
+}
+
+// =========== CITATION VERIFICATION =================================
+//
+// Citation kavramının kendisi SubSection.content içindeki
+// <span data-cite-bib-id="…"> markerlerinden parse edilir (bkz.
+// /api/projects/[id]/citations). Bu tabloyu sadece her unique
+// (subsection, bibliography, page, quote) çiftinin doğrulama
+// sonucunu kalıcı saklamak için kullanıyoruz — UI listede rozet
+// göstersin, bulk verify çağrısı sonuçları cache'leyebilsin.
+//
+// Yazar yazıyı düzenlerse (örn. sayfa numarasını değiştirirse)
+// kompozit key değişir ve yeni bir verification satırı oluşur;
+// eski satır rağmen kalsa da o citation listede artık görünmediği
+// için zararsız (cleanup gerekirse projectId üzerinden silinir).
+enum CitationVerificationStatus {
+  unverified
+  verified
+  suspected
+  failed
+}
+
+model CitationVerification {
+  id             String                     @id @default(cuid())
+  projectId      String
+  subsectionId   String
+  bibliographyId String
+  page           Int                        @default(-1) // -1 = page null
+  quoteHash      String                     @default("") // sha1(normalize(quote)) or ""
+  status         CitationVerificationStatus @default(unverified)
+  matchScore     Float?
+  matchMethod    String? // exact | fuzzy | semantic | page_neighbor | not_found
+  matchedPage    Int? // when fallback found the quote N pages away
+  matchedSnippet String?                    @db.Text
+  userOverride   Boolean                    @default(false)
+  verifiedAt     DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  subsection   Subsection   @relation(fields: [subsectionId], references: [id], onDelete: Cascade)
+  bibliography Bibliography @relation(fields: [bibliographyId], references: [id], onDelete: Cascade)
+
+  @@unique([subsectionId, bibliographyId, page, quoteHash])
+  @@index([projectId, status])
 }
 
 // ==================== ROADMAP CHAT ====================
@@ -388,11 +434,12 @@ model Subsection {
   wordCount       Int              @default(0)
   sortOrder       Int
 
-  section         Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  sourceMappings  SourceMapping[]
-  writingSessions WritingSession[]
-  outputs         Output[]
-  projectImages   ProjectImage[]
+  section               Section                @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sourceMappings        SourceMapping[]
+  writingSessions       WritingSession[]
+  outputs               Output[]
+  projectImages         ProjectImage[]
+  citationVerifications CitationVerification[]
 
   @@unique([sectionId, subsectionId])
 }
@@ -459,13 +506,14 @@ model Bibliography {
   metadata      Json?
 
   libraryEntryId String?
-  project        Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  source         Source?                  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
-  libraryEntry   LibraryEntry?            @relation(fields: [libraryEntryId], references: [id], onDelete: SetNull)
-  sourceMappings SourceMapping[]
-  chunks         SourceChunk[]
-  attachments    BibliographyAttachment[]
-  createdAt      DateTime                 @default(now())
+  project               Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source                Source?                  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  libraryEntry          LibraryEntry?            @relation(fields: [libraryEntryId], references: [id], onDelete: SetNull)
+  sourceMappings        SourceMapping[]
+  chunks                SourceChunk[]
+  attachments           BibliographyAttachment[]
+  citationVerifications CitationVerification[]
+  createdAt             DateTime                 @default(now())
 
   // One bibliography row per (project, libraryEntry) pair — prevents
   // the LLM from re-adding the same library entry under two slightly
