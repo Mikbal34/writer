@@ -587,11 +587,32 @@ Before finalising a roadmap (or a significant modification), ask yourself:
 - Is any chapter doing two fundamentally different jobs? Consider splitting.
 - Is any chapter only a list of loosely related items? Consider restructuring around an argument, not an inventory.
 
-WRITING HAND-OFF
-Each subsection you describe will later become a writing-session prompt. Give the writer enough to act on:
-- whatToWrite: a concrete brief ("Analyse the 1923-1930 archival letters, focusing on shifts in diplomatic tone"), not a label ("The letters").
-- keyPoints: 2-5 bullets naming the ideas the subsection must cover. Each bullet should be concrete enough that a writer cannot reasonably miss its target.
-- writingStrategy: one or two sentences on tone, structure, or pacing for this specific subsection — what makes THIS subsection different from its neighbours.
+WRITING HAND-OFF (KRİTİK — yetersiz hand-off REJECT ile sonuçlanır)
+
+Each subsection you describe will later become a writing-session prompt. The writer agent has ONLY what you put here — no implicit context, no "obviously the writer will figure it out". Give it enough to act on:
+
+- whatToWrite: a concrete brief, NOT a label.
+   • Min 12 words for SPECIFIC/THEMATIC/COMPARATIVE subsections.
+   • Min 25 words for SYNTHESIS / THESIS_CONCLUSION subsections (these are the payoff turns — they need real instruction).
+   • ✓ "Analyse the 1923-1930 archival letters, focusing on shifts in diplomatic tone between Türk-Greek correspondence and how this prefigured the population exchange."
+   • ✗ "The letters." (label, not a brief)
+   • ✗ "Discusses early Republican letters." (passive summary, not a brief)
+
+- keyPoints: concrete idea bullets the subsection MUST cover.
+   • Min 3 bullets for SPECIFIC/THEMATIC/COMPARATIVE.
+   • Min 5 bullets for SYNTHESIS / THESIS_CONCLUSION.
+   • Each bullet must NAME something specific (a thinker, a year, a concept, a text, a position) — a writer should not be able to satisfy it with generalities.
+   • ✓ "Atatürk'ün Diyanet kurarken kullandığı 'kontrol altında tutulacak ortodoksi' formülünün 1924 yasaklarıyla ilişkisi"
+   • ✗ "Konuyla ilgili temel noktalar" (says nothing)
+
+- writingStrategy: tone / structure / pacing notes specific to THIS subsection.
+   • Min 8 words for SPECIFIC/THEMATIC/COMPARATIVE.
+   • Min 15 words for SYNTHESIS / THESIS_CONCLUSION.
+   • Tell the writer what makes this subsection DIFFERENT from its neighbours: opening cadence, citation density, evidence sequencing, comparative move, where to land.
+   • ✓ "Kronolojik akış kullan — 1923 dekret → 1924 yasak → 1925 Şeyh Said'in çevirisi. Her olayı tek paragrafta tutup geçişi olaydan olaya kur, yorumu paragraf sonuna sakla."
+   • ✗ "Akademik dilde yaz" (genel, hiçbir subsection için anlamlı değil)
+
+A batch in which >25% of subsections have shallow whatToWrite/keyPoints/writingStrategy is REJECTED by the quality gate — do NOT default to placeholders, do not over-promise depth you cannot deliver.
 - estimatedPages: your best page-count estimate in whole pages.
 - synthesisMode + sectionGoal + analysisDepth: pair them honestly per subsection. synthesisMode = epistemik YAPI (nasıl), sectionGoal = bölüm içindeki GÖREV (neden), depth = yorum yoğunluğu. Bu üç eksen ayrıdır; karıştırma. sectionGoal one of: DEFINE / CONTEXT / COMPARE / SYNTHESIZE / LITERATURE_GAP / THESIS_CONCLUSION. THESIS_CONCLUSION goal'ı tez başına 0-2 subsection — her chapter sonu THESIS_CONCLUSION DEĞİL.
 
@@ -791,6 +812,9 @@ function extractSubsectionsFromCommands(
       synthesisMode: mode,
       sectionGoal: goal,
       analysisDepth: depth,
+      whatToWrite: typeof sub.whatToWrite === 'string' ? sub.whatToWrite : null,
+      keyPoints: Array.isArray(sub.keyPoints) ? (sub.keyPoints as string[]) : null,
+      writingStrategy: typeof sub.writingStrategy === 'string' ? sub.writingStrategy : null,
     })
   }
   for (const cmd of commands) {
@@ -906,6 +930,156 @@ async function createNestedSources(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Server-side per-subsection library enrichment.
+//
+// For every freshly-created subsection we run a Voyage semantic search
+// against the user's LibraryChunk index using the subsection's own
+// title/description/whatToWrite/keyPoints as the query topic. The top
+// few hits — minus whatever the LLM already attached — get appended as
+// supporting sources with the matched snippet kept as the `relevance`
+// note. This is the safety net that catches the cases where the LLM
+// over-relies on title keyword matching or simply forgets to call
+// library_topic_search per subsection.
+//
+// Cost per subsection: 1 Voyage query embed (~$0.00002) + 1 pgvector
+// scan. Cheap enough to do unconditionally.
+// ---------------------------------------------------------------------------
+async function autoEnrichSubsectionWithLibrary(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  userId: string | undefined,
+  subsectionDbId: string,
+  meta: {
+    title?: string | null
+    description?: string | null
+    whatToWrite?: string | null
+    keyPoints?: string[] | null
+  },
+  options?: { maxAdd?: number; topChunks?: number },
+): Promise<{ added: number }> {
+  if (!userId) return { added: 0 }
+  const maxAdd = options?.maxAdd ?? 3
+  const topChunks = options?.topChunks ?? 30
+
+  const topicParts = [
+    meta.title,
+    meta.description,
+    meta.whatToWrite,
+    Array.isArray(meta.keyPoints) ? meta.keyPoints.join('. ') : null,
+  ].filter((s) => typeof s === 'string' && s.trim().length > 0) as string[]
+  const topic = topicParts.join('\n').slice(0, 1000)
+  if (topic.length < 10) return { added: 0 }
+
+  const queryVec = await embedQuery(topic)
+  if (!queryVec) return { added: 0 }
+
+  // Pull the LibraryChunk rows with metadata join in one shot.
+  type Row = {
+    library_entry_id: string
+    page_number: number | null
+    content: string
+    score: number
+    author_surname: string
+    author_name: string | null
+    title: string
+  }
+  const rows = await tx.$queryRaw<Row[]>`
+    SELECT
+      lc."libraryEntryId"   AS library_entry_id,
+      lc."pageNumber"       AS page_number,
+      lc.content            AS content,
+      (1 - (lc.embedding <=> ${JSON.stringify(queryVec)}::vector))::float8 AS score,
+      le."authorSurname"    AS author_surname,
+      le."authorName"       AS author_name,
+      le.title              AS title
+    FROM "LibraryChunk" lc
+    JOIN "LibraryEntry" le ON le.id = lc."libraryEntryId"
+    WHERE le."userId" = ${userId}
+      AND lc.embedding IS NOT NULL
+      AND (le."pdfStatus" = 'ready' OR le."filePath" IS NOT NULL)
+    ORDER BY lc.embedding <=> ${JSON.stringify(queryVec)}::vector
+    LIMIT ${topChunks}
+  `
+
+  // Dedup chunks → entries, best score wins per entry.
+  const byEntry = new Map<
+    string,
+    { id: string; score: number; snippet: string; pageNumber: number | null; author: string; title: string }
+  >()
+  for (const r of rows) {
+    const existing = byEntry.get(r.library_entry_id)
+    if (!existing || r.score > existing.score) {
+      const author = r.author_name
+        ? `${r.author_surname}, ${r.author_name}`
+        : r.author_surname
+      byEntry.set(r.library_entry_id, {
+        id: r.library_entry_id,
+        score: r.score,
+        snippet: r.content.slice(0, 200),
+        pageNumber: r.page_number,
+        author,
+        title: r.title,
+      })
+    }
+  }
+
+  // Exclude library entries already linked to this subsection — we don't
+  // want to spam duplicates of whatever the LLM just attached.
+  const existingMappings = await tx.sourceMapping.findMany({
+    where: { subsectionId: subsectionDbId, bibliography: { libraryEntryId: { not: null } } },
+    select: { bibliography: { select: { libraryEntryId: true } } },
+  })
+  const alreadyLinked = new Set(
+    existingMappings.map((m) => m.bibliography.libraryEntryId).filter((id): id is string => !!id),
+  )
+
+  const ranked = Array.from(byEntry.values())
+    .filter((c) => !alreadyLinked.has(c.id))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxAdd)
+
+  let added = 0
+  for (const cand of ranked) {
+    // Re-use the canonical find-or-create so the (project, libraryEntry)
+    // unique constraint kicks in and metadata is properly copied.
+    const biblio = await findOrCreateBibliography(
+      tx,
+      projectId,
+      cand.author,
+      cand.title,
+      undefined,
+      userId,
+      cand.id,
+    )
+    const relevanceNote = `Otomatik konu eşleşmesi (skor ${cand.score.toFixed(2)})${
+      cand.pageNumber ? `, s.${cand.pageNumber}` : ''
+    }: "${cand.snippet.replace(/\s+/g, ' ').trim()}…"`
+    await tx.sourceMapping.upsert({
+      where: {
+        subsectionId_bibliographyId: {
+          subsectionId: subsectionDbId,
+          bibliographyId: biblio.id,
+        },
+      },
+      create: {
+        subsectionId: subsectionDbId,
+        bibliographyId: biblio.id,
+        sourceType: 'modern',
+        priority: 'supporting',
+        relevance: relevanceNote,
+        howToUse: null,
+        whereToFind: null,
+        extractionGuide: null,
+      },
+      update: {}, // never overwrite a row the LLM or user has refined
+    })
+    added++
+  }
+
+  return { added }
+}
+
 async function applyCommands(
   tx: Prisma.TransactionClient,
   projectId: string,
@@ -1003,6 +1177,12 @@ async function applyCommands(
         })
         if (cmd.tempId) tempIdMap.set(cmd.tempId as string, subsection.id)
         await createNestedSources(tx, projectId, userId, subsection.id, sub.sources)
+        await autoEnrichSubsectionWithLibrary(tx, projectId, userId, subsection.id, {
+          title: subsection.title,
+          description: subsection.description,
+          whatToWrite: subsection.whatToWrite,
+          keyPoints: subsection.keyPoints as string[],
+        })
         break
       }
 
@@ -1097,6 +1277,12 @@ async function applyCommands(
             })
             if (sub.tempId) tempIdMap.set(sub.tempId as string, subsec.id)
             await createNestedSources(tx, projectId, userId, subsec.id, sub.sources)
+            await autoEnrichSubsectionWithLibrary(tx, projectId, userId, subsec.id, {
+              title: subsec.title,
+              description: subsec.description,
+              whatToWrite: subsec.whatToWrite,
+              keyPoints: subsec.keyPoints as string[],
+            })
           }
         }
         break
@@ -1191,6 +1377,12 @@ async function applyCommands(
                 })
                 if (sub.tempId) tempIdMap.set(sub.tempId as string, subsec.id)
                 await createNestedSources(tx, projectId, userId, subsec.id, sub.sources)
+                await autoEnrichSubsectionWithLibrary(tx, projectId, userId, subsec.id, {
+                  title: subsec.title,
+                  description: subsec.description,
+                  whatToWrite: subsec.whatToWrite,
+                  keyPoints: subsec.keyPoints as string[],
+                })
               }
             }
           }

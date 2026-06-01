@@ -30,6 +30,9 @@ export interface ValidatedSubsection {
   synthesisMode: SynthesisMode
   sectionGoal: SectionGoal
   analysisDepth: number
+  whatToWrite?: string | null
+  keyPoints?: string[] | null
+  writingStrategy?: string | null
 }
 
 export interface ValidationResult {
@@ -120,6 +123,74 @@ export function validateRoadmapBatch(subs: ValidatedSubsection[]): ValidationRes
       `${modeCount.THEMATIC} subsections use synthesisMode=THEMATIC but none have sectionGoal SYNTHESIZE or LITERATURE_GAP. ` +
         `Thematic subsections almost always synthesize a field or assess a literature gap. Reconsider their goals.`,
     )
+  }
+
+  // --- Content quality rules (per-subsection, not batch-level) -------
+  //
+  // Historical failure mode: LLM produces structurally valid subsections
+  // but whatToWrite is one line ("Discusses X."), keyPoints is two
+  // generic bullets, writingStrategy is empty or "Academic tone". The
+  // writer turn downstream then has nothing concrete to grip on and
+  // generates filler. These rules force enough specificity at planning
+  // time so the writing turn has actual instructions.
+  const wordCount = (s: string | null | undefined): number =>
+    typeof s === 'string' ? s.trim().split(/\s+/).filter(Boolean).length : 0
+
+  const shallowSubs: Array<{ id: string; reason: string }> = []
+  // SYNTHESIS subsections need heavier briefs because they're the
+  // synthesis turns (chapter-closers, payoff sections). Default
+  // expectations are bumped for them.
+  for (const s of subs) {
+    const isHeavy = s.synthesisMode === 'SYNTHESIS' || s.sectionGoal === 'THESIS_CONCLUSION'
+    const minWhatToWrite = isHeavy ? 25 : 12
+    const minKeyPoints = isHeavy ? 5 : 3
+    const minStrategy = isHeavy ? 15 : 8
+
+    const reasons: string[] = []
+    const wtw = wordCount(s.whatToWrite)
+    if (wtw < minWhatToWrite) {
+      reasons.push(
+        `whatToWrite has ${wtw} word${wtw === 1 ? '' : 's'} (min ${minWhatToWrite})`,
+      )
+    }
+    const kpCount = Array.isArray(s.keyPoints) ? s.keyPoints.filter((k) => k && k.trim()).length : 0
+    if (kpCount < minKeyPoints) {
+      reasons.push(`only ${kpCount} keyPoint${kpCount === 1 ? '' : 's'} (min ${minKeyPoints})`)
+    }
+    const ws = wordCount(s.writingStrategy)
+    if (ws < minStrategy) {
+      reasons.push(
+        `writingStrategy has ${ws} word${ws === 1 ? '' : 's'} (min ${minStrategy})`,
+      )
+    }
+    if (reasons.length > 0) {
+      shallowSubs.push({
+        id: `${s.subsectionId} ("${s.title.slice(0, 40)}")`,
+        reason: reasons.join('; '),
+      })
+    }
+  }
+
+  // Single shallow subsection in a small batch is a WARN; >25% of a
+  // batch being shallow is a REJECT — the LLM defaulted across the
+  // board and the writing turns will be useless.
+  if (shallowSubs.length > 0) {
+    const shallowRatio = shallowSubs.length / total
+    if (total >= MIN_BATCH_FOR_REJECT && shallowRatio >= 0.25) {
+      rejects.push(
+        `${shallowSubs.length}/${total} subsections have shallow content fields. ` +
+          `whatToWrite must be a concrete brief (≥12 words for SPECIFIC/THEMATIC/COMPARATIVE, ≥25 for SYNTHESIS/THESIS_CONCLUSION). ` +
+          `keyPoints must list ≥3 concrete ideas (≥5 for SYNTHESIS). ` +
+          `writingStrategy must say something subsection-specific about tone/structure (≥8 words, ≥15 for SYNTHESIS). ` +
+          `Offenders:\n` +
+          shallowSubs.map((s) => `  - ${s.id}: ${s.reason}`).join('\n'),
+      )
+    } else {
+      warnings.push(
+        `${shallowSubs.length}/${total} subsection${shallowSubs.length === 1 ? ' has' : 's have'} shallow content fields:\n` +
+          shallowSubs.map((s) => `  - ${s.id}: ${s.reason}`).join('\n'),
+      )
+    }
   }
 
   return { rejects, warnings, ok: rejects.length === 0 }
