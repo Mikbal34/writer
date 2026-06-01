@@ -55,29 +55,55 @@ export interface ParsedMarker {
   volume?: string
 }
 
+// Page-key synonyms across the languages the product targets. The
+// canonical export form is `p=`; the parser tolerates these so an
+// LLM that slips into the local academic convention doesn't break
+// the citation. Order doesn't matter — first match wins.
+const PAGE_KEY_RE =
+  /^(p|page|pages|pp|s|sayfa|seite|pagina|página|page|الصفحة|ص|сторінка|стр|с)$/i
+const VOLUME_KEY_RE =
+  /^(v|vol|volume|cilt|c|band|bd|tom|tome|tomo|t|том|الجزء|ج)$/i
+
 /**
  * Parse a `[cite:…]` marker body. Tolerant of the variants the LLM
  * occasionally hallucinates despite the prompt:
  *
- *   canonical: [cite:bibId,p=45]            ← documented form
- *   pipe:      [cite:bibId|s.45]            ← Turkish "s." convention
- *   pipe-pkey: [cite:bibId|p=45]
- *   loose s:   [cite:bibId,s=45]
- *   loose sf:  [cite:bibId,sayfa=45]
+ *   canonical (always export-safe):
+ *     [cite:bibId,p=45]            single page
+ *     [cite:bibId,pp=45-48]        range
+ *     [cite:bibId,v=2,p=45]        volume + page
  *
- * All variants normalise back to the same {bibId, page, volume} shape so
+ *   pipe separator (common LLM drift):
+ *     [cite:bibId|s.45]   [cite:bibId|p=45]
+ *
+ *   localised page abbreviations (any language the product supports):
+ *     [cite:bibId,s.45]   tr  Sayfa
+ *     [cite:bibId,p.45]   en  page
+ *     [cite:bibId,S.45]   de  Seite
+ *     [cite:bibId,ص.45]   ar  ṣafḥa
+ *
+ *   localised key=value:
+ *     [cite:bibId,sayfa=45]   [cite:bibId,seite=45]   [cite:bibId,ص=45]
+ *
+ *   bare numeric tail:
+ *     [cite:bibId,45]        [cite:bibId|45]
+ *
+ * All paths normalise back to the same {bibId, page, volume} shape so
  * the editor pill renderer and the export resolver agree.
  */
 export function parseMarker(body: string): ParsedMarker | null {
-  // Normalise common LLM mistakes before splitting:
-  //   pipe separator → comma
-  //   "s." or "S." right before digits → p= key
+  // 1) Normalise separators: pipe → comma (does not affect Arabic
+  // text which uses commas of its own — those are inside string
+  // values, not part of the marker key/value scaffolding).
   let normalised = body.replace(/\|/g, ',')
-  normalised = normalised.replace(/\b[sS]\.\s*(?=\d)/g, 'p=')
-  // Turkish key variants → canonical
-  normalised = normalised.replace(/\bsayfa\s*=/gi, 'p=')
-  normalised = normalised.replace(/\bcilt\s*=/gi, 'v=')
 
+  // 2) Bare "p.", "s.", "S.", "pg.", "ص." right before a digit (no
+  //    equals sign) → canonical `p=`. The dot is optional. Latin
+  //    letters use ASCII-aware boundaries; Arabic key handled separately.
+  normalised = normalised.replace(/\b[psS]g?\.\s*(?=\d)/g, 'p=')
+  normalised = normalised.replace(/(^|[\s,])ص\.?\s*(?=\d)/g, '$1p=')
+
+  // 3) Split + parse parts.
   const parts = normalised.split(',').map((p) => p.trim()).filter(Boolean)
   if (parts.length === 0) return null
   const bibId = parts[0]
@@ -85,29 +111,18 @@ export function parseMarker(body: string): ParsedMarker | null {
   const parsed: ParsedMarker = { bibId }
   for (const kv of parts.slice(1)) {
     if (kv.includes('=')) {
-      const [key, rawValue] = kv.split('=').map((s) => s.trim())
-      if (!key || !rawValue) continue
-      switch (key.toLowerCase()) {
-        case 'p':
-        case 'page':
-        case 's':
-          parsed.page = rawValue
-          break
-        case 'pp':
-        case 'pages':
-          parsed.page = rawValue
-          break
-        case 'v':
-        case 'vol':
-        case 'volume':
-        case 'c':
-          parsed.volume = rawValue
-          break
+      const [rawKey, rawValue] = kv.split('=').map((s) => s.trim())
+      if (!rawKey || !rawValue) continue
+      // Strip a trailing dot from the key — handles "S." / "Bd." /
+      // "p." style abbreviations used as keys ("S.=12", "Bd.=3").
+      const key = rawKey.replace(/\.$/, '')
+      if (PAGE_KEY_RE.test(key)) {
+        parsed.page = rawValue
+      } else if (VOLUME_KEY_RE.test(key)) {
+        parsed.volume = rawValue
       }
     } else if (/^\d+(-\d+)?$/.test(kv)) {
-      // Bare number after the bibId — interpret as page.
-      // Catches `[cite:bibId,45]` and `[cite:bibId|45]` (normalised
-      // from pipe).
+      // Bare number tail — interpret as page when no page set yet.
       if (!parsed.page) parsed.page = kv
     }
   }

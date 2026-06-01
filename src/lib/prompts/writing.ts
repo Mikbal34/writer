@@ -552,10 +552,14 @@ FORBIDDEN under any circumstance:
    ✗  \`[cite:cmpvc7mxs0002jdpw48hxv9eg|s.86]\`
    ✗  \`[cite:cmpvc7mxs0002jdpw48hxv9eg|p=86]\`
    ✓  \`[cite:cmpvc7mxs0002jdpw48hxv9eg,p=86]\`
-- ⛔ Turkish-style \`s.\` / \`sayfa\` key on the page parameter; the key is always \`p=\` (with an equals sign), regardless of the project's display language.
-   ✗  \`[cite:bibId,s.45]\`     ✗  \`[cite:bibId,sayfa=45]\`
-   ✓  \`[cite:bibId,p=45]\`
-- ⛔ Anything other than the four shapes listed above. The marker grammar is closed.
+- ⛔ Any LANGUAGE-LOCAL abbreviation in the marker key — Turkish \`s.\` / \`sayfa\`, German \`S.\` / \`Seite\`, Spanish \`p.\` / \`página\`, French \`p.\` / \`vol.\`, Arabic \`ص\`, etc. The export pipeline localises the final reference into whichever target language the project uses; you do NOT localise the marker itself.
+   ✗  \`[cite:bibId,s.45]\`      (tr)
+   ✗  \`[cite:bibId,sayfa=45]\`  (tr)
+   ✗  \`[cite:bibId,S.45]\`      (de)
+   ✗  \`[cite:bibId,página=45]\` (es)
+   ✗  \`[cite:bibId,ص.45]\`      (ar)
+   ✓  \`[cite:bibId,p=45]\`      ← only correct shape
+- ⛔ Anything other than the four shapes listed above. The marker grammar is closed and identical across every project language.
 
 If you genuinely cannot cite a claim, omit the citation marker entirely and rephrase the claim more cautiously. Uncited careful claims are acceptable; inline künye text is not.`
 }
