@@ -106,9 +106,25 @@ export async function findOrCreateBibliography(
   const surname = authorParts[0] ?? author
   const name = authorParts[1] ?? null
 
-  let biblio = await tx.bibliography.findFirst({
-    where: { projectId, title: work, authorSurname: surname },
-  })
+  // Look up by the (project, libraryEntry) unique pair first when the
+  // caller already knows the library entry — handles the common case
+  // where the LLM-attached bibliography stored a slightly different
+  // title ("Transcendent God: Rational World") than the one auto-
+  // enrichment is now passing ("Transcendent God, Rational World").
+  // Falling straight to title+surname findFirst there would miss the
+  // existing row and the subsequent create would trip the
+  // (projectId, libraryEntryId) unique constraint.
+  let biblio = null as Awaited<ReturnType<typeof tx.bibliography.findFirst>>
+  if (explicitLibraryEntryId) {
+    biblio = await tx.bibliography.findFirst({
+      where: { projectId, libraryEntryId: explicitLibraryEntryId },
+    })
+  }
+  if (!biblio) {
+    biblio = await tx.bibliography.findFirst({
+      where: { projectId, title: work, authorSurname: surname },
+    })
+  }
 
   async function resolveLibraryMatch(): Promise<{ id: string; meta: LibMeta } | null> {
     if (!userId) return null
