@@ -20,6 +20,7 @@ import {
   quoteHashOf,
   type VerificationStatus,
 } from "@/lib/citation-verifier";
+import { parseMarker } from "@/lib/citations/inline-resolver";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 const SPAN_RE =
   /<span\b[^>]*data-cite-bib-id\s*=\s*"([^"]+)"[^>]*>([\s\S]*?)<\/span>/g;
+const MARKDOWN_RE = /\[cite:([^\]]+)\]/g;
 
 function attr(html: string, name: string): string | null {
   const m = html.match(new RegExp(`${name}\\s*=\\s*"([^"]*)"`));
@@ -42,6 +44,9 @@ interface Marker {
   page: number | null;
   quote: string | null;
   volumeId: string | null;
+  // Position in `content` so we can sort the two parser passes back
+  // into reading order before we hand the list to the verifier.
+  position: number;
 }
 
 function extractMarkers(
@@ -50,8 +55,9 @@ function extractMarkers(
 ): Marker[] {
   if (!content) return [];
   const out: Marker[] = [];
+
+  // 1) HTML span markers (round-tripped editor output).
   SPAN_RE.lastIndex = 0;
-  let idx = 0;
   for (const match of content.matchAll(SPAN_RE)) {
     const fullSpan = match[0];
     const bibId = match[1];
@@ -60,16 +66,40 @@ function extractMarkers(
     const quote = attr(fullSpan, "data-quote");
     const volumeId = attr(fullSpan, "data-volume-id");
     out.push({
-      key: `${subsectionId}::${idx}`,
+      key: "",
       subsectionId,
       bibliographyId: bibId,
       page: Number.isFinite(page as number) ? (page as number) : null,
       quote: quote || null,
       volumeId: volumeId || null,
+      position: match.index ?? 0,
     });
-    idx++;
   }
-  return out;
+
+  // 2) Markdown markers (raw LLM output sitting on disk).
+  MARKDOWN_RE.lastIndex = 0;
+  for (const match of content.matchAll(MARKDOWN_RE)) {
+    const parsed = parseMarker(match[1]);
+    if (!parsed) continue;
+    const page =
+      parsed.page && /^\d+/.test(parsed.page)
+        ? parseInt(parsed.page, 10)
+        : null;
+    out.push({
+      key: "",
+      subsectionId,
+      bibliographyId: parsed.bibId,
+      page: Number.isFinite(page as number) ? (page as number) : null,
+      quote: null,
+      volumeId: null,
+      position: match.index ?? 0,
+    });
+  }
+
+  // Sort by reading order and assign stable keys (matches the GET
+  // endpoint's `subsectionId::idx` scheme).
+  out.sort((a, b) => a.position - b.position);
+  return out.map((m, i) => ({ ...m, key: `${subsectionId}::${i}` }));
 }
 
 export async function POST(req: NextRequest, ctx: RouteContext) {

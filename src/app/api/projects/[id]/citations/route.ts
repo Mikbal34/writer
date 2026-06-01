@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { quoteHashOf } from '@/lib/citation-verifier'
+import { parseMarker } from '@/lib/citations/inline-resolver'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -24,14 +25,27 @@ interface ParsedMarker {
   quote: string | null
   label: string
   contextSnippet: string
+  // Position in the source content (used to sort the HTML and
+  // markdown passes back into reading order).
+  position: number
   // Multi-volume sources carry the (volumeId, volumeNumber) pair so
   // the verify panel can scope chunks/PDF to the right cilt.
   volumeId: string | null
   volumeNumber: number | null
 }
 
+// Citation markers in the wild come in TWO forms:
+//   1. `<span data-cite-bib-id="…">label</span>`
+//      — the pill the Tiptap editor renders on screen.
+//   2. `[cite:bibId,p=45]` (canonical markdown)
+//      — what the write LLM emits and what htmlToMarkdown round-trips
+//        to. This is what actually sits on disk.
+// We accept both so this endpoint works regardless of whether the
+// content was last edited in-browser (round-tripped HTML) or just
+// written by the LLM (raw markdown).
 const SPAN_RE =
   /<span\b[^>]*data-cite-bib-id\s*=\s*"([^"]+)"[^>]*>([\s\S]*?)<\/span>/g
+const MARKDOWN_RE = /\[cite:([^\]]+)\]/g
 
 function attr(html: string, name: string): string | null {
   const m = html.match(new RegExp(`${name}\\s*=\\s*"([^"]*)"`))
@@ -48,10 +62,22 @@ function stripTags(s: string): string {
     .replace(/&quot;/g, '"')
 }
 
+function contextAround(
+  content: string,
+  matchStart: number,
+  matchEnd: number,
+  innerLabel: string,
+): string {
+  const before = stripTags(content.slice(Math.max(0, matchStart - 200), matchStart))
+  const after = stripTags(content.slice(matchEnd, matchEnd + 200))
+  return `${before.slice(-80).trim()} [${innerLabel}] ${after.slice(0, 80).trim()}`.trim()
+}
+
 function extractMarkers(content: string): ParsedMarker[] {
   if (!content) return []
   const out: ParsedMarker[] = []
-  // Reset lastIndex defensively because the same regex object is shared.
+
+  // ── HTML span markers ────────────────────────────────────────────
   SPAN_RE.lastIndex = 0
   for (const match of content.matchAll(SPAN_RE)) {
     const fullSpan = match[0]
@@ -65,27 +91,58 @@ function extractMarkers(content: string): ParsedMarker[] {
     const volumeStr = attr(fullSpan, 'data-volume')
     const volumeNumber = volumeStr ? parseInt(volumeStr, 10) : null
 
-    // Pull a short context window (~120 chars) on either side of the
-    // span so the verification list shows what the writer was saying
-    // when they cited the source.
     const matchStart = match.index ?? 0
     const matchEnd = matchStart + fullSpan.length
-    const before = stripTags(content.slice(Math.max(0, matchStart - 200), matchStart))
-    const after = stripTags(content.slice(matchEnd, matchEnd + 200))
-    const contextSnippet = `${before.slice(-80).trim()} [${innerLabel}] ${after.slice(0, 80).trim()}`.trim()
-
     out.push({
       bibId,
       page: Number.isFinite(page as number) ? (page as number) : null,
       quote: quote || null,
       label: innerLabel,
-      contextSnippet,
+      contextSnippet: contextAround(content, matchStart, matchEnd, innerLabel),
+      position: matchStart,
       volumeId: volumeId || null,
       volumeNumber: Number.isFinite(volumeNumber as number)
         ? (volumeNumber as number)
         : null,
     })
   }
+
+  // ── Markdown markers ─────────────────────────────────────────────
+  MARKDOWN_RE.lastIndex = 0
+  for (const match of content.matchAll(MARKDOWN_RE)) {
+    const fullMarker = match[0]
+    const parsed = parseMarker(match[1])
+    if (!parsed) continue
+    const matchStart = match.index ?? 0
+    const matchEnd = matchStart + fullMarker.length
+    const innerLabel = parsed.page
+      ? `${parsed.bibId.slice(0, 6)}…, s.${parsed.page}`
+      : `${parsed.bibId.slice(0, 6)}…`
+    const page =
+      parsed.page && /^\d+/.test(parsed.page)
+        ? parseInt(parsed.page, 10)
+        : null
+    const volumeNumber =
+      parsed.volume && /^\d+/.test(parsed.volume)
+        ? parseInt(parsed.volume, 10)
+        : null
+    out.push({
+      bibId: parsed.bibId,
+      page: Number.isFinite(page as number) ? (page as number) : null,
+      quote: null,
+      label: innerLabel,
+      contextSnippet: contextAround(content, matchStart, matchEnd, innerLabel),
+      position: matchStart,
+      volumeId: null,
+      volumeNumber: Number.isFinite(volumeNumber as number)
+        ? (volumeNumber as number)
+        : null,
+    })
+  }
+
+  // Order both passes back into reading order so subsection::idx
+  // keys stay stable and the UI list reads top-down.
+  out.sort((a, b) => a.position - b.position)
   return out
 }
 
