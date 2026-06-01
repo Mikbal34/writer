@@ -38,6 +38,8 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+import { useTypewriter } from "@/lib/hooks/use-typewriter";
+import { useRotatingStatus } from "@/lib/hooks/use-rotating-status";
 import { useLibraryChatSession } from "@/components/chat/useLibraryChatSession";
 import type { ChatMessage, ChatSource } from "@/components/chat/MessageBubble";
 import PinNoteButton from "@/components/library/PinNoteButton";
@@ -862,31 +864,54 @@ function ActiveConversation({
     last.role === "assistant" &&
     last.content === "";
 
+  // Typewriter — chase the last assistant message one char at a time
+  // (22 ms cadence). Backend deltas arrive in 3-10 char bursts; this
+  // smooths them into a steady reveal.
+  const typewriterTarget =
+    last !== undefined && last.role === "assistant" ? last.content : "";
+  const typewriterContent = useTypewriter(typewriterTarget, isStreaming, 22);
+
   return (
     <div ref={threadRef} className="flex-1 overflow-y-auto px-6 py-5 min-h-0">
-      {messages.map((m, i) => (
-        <LibBubble
-          key={i}
-          msg={m}
-          allEntries={allEntries}
-          sessionId={sessionId}
-          activeSource={activeSource}
-          onOpenSource={onOpenSource}
-          isStreaming={isStreaming && i === messages.length - 1}
-          onCounterThesis={
-            m.role === "assistant" ? () => onCounterThesis(m) : undefined
-          }
-          onCitateToThesis={
-            m.role === "assistant" ? () => onCitateToThesis(m) : undefined
-          }
-        />
-      ))}
+      {messages.map((m, i) => {
+        const isLastStreamingAssistant =
+          isStreaming && i === messages.length - 1 && m.role === "assistant";
+        return (
+          <LibBubble
+            key={i}
+            msg={m}
+            displayContent={isLastStreamingAssistant ? typewriterContent : m.content}
+            allEntries={allEntries}
+            sessionId={sessionId}
+            activeSource={activeSource}
+            onOpenSource={onOpenSource}
+            isStreaming={isStreaming && i === messages.length - 1}
+            onCounterThesis={
+              m.role === "assistant" ? () => onCounterThesis(m) : undefined
+            }
+            onCitateToThesis={
+              m.role === "assistant" ? () => onCitateToThesis(m) : undefined
+            }
+          />
+        );
+      })}
       {showTyping && <TypingRow />}
     </div>
   );
 }
 
+// Rotating-status variants used while the backend is still retrieving
+// + composing. Backend currently doesn't emit per-tool step events for
+// library chat, so we cycle through a generic set timed at 2.5 s each.
+const LIBRARY_THINKING_VARIANTS = [
+  "Thinking…",
+  "Looking through your sources…",
+  "Reading the most relevant passages…",
+  "Putting the answer together…",
+];
+
 function TypingRow() {
+  const status = useRotatingStatus("lib_thinking", LIBRARY_THINKING_VARIANTS);
   return (
     <div className="flex items-center gap-2.5 mt-1 text-ink-muted">
       <div
@@ -895,7 +920,7 @@ function TypingRow() {
       >
         Q
       </div>
-      <span className="font-body text-xs">Kütüphane düşünüyor</span>
+      <span className="font-body text-xs">{status ?? LIBRARY_THINKING_VARIANTS[0]}</span>
       <span className="inline-flex gap-1">
         <PulseDot delay={0} />
         <PulseDot delay={150} />
@@ -918,6 +943,7 @@ function PulseDot({ delay }: { delay: number }) {
 
 function LibBubble({
   msg,
+  displayContent,
   allEntries,
   sessionId,
   activeSource,
@@ -927,6 +953,10 @@ function LibBubble({
   onCitateToThesis,
 }: {
   msg: ChatMessage;
+  /** Text actually shown — for the last streaming assistant message
+   *  this is the typewriter-throttled version; otherwise it's just
+   *  msg.content. */
+  displayContent: string;
   allEntries: Array<{
     id: string;
     title: string;
@@ -1006,17 +1036,17 @@ function LibBubble({
 
       {/* Body */}
       <div className="pl-8 font-body text-[13.5px] leading-relaxed text-ink prose-chat">
-        {msg.content ? (
+        {displayContent ? (
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {msg.content}
+            {displayContent}
           </ReactMarkdown>
         ) : (
           <span className="opacity-60 italic flex items-center gap-1.5">
             <Loader2 className="h-3 w-3 animate-spin" />
-            Yazıyor…
+            Writing…
           </span>
         )}
-        {isStreaming && msg.content.length > 0 && (
+        {isStreaming && displayContent.length > 0 && (
           <span className="inline-block w-1.5 h-4 bg-ink/60 animate-pulse ml-0.5 align-middle" />
         )}
       </div>

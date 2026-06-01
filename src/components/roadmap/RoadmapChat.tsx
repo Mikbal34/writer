@@ -10,6 +10,8 @@ import CommandGroup from "./CommandGroup";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FadeUp, StaggerItem } from "@/components/shared/Animations";
+import { useTypewriter } from "@/lib/hooks/use-typewriter";
+import { useRotatingStatus } from "@/lib/hooks/use-rotating-status";
 
 interface Message {
  role: "user" | "assistant";
@@ -26,14 +28,51 @@ interface ChatSession {
 
 type SourceDensity = "low" | "normal" | "high";
 
-// Status mapper — backend step/tool eventlerini akademisyenin anlayacağı
-// Türkçe + emoji etiketlerine çevirir. "thinking" gelir gelmez tool adına
-// göre etiket atanır. Daha anlamlı status bar = daha güvenli his.
-function mapStatusEvent(step?: string, tool?: string): string | null {
- if (step === "thinking" && tool === "get_library_entries") return "📚 Kütüphane taranıyor";
- if (step === "thinking" && tool === "get_chapter_detail") return "🔍 Yapı inceleniyor";
- if (step === "thinking") return "🧠 Düşünüyor";
- if (step === "applying") return "⚙ Roadmap'e işleniyor";
+// Status mapper — translates backend step/tool events into a stage
+// key + a list of phrasings. The component pipes this through
+// useRotatingStatus so a step that takes more than a couple of seconds
+// cycles through alternate wordings instead of staring back at the
+// user as a frozen "Thinking…". English copy (global product).
+type ChatStage = { key: string; variants: string[] };
+function mapStatusStage(step?: string, tool?: string): ChatStage | null {
+ if (step === "thinking" && tool === "get_library_entries") {
+  return {
+   key: "lib_scan",
+   variants: [
+    "Scanning your library…",
+    "Looking through what you own…",
+    "Cross-referencing topics…",
+   ],
+  };
+ }
+ if (step === "thinking" && tool === "library_topic_search") {
+  return {
+   key: "topic_search",
+   variants: [
+    "Searching the library by topic…",
+    "Matching content to your topic…",
+    "Ranking the most relevant passages…",
+   ],
+  };
+ }
+ if (step === "thinking" && tool === "get_chapter_detail") {
+  return {
+   key: "struct",
+   variants: ["Reading the structure…", "Reviewing the existing roadmap…"],
+  };
+ }
+ if (step === "thinking") {
+  return {
+   key: "thinking",
+   variants: ["Thinking…", "Working it out…", "Putting the pieces together…"],
+  };
+ }
+ if (step === "applying") {
+  return {
+   key: "apply",
+   variants: ["Applying changes to your roadmap…"],
+  };
+ }
  if (step === "applied") return null;
  return null;
 }
@@ -151,7 +190,19 @@ export default function RoadmapChat({
  const [input, setInput] = useState("");
  const [isStreaming, setIsStreaming] = useState(false);
  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
- const [streamingStep, setStreamingStep] = useState<string | null>(null);
+ const [streamingStage, setStreamingStage] = useState<ChatStage | null>(null);
+ const rotatingStatus = useRotatingStatus(
+  streamingStage?.key ?? null,
+  streamingStage?.variants ?? [],
+ );
+
+ // Typewriter — feeds the last assistant message into a 22 ms/char
+ // queue so the chat reveals one letter at a time even when the
+ // upstream stream arrives in chunky 3-10 char bursts.
+ const lastMessage = messages[messages.length - 1];
+ const typewriterTarget =
+  lastMessage?.role === "assistant" ? lastMessage.content : "";
+ const typewriterContent = useTypewriter(typewriterTarget, isStreaming, 22);
  const [showSessions, setShowSessions] = useState(false);
  // Source density UI removed — kept as a constant "normal" so the
  // backend still receives a sane value (the chat route's system prompt
@@ -296,8 +347,7 @@ export default function RoadmapChat({
       const parsed = JSON.parse(data);
 
       if (parsed.step) {
-       const label = mapStatusEvent(parsed.step, parsed.tool);
-       setStreamingStep(label);
+       setStreamingStage(mapStatusStage(parsed.step, parsed.tool));
       }
 
       if (parsed.chunk) {
@@ -306,7 +356,10 @@ export default function RoadmapChat({
 
        // Detect <roadmap_commands> tag during streaming
        if (fullContent.includes("<roadmap_commands>") && !fullContent.includes("</roadmap_commands>")) {
-        setStreamingStep("🛠 Komutlar hazırlanıyor");
+        setStreamingStage({
+         key: "preparing_commands",
+         variants: ["Preparing the commands…"],
+        });
        }
 
        setMessages((prev) => {
@@ -381,7 +434,7 @@ export default function RoadmapChat({
    });
   } finally {
    setIsStreaming(false);
-   setStreamingStep(null);
+   setStreamingStage(null);
   }
  }
 
@@ -522,7 +575,14 @@ export default function RoadmapChat({
        })()
       )
      )}
-     {messages.map((msg, i) => (
+     {messages.map((msg, i) => {
+      const isLastStreamingAssistant =
+       isStreaming && i === messages.length - 1 && msg.role === "assistant";
+      // Last assistant message during a stream is fed through the
+      // typewriter so it reveals one char at a time; everything else
+      // renders the full content immediately.
+      const displayContent = isLastStreamingAssistant ? typewriterContent : msg.content;
+      return (
       <StaggerItem key={i} index={i} baseDelay={0.1} stagger={0.05}>
        <div className="flex gap-2.5 items-start">
         {msg.role === "user" ? (
@@ -533,13 +593,11 @@ export default function RoadmapChat({
         <div className="flex-1 min-w-0">
          <div className="font-body text-sm prose-chat break-words">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-           {msg.content}
+           {displayContent}
           </ReactMarkdown>
-          {isStreaming &&
-           i === messages.length - 1 &&
-           msg.role === "assistant" && (
-            <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5 align-middle" />
-           )}
+          {isLastStreamingAssistant && (
+           <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5 align-middle" />
+          )}
          </div>
          {msg.commands && msg.commands.length > 0 && (
           <CommandGroup
@@ -547,16 +605,17 @@ export default function RoadmapChat({
            applied={msg.commandsApplied ?? false}
           />
          )}
-         {isStreaming && i === messages.length - 1 && msg.role === "assistant" && streamingStep && (
+         {isStreaming && i === messages.length - 1 && msg.role === "assistant" && rotatingStatus && (
           <div className="flex items-center gap-1.5 font-ui text-xs text-muted-foreground mt-2">
            <Loader2 className="h-3 w-3 animate-spin" />
-           <span>{streamingStep}</span>
+           <span>{rotatingStatus}</span>
           </div>
          )}
         </div>
        </div>
       </StaggerItem>
-     ))}
+      );
+     })}
     </div>
    </ScrollArea>
 
