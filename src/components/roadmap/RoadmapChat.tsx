@@ -347,7 +347,38 @@ export default function RoadmapChat({
       const parsed = JSON.parse(data);
 
       if (parsed.step) {
-       setStreamingStage(mapStatusStage(parsed.step, parsed.tool));
+       // Backend now streams granular per-step events: chapter_applied
+       // (current/total), item_applied (per subsection), enriching
+       // (current/total). Map them to live status updates and refresh
+       // the roadmap view incrementally so chapters appear as soon as
+       // they are committed instead of after the whole batch.
+       if (parsed.step === "chapter_applied") {
+        const current = (parsed as { current?: number }).current ?? 0;
+        const total = (parsed as { total?: number }).total ?? 0;
+        setStreamingStage({
+         key: `chapter_applied_${total}`,
+         variants: [
+          `Chapter ${current}/${total} ready · adding to your roadmap…`,
+         ],
+        });
+        onRoadmapUpdate(); // refetch — partial render
+       } else if (parsed.step === "item_applied") {
+        // Don't override stage on every subsection, just refresh
+        // silently so the user sees new items appear.
+        onRoadmapUpdate();
+       } else if (parsed.step === "enriching") {
+        const current = (parsed as { current?: number }).current ?? 0;
+        const total = (parsed as { total?: number }).total ?? 0;
+        setStreamingStage({
+         key: `enriching_${total}`,
+         variants: [
+          `Enriching sources… ${current}/${total}`,
+          `Matching library content to each subsection… ${current}/${total}`,
+         ],
+        });
+       } else {
+        setStreamingStage(mapStatusStage(parsed.step, parsed.tool));
+       }
       }
 
       if (parsed.chunk) {
@@ -358,7 +389,12 @@ export default function RoadmapChat({
        if (fullContent.includes("<roadmap_commands>") && !fullContent.includes("</roadmap_commands>")) {
         setStreamingStage({
          key: "preparing_commands",
-         variants: ["Preparing the commands…"],
+         variants: [
+          "Drafting the structure…",
+          "Sorting chapters and sections…",
+          "Polishing subsection briefs…",
+          "Almost there…",
+         ],
         });
        }
 

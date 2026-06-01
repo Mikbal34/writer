@@ -946,7 +946,7 @@ async function createNestedSources(
 // scan. Cheap enough to do unconditionally.
 // ---------------------------------------------------------------------------
 async function autoEnrichSubsectionWithLibrary(
-  tx: Prisma.TransactionClient,
+  tx: Prisma.TransactionClient | typeof prisma,
   projectId: string,
   userId: string | undefined,
   subsectionDbId: string,
@@ -1080,13 +1080,34 @@ async function autoEnrichSubsectionWithLibrary(
   return { added }
 }
 
+type DbClient = Prisma.TransactionClient | typeof prisma
+
+interface NewSubsectionRef {
+  id: string
+  title: string | null
+  description: string | null
+  whatToWrite: string | null
+  keyPoints: string[]
+}
+
+interface ApplyResult {
+  newSubsections: NewSubsectionRef[]
+}
+
 async function applyCommands(
-  tx: Prisma.TransactionClient,
+  tx: DbClient,
   projectId: string,
   commands: Array<Record<string, unknown>>,
-  userId?: string
-) {
+  userId: string | undefined,
+  onEvent?: (payload: Record<string, unknown>) => void,
+): Promise<ApplyResult> {
   const tempIdMap = new Map<string, string>()
+  const newSubsections: NewSubsectionRef[] = []
+  let chapterIdx = 0
+  let totalChapters = 0
+  for (const cmd of commands) {
+    if (cmd.action === 'add_chapter') totalChapters++
+  }
 
   function resolveId(id: string): string {
     if (id && id.startsWith('__temp_')) {
@@ -1177,11 +1198,17 @@ async function applyCommands(
         })
         if (cmd.tempId) tempIdMap.set(cmd.tempId as string, subsection.id)
         await createNestedSources(tx, projectId, userId, subsection.id, sub.sources)
-        await autoEnrichSubsectionWithLibrary(tx, projectId, userId, subsection.id, {
+        newSubsections.push({
+          id: subsection.id,
           title: subsection.title,
           description: subsection.description,
           whatToWrite: subsection.whatToWrite,
           keyPoints: subsection.keyPoints as string[],
+        })
+        onEvent?.({
+          step: 'item_applied',
+          kind: 'subsection',
+          title: subsection.title,
         })
         break
       }
@@ -1277,11 +1304,17 @@ async function applyCommands(
             })
             if (sub.tempId) tempIdMap.set(sub.tempId as string, subsec.id)
             await createNestedSources(tx, projectId, userId, subsec.id, sub.sources)
-            await autoEnrichSubsectionWithLibrary(tx, projectId, userId, subsec.id, {
+            newSubsections.push({
+              id: subsec.id,
               title: subsec.title,
               description: subsec.description,
               whatToWrite: subsec.whatToWrite,
               keyPoints: subsec.keyPoints as string[],
+            })
+            onEvent?.({
+              step: 'item_applied',
+              kind: 'subsection',
+              title: subsec.title,
             })
           }
         }
@@ -1377,15 +1410,27 @@ async function applyCommands(
                 })
                 if (sub.tempId) tempIdMap.set(sub.tempId as string, subsec.id)
                 await createNestedSources(tx, projectId, userId, subsec.id, sub.sources)
-                await autoEnrichSubsectionWithLibrary(tx, projectId, userId, subsec.id, {
+                newSubsections.push({
+                  id: subsec.id,
                   title: subsec.title,
                   description: subsec.description,
                   whatToWrite: subsec.whatToWrite,
                   keyPoints: subsec.keyPoints as string[],
                 })
+                onEvent?.({
+                  step: 'item_applied',
+                  kind: 'subsection',
+                  title: subsec.title,
+                })
               }
             }
           }
+          chapterIdx++
+          onEvent?.({
+            step: 'chapter_applied',
+            current: chapterIdx,
+            total: totalChapters,
+          })
         }
         break
       }
@@ -1538,6 +1583,7 @@ async function applyCommands(
       }
     }
   }
+  return { newSubsections }
 }
 
 // ---------------------------------------------------------------------------
@@ -1760,10 +1806,54 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             }
             enqueueEvent({ step: 'applying' })
             try {
-              await prisma.$transaction(async (tx) => {
-                await applyCommands(tx, projectId, commands, session.user.id)
-              })
+              // applyCommands now runs each create/update as an
+              // auto-committed statement (no big $transaction) so the
+              // UI can paint chapters as they land instead of waiting
+              // for the full 1-2 minute Voyage-enriched batch.
+              const applyResult = await applyCommands(
+                prisma,
+                projectId,
+                commands,
+                session.user.id,
+                enqueueEvent,
+              )
               commandsApplied = true
+
+              // Library enrichment runs AFTER all commands have
+              // committed. Each subsection emits an enrichment_progress
+              // event so the UI can show "Sources 8/24". Errors here
+              // do not roll back the roadmap — the source mapping is
+              // additive supporting metadata, not load-bearing.
+              const total = applyResult.newSubsections.length
+              if (total > 0) {
+                enqueueEvent({ step: 'enriching', current: 0, total })
+                for (const [i, sub] of applyResult.newSubsections.entries()) {
+                  try {
+                    await autoEnrichSubsectionWithLibrary(
+                      prisma,
+                      projectId,
+                      session.user.id,
+                      sub.id,
+                      {
+                        title: sub.title,
+                        description: sub.description,
+                        whatToWrite: sub.whatToWrite,
+                        keyPoints: sub.keyPoints,
+                      },
+                    )
+                  } catch (enrichErr) {
+                    console.warn(
+                      `[roadmap/chat] enrichment failed for subsection ${sub.id}:`,
+                      enrichErr,
+                    )
+                  }
+                  enqueueEvent({
+                    step: 'enriching',
+                    current: i + 1,
+                    total,
+                  })
+                }
+              }
               // Bust the App Router cache for every page under /projects/[id]
               // (write, preview, design, sources, …) so they re-fetch the
               // freshly mutated chapter/section/subsection rows on next nav.
