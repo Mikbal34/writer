@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Loader2, User, Plus, History, MessageSquare, BookOpen, AlertTriangle } from "lucide-react";
+import { Send, Loader2, User, Plus, History, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,12 +25,6 @@ interface ChatSession {
 }
 
 type SourceDensity = "low" | "normal" | "high";
-
-const SOURCE_DENSITY_OPTIONS: { value: SourceDensity; label: string; desc: string; estimate: string; credits: string }[] = [
- { value: "low", label: "Minimal", desc: "1 source per subsection", estimate: "~45 sources total for a typical book", credits: "~600" },
- { value: "normal", label: "Standard", desc: "2-3 sources per subsection", estimate: "~90-135 sources total for a typical book", credits: "~1000" },
- { value: "high", label: "Comprehensive", desc: "4-5 sources per subsection", estimate: "~180-225 sources total for a typical book", credits: "~1400" },
-];
 
 // Status mapper — backend step/tool eventlerini akademisyenin anlayacağı
 // Türkçe + emoji etiketlerine çevirir. "thinking" gelir gelmez tool adına
@@ -159,31 +153,15 @@ export default function RoadmapChat({
  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
  const [streamingStep, setStreamingStep] = useState<string | null>(null);
  const [showSessions, setShowSessions] = useState(false);
- const [sourceDensity, setSourceDensity] = useState<SourceDensity>("normal");
- const [creditBalance, setCreditBalance] = useState<number | null>(null);
+ // Source density UI removed — kept as a constant "normal" so the
+ // backend still receives a sane value (the chat route's system prompt
+ // branches on it). Re-introduce the selector if/when we want users
+ // to trade credits for source breadth again.
+ const sourceDensity: SourceDensity = "normal";
  const sessionIdRef = useRef<string>(crypto.randomUUID());
  const scrollRef = useRef<HTMLDivElement>(null);
  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
- // Show source density selector only in creation mode for academic projects
- // Wait for history to load before deciding — prevents flash on existing projects
- const isCreationMode = !isLoadingHistory && !hasRoadmap && messages.length === 0;
- const showDensitySelector = isCreationMode && needsSources;
-
- // Fetch credit balance for density warning
- useEffect(() => {
-  if (!showDensitySelector) return;
-  fetch("/api/credits")
-   .then((r) => r.ok ? r.json() : null)
-   .then((d) => d && setCreditBalance(d.balance))
-   .catch(() => {});
- }, [showDensitySelector]);
-
- const selectedDensityCredits = { low: 600, normal: 1000, high: 1400 }[sourceDensity];
- const remainingAfterRoadmap = creditBalance != null ? creditBalance - selectedDensityCredits : null;
- const estimatedWritingSections = remainingAfterRoadmap != null && remainingAfterRoadmap > 0
-  ? Math.floor(remainingAfterRoadmap / 120)
-  : 0;
 
  // Load chat history
  const loadSession = useCallback(
@@ -582,62 +560,11 @@ export default function RoadmapChat({
     </div>
    </ScrollArea>
 
-   {/* Source density selector — shown only in creation mode for academic projects */}
-   {showDensitySelector && (
-    <div className="border-t px-4 py-2.5 shrink-0 bg-muted/30">
-     <div className="flex items-center gap-2 mb-2">
-      <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
-      <span className="font-ui text-xs font-medium">Source Density</span>
-     </div>
-     <div className="flex gap-1.5">
-      {SOURCE_DENSITY_OPTIONS.map((opt) => (
-       <button
-        key={opt.value}
-        onClick={() => setSourceDensity(opt.value)}
-        className={`flex-1 rounded-md px-2.5 py-2 text-left transition-colors border ${
-         sourceDensity === opt.value
-          ? "border-foreground/30 bg-background shadow-sm"
-          : "border-transparent hover:bg-muted/50"
-        }`}
-       >
-        <span className="font-ui text-xs font-medium block">{opt.label}</span>
-        <span className="font-body text-[10px] text-muted-foreground block mt-0.5">{opt.desc}</span>
-        <span className="font-body text-[10px] text-muted-foreground/70 block">{opt.estimate}</span>
-        <span className="font-ui text-[10px] font-medium block mt-1">{opt.credits} credits</span>
-       </button>
-      ))}
-     </div>
-     {creditBalance != null && (
-      <div className={`mt-2 rounded-md px-2.5 py-1.5 ${
-       remainingAfterRoadmap != null && remainingAfterRoadmap < 120
-        ? "bg-red-50 text-red-700"
-        : remainingAfterRoadmap != null && estimatedWritingSections < 5
-         ? "bg-amber-50 text-amber-700"
-         : "bg-muted/50 text-muted-foreground"
-      }`}>
-       <div className="flex items-center gap-1.5">
-        <AlertTriangle className="h-3 w-3 shrink-0" />
-        <span className="font-ui text-[10px]">
-         Your balance: <strong>{creditBalance}</strong> credits.
-         Roadmap will use ~{selectedDensityCredits}, leaving ~{Math.max(0, remainingAfterRoadmap ?? 0)} for writing
-         {estimatedWritingSections > 0 ? ` (~${estimatedWritingSections} sections).` : "."}
-        </span>
-       </div>
-       {remainingAfterRoadmap != null && remainingAfterRoadmap < 120 && (
-        <p className="font-ui text-[10px] mt-1 font-medium">
-         Not enough credits left for writing. Choose a lower source density.
-        </p>
-       )}
-      </div>
-     )}
-    </div>
-   )}
-
    {/* Suggestion chips (input üstü) — mesaj history doluyken context-aware
        hızlı eylemler. Sadece dolu roadmap'lerde gösterilir (optimize
        chip'leri); boş roadmap'te kullanıcı zaten konuyu yazıyor, hızlı
        komut chip'i gereksiz gürültü. */}
-   {hasRoadmap && !showDensitySelector && !isStreaming && messages.length > 0 && (
+   {hasRoadmap && !isStreaming && messages.length > 0 && (
     <div className="border-t px-4 py-2 shrink-0 bg-page/40">
      <div className="flex gap-1.5 overflow-x-auto pb-0.5">
       {FILLED_SUGGESTIONS.slice(0, 4).map((sug, i) => (
