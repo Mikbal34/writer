@@ -74,6 +74,7 @@ export function markersToHtml(
     ];
     if (marker.page) attrs.push(`data-page="${escapeAttr(marker.page)}"`);
     if (marker.volume) attrs.push(`data-volume="${escapeAttr(marker.volume)}"`);
+    if (marker.quote) attrs.push(`data-quote="${escapeAttr(marker.quote)}"`);
     return `<span class="cite-pill" ${attrs.join(" ")}>${escapeText(label)}</span>`;
   });
 }

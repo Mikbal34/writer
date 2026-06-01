@@ -90,7 +90,7 @@ function extractMarkers(
       subsectionId,
       bibliographyId: parsed.bibId,
       page: Number.isFinite(page as number) ? (page as number) : null,
-      quote: null,
+      quote: parsed.quote ?? null,
       volumeId: null,
       position: match.index ?? 0,
     });

@@ -53,6 +53,11 @@ export interface ParsedMarker {
   bibId: string
   page?: string
   volume?: string
+  /** Exact passage from the cited source, used as the chatQuote /
+   *  PDF-highlight payload on the citations page. Optional — older
+   *  markers (and markers from LLM outputs that predate the q= rule)
+   *  simply won't have it. */
+  quote?: string
 }
 
 // Page-key synonyms across the languages the product targets. The
@@ -63,6 +68,54 @@ const PAGE_KEY_RE =
   /^(p|page|pages|pp|s|sayfa|seite|pagina|página|page|الصفحة|ص|сторінка|стр|с)$/i
 const VOLUME_KEY_RE =
   /^(v|vol|volume|cilt|c|band|bd|tom|tome|tomo|t|том|الجزء|ج)$/i
+const QUOTE_KEY_RE = /^(q|quote|qt|alıntı|zitat|cita|cite)$/i
+
+/**
+ * Tokenise a marker body on commas, but keep double-quoted spans
+ * atomic. Without this `q="hello, world"` would split into two
+ * mangled parts. Escapes `\"` inside the quoted span survive.
+ */
+function tokeniseBody(body: string): string[] {
+  const out: string[] = []
+  let current = ''
+  let inQuote = false
+  let escape = false
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i]
+    if (escape) {
+      current += ch
+      escape = false
+      continue
+    }
+    if (ch === '\\') {
+      current += ch
+      escape = true
+      continue
+    }
+    if (ch === '"') {
+      current += ch
+      inQuote = !inQuote
+      continue
+    }
+    if (ch === ',' && !inQuote) {
+      const trimmed = current.trim()
+      if (trimmed) out.push(trimmed)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  const trimmed = current.trim()
+  if (trimmed) out.push(trimmed)
+  return out
+}
+
+function unquote(value: string): string {
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+  }
+  return value
+}
 
 /**
  * Parse a `[cite:…]` marker body. Tolerant of the variants the LLM
@@ -92,41 +145,91 @@ const VOLUME_KEY_RE =
  * the editor pill renderer and the export resolver agree.
  */
 export function parseMarker(body: string): ParsedMarker | null {
-  // 1) Normalise separators: pipe → comma (does not affect Arabic
-  // text which uses commas of its own — those are inside string
-  // values, not part of the marker key/value scaffolding).
+  // 1) Normalise separators: pipe → comma. Done before tokenising so
+  //    a `bibId|s.45` form still splits properly. Pipes inside quoted
+  //    spans would already be opaque to tokeniseBody, so this is safe.
   let normalised = body.replace(/\|/g, ',')
 
   // 2) Bare "p.", "s.", "S.", "pg.", "ص." right before a digit (no
-  //    equals sign) → canonical `p=`. The dot is optional. Latin
-  //    letters use ASCII-aware boundaries; Arabic key handled separately.
-  normalised = normalised.replace(/\b[psS]g?\.\s*(?=\d)/g, 'p=')
-  normalised = normalised.replace(/(^|[\s,])ص\.?\s*(?=\d)/g, '$1p=')
+  //    equals sign) → canonical `p=`. Only outside quotes, otherwise
+  //    a quoted passage like `q="see p. 45"` would get mangled.
+  normalised = applyOutsideQuotes(normalised, (s) =>
+    s
+      .replace(/\b[psS]g?\.\s*(?=\d)/g, 'p=')
+      .replace(/(^|[\s,])ص\.?\s*(?=\d)/g, '$1p='),
+  )
 
-  // 3) Split + parse parts.
-  const parts = normalised.split(',').map((p) => p.trim()).filter(Boolean)
+  // 3) Tokenise (quoted spans atomic) + parse parts.
+  const parts = tokeniseBody(normalised)
   if (parts.length === 0) return null
   const bibId = parts[0]
   if (!bibId) return null
   const parsed: ParsedMarker = { bibId }
   for (const kv of parts.slice(1)) {
     if (kv.includes('=')) {
-      const [rawKey, rawValue] = kv.split('=').map((s) => s.trim())
+      const eqIdx = kv.indexOf('=')
+      const rawKey = kv.slice(0, eqIdx).trim()
+      const rawValue = kv.slice(eqIdx + 1).trim()
       if (!rawKey || !rawValue) continue
       // Strip a trailing dot from the key — handles "S." / "Bd." /
       // "p." style abbreviations used as keys ("S.=12", "Bd.=3").
       const key = rawKey.replace(/\.$/, '')
+      const value = unquote(rawValue)
       if (PAGE_KEY_RE.test(key)) {
-        parsed.page = rawValue
+        parsed.page = value
       } else if (VOLUME_KEY_RE.test(key)) {
-        parsed.volume = rawValue
+        parsed.volume = value
+      } else if (QUOTE_KEY_RE.test(key)) {
+        parsed.quote = value
       }
     } else if (/^\d+(-\d+)?$/.test(kv)) {
-      // Bare number tail — interpret as page when no page set yet.
       if (!parsed.page) parsed.page = kv
     }
   }
   return parsed
+}
+
+/**
+ * Run a regex-style transform on the slice(s) of `body` that aren't
+ * inside double quotes. Quoted spans pass through unchanged so the
+ * page-abbreviation normalisations don't rewrite the inside of a
+ * `q="..."` value.
+ */
+function applyOutsideQuotes(body: string, fn: (s: string) => string): string {
+  let out = ''
+  let buf = ''
+  let inQuote = false
+  let escape = false
+  const flushBuf = () => {
+    if (buf) out += fn(buf)
+    buf = ''
+  }
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i]
+    if (escape) {
+      out += ch
+      escape = false
+      continue
+    }
+    if (ch === '\\' && inQuote) {
+      out += ch
+      escape = true
+      continue
+    }
+    if (ch === '"') {
+      if (!inQuote) flushBuf()
+      out += ch
+      inQuote = !inQuote
+      continue
+    }
+    if (inQuote) {
+      out += ch
+    } else {
+      buf += ch
+    }
+  }
+  flushBuf()
+  return out
 }
 
 /**

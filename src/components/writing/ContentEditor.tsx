@@ -321,13 +321,26 @@ function nodeToMarkdown(node: Node): string {
     case "div":
       return childMd();
     case "span": {
-      // Preserve citation pills round-trip: their data-* attributes
-      // (bibId / page / quote) are the source of truth, the visible
-      // label is just for the writer. Re-emit the full HTML so when
-      // the saved markdown is re-parsed by markdownToHtml the span
-      // survives and Tiptap's CitationMark parseHTML can claim it.
+      // Round-trip citation pills as canonical `[cite:…]` markdown.
+      // Going back through markdown (rather than spitting out the
+      // full <span outerHTML>) keeps the stored content compact,
+      // diff-friendly, and identical to what the LLM emits in the
+      // first place — markdownToHtml will rebuild the span on the
+      // way back into the editor.
       if (el.hasAttribute("data-cite-bib-id")) {
-        return el.outerHTML;
+        const bibId = el.getAttribute("data-cite-bib-id") ?? "";
+        if (!bibId) return childMd();
+        const page = el.getAttribute("data-page");
+        const volume = el.getAttribute("data-volume");
+        const quote = el.getAttribute("data-quote");
+        const parts: string[] = [bibId];
+        if (volume) parts.push(`v=${volume}`);
+        if (page) parts.push(`p=${page}`);
+        if (quote) {
+          const escaped = quote.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          parts.push(`q="${escaped}"`);
+        }
+        return `[cite:${parts.join(",")}]`;
       }
       return childMd();
     }

@@ -129,7 +129,7 @@ function extractMarkers(content: string): ParsedMarker[] {
     out.push({
       bibId: parsed.bibId,
       page: Number.isFinite(page as number) ? (page as number) : null,
-      quote: null,
+      quote: parsed.quote ?? null,
       label: innerLabel,
       contextSnippet: contextAround(content, matchStart, matchEnd, innerLabel),
       position: matchStart,

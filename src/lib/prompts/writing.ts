@@ -537,12 +537,23 @@ function buildCitationInstructions(citationFormat: CitationFormat): string {
 
 REQUIRED citation marker syntax (and the ONLY syntax you may emit):
 
-  [cite:<bibId>]              — no page
-  [cite:<bibId>,p=45]         — single page
-  [cite:<bibId>,pp=45-48]     — page range
-  [cite:<bibId>,v=2,p=45]     — volume + page (multi-volume works)
+  [cite:<bibId>]                         — no page (use sparingly)
+  [cite:<bibId>,p=45,q="…"]              — single page + source quote
+  [cite:<bibId>,pp=45-48,q="…"]          — page range
+  [cite:<bibId>,v=2,p=45,q="…"]          — volume + page + quote
 
 The <bibId> MUST come from the "Sources for This Subsection" list (the string after \`bibId:\`).
+
+THE \`q="…"\` QUOTE FIELD IS REQUIRED whenever you have a page number. Rules:
+- Lift one short passage (≤ 200 characters, ideally 10-30 words) directly from the cited source — the exact phrasing that supports your claim. Do NOT paraphrase. Do NOT translate; if the source is in Arabic / English / German / etc., keep it in that language inside the quote.
+- Escape any literal double-quote inside the passage as \\".
+- The marker grammar tokenises on commas OUTSIDE quoted spans, so commas inside \`q="…"\` are safe.
+- This quote is what the verification panel highlights on the original PDF page. A wrong quote makes the citation look broken; a missing quote leaves the reader without a way to confirm the claim. Get it right.
+- If you genuinely can't find a literal supporting phrase, omit \`q="…"\` rather than fabricate one. The marker still works, just without PDF highlight.
+
+Good examples:
+  [cite:cmpvc7mxs0002jdpw48hxv9eg,p=86,q="the early Sûrahs of the Koran"]
+  [cite:cmox5jp1j12na0po7r7u5ggut,pp=45-48,q="kelâm geleneği yorum ile rasyonel sezgi arasında bir köprü kurar"]
 
 FORBIDDEN under any circumstance:
 - \`[fn: …]\` markers (any content)
